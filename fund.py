@@ -22,7 +22,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 from pandas.tseries.offsets import DateOffset, Week
 
-# 忽略警告
+# ✅ 禁用进度条显示
+os.environ['TQDM_DISABLE'] = '1'  # 禁用tqdm进度条
 warnings.filterwarnings("ignore")
 
 # =============================================================================
@@ -43,7 +44,10 @@ CONFIG = {
     # --- 绘图设置 ---
     "plot_mode": 2,
     "plot_range": "6M",
-    "show_benchmark": True
+    "show_benchmark": True,
+    
+    # --- 界面显示 ---
+    "show_name_loading": False  # ✅ 是否显示名称加载过程
 }
 
 # =============================================================================
@@ -54,13 +58,13 @@ class FundTracker:
         self.fund_codes: List[str] = []
         self.fund_names_map: Dict[str, str] = {} 
         
-        # --- ✅ 恢复重试机制 (解决网络不稳定问题) ---
+        # --- 恢复重试机制 ---
         self.session = requests.Session()
         retries = Retry(
             total=3, 
             backoff_factor=0.5, 
             status_forcelist=[500, 502, 503, 504],
-            allowed_methods=["GET"]  # 新版本urllib3使用allowed_methods
+            allowed_methods=["GET"]
         )
         self.session.mount('http://', HTTPAdapter(max_retries=retries))
         self.session.mount('https://', HTTPAdapter(max_retries=retries))
@@ -68,32 +72,38 @@ class FundTracker:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': 'http://fund.eastmoney.com/'
         })
-        print("✅ 基金跟踪器已初始化 (已启用自动重试机制)。")
 
     def add_funds(self, codes: List[str]):
         new_codes = [str(c) for c in codes if str(c) not in self.fund_codes]
         self.fund_codes.extend(new_codes)
-        print(f"成功添加 {len(new_codes)} 只基金。当前共跟踪 {len(self.fund_codes)} 只。")
+        print(f"\n✅ 基金跟踪器已初始化，成功添加 {len(self.fund_codes)} 只基金。")
 
     def ensure_fund_names(self, console: Console):
         """
-        ✅ 优化：名称补全策略 - 天天基金 -> 腾讯 -> Akshare
+        ✅ 优化：静默模式名称补全
         """
         unknown_codes = [c for c in self.fund_codes if c not in self.fund_names_map]
         if not unknown_codes: return
 
-        with console.status("[bold cyan]正在校对基金名称信息...", spinner="dots"):
+        show_progress = CONFIG.get("show_name_loading", False)
+        
+        if show_progress:
+            with console.status("[bold cyan]正在校对基金名称信息...", spinner="dots"):
+                for code in unknown_codes:
+                    name = self._fetch_name_strategy(code)
+                    if name and name != code:
+                        self.fund_names_map[code] = name
+                        console.print(f"  [dim]✓ {code} -> {name}[/dim]")
+        else:
+            # ✅ 静默模式：不显示加载过程
             for code in unknown_codes:
                 name = self._fetch_name_strategy(code)
                 if name and name != code:
                     self.fund_names_map[code] = name
-                    console.print(f"  [dim]✓ {code} -> {name}[/dim]")
     
     def _fetch_name_strategy(self, code: str) -> str:
-        """
-        ✅ 修复：三级名称获取策略
-        """
-        # 策略 1: 天天基金实时接口 (优先，即使无估值也可能有名称)
+        """三级名称获取策略"""
+        # 策略 1: 天天基金
         try:
             ts = int(time.time() * 1000)
             url = f"http://fundgz.1234567.com.cn/js/{code}.js?rt={ts}"
@@ -106,26 +116,26 @@ class FundTracker:
                         return data['name']
         except: pass
 
-        # 策略 2: 腾讯基金接口 (✅ 修复：专门用于LOF/QDII)
+        # 策略 2: 腾讯基金接口
         try:
             url = f"http://qt.gtimg.cn/q=jj{code}"
             resp = self.session.get(url, timeout=3)
             if resp.status_code == 200 and "v_jj" in resp.text:
-                # 返回格式示例: v_jj160125="160125~南方香港优选股票~1.0530~..."
                 content = resp.text.split('="')[1].strip('";\n')
                 parts = content.split('~')
                 if len(parts) > 1 and parts[1]: 
                     return parts[1]
         except: pass
 
-        # 策略 3: Akshare 基础信息 (兜底)
+        # 策略 3: Akshare
         try:
             df = ak.fund_individual_basic_info_em(symbol=code)
             for kw in ["基金简称", "基金全称", "基金名称"]:
                 row = df[df['item'] == kw]
                 if not row.empty: 
                     name = row['value'].values[0]
-                    if name and str(name).strip(): return str(name).strip()
+                    if name and str(name).strip(): 
+                        return str(name).strip()
         except: pass
 
         return code 
@@ -135,50 +145,61 @@ class FundTracker:
 
     def get_realtime_estimates_all(self, console: Console) -> List[Dict]:
         """
-        ✅ 修复：获取实时估值 (优化错误处理和名称同步)
+        ✅ 增强版：支持多数据源降级策略（静默模式）
         """
         if not self.fund_codes: return []
-
+    
         results = []
         
-        with console.status("[bold green]正在从天天基金获取实时估值...", spinner="dots"):
-            for code in self.fund_codes:
-                item = {
-                    'code': code,
-                    'name': self.get_fund_name(code),
-                    'gz': None,
-                    'gszzl': None,
-                    'time': '--',
-                    'status': '获取中'
-                }
+        # ✅ 不显示spinner状态，静默执行
+        for code in self.fund_codes:
+            # 优先级1: 天天基金实时估值
+            item = self._try_tiantian_fund(code)
+            
+            # 优先级2: LOF场内行情（新浪）
+            if item['status'] in ['无数据(解析空)', '非交易时段'] and code.startswith(('16', '50')):
+                lof_data = self._try_sina_lof(code)
+                if lof_data:
+                    item = lof_data
+            
+            # 优先级3: AKShare LOF实时行情
+            if item['status'] in ['无数据(解析空)', '非交易时段']:
+                ak_data = self._try_akshare_lof(code)
+                if ak_data:
+                    item = ak_data
+            
+            # 优先级4: 最新净值降级
+            if item['status'] in ['无数据(解析空)', '非交易时段']:
+                fallback = self._try_latest_nav(code)
+                if fallback:
+                    item = fallback
+            
+            results.append(item)
+        
+        return results
+    
+    def _try_tiantian_fund(self, code: str) -> Dict:
+        """尝试天天基金接口"""
+        item = {
+            'code': code,
+            'name': self.get_fund_name(code),
+            'gz': None,
+            'gszzl': None,
+            'time': '--',
+            'status': '获取中'
+        }
+        
+        try:
+            ts = int(time.time() * 1000)
+            url = f"http://fundgz.1234567.com.cn/js/{code}.js?rt={ts}"
+            resp = self.session.get(url, timeout=5)
+            
+            if resp.status_code == 200 and resp.text:
+                text = resp.text.replace("jsonpgz(", "").replace(");", "").strip()
                 
-                try:
-                    ts = int(time.time() * 1000)
-                    url = f"http://fundgz.1234567.com.cn/js/{code}.js?rt={ts}"
-                    resp = self.session.get(url, timeout=5)
-                    
-                    if resp.status_code != 200:
-                        item['status'] = f'HTTP {resp.status_code}'
-                        results.append(item)
-                        continue
-                    
-                    text = resp.text.strip()
-                    if not text or text == '':
-                        item['status'] = '无数据(API空)'
-                        results.append(item)
-                        continue
-                    
-                    # ✅ 修复：更稳健的JSON解析
-                    text = text.replace("jsonpgz(", "").replace(");", "").strip()
-                    
-                    if not text:
-                        item['status'] = '无数据(解析空)'
-                        results.append(item)
-                        continue
-                        
+                if text:
                     data = json.loads(text)
                     
-                    # 同步名称
                     if 'name' in data and data['name']:
                         self.fund_names_map[code] = data['name']
                         item['name'] = data['name']
@@ -186,24 +207,105 @@ class FundTracker:
                     item['gz'] = data.get('gsz')
                     item['gszzl'] = data.get('gszzl')
                     item['time'] = data.get('gztime', '--')
+                    item['status'] = '正常' if item['gz'] else '非交易时段'
+                else:
+                    item['status'] = '无数据(解析空)'
+            else:
+                item['status'] = f'HTTP {resp.status_code}'
                     
-                    if item['gz'] is None:
-                        item['status'] = '非交易时段'
-                    else:
-                        item['status'] = '正常'
-                        
-                except requests.exceptions.Timeout:
-                    item['status'] = '网络超时'
-                except requests.exceptions.RequestException as e:
-                    item['status'] = '网络错误'
-                except json.JSONDecodeError as e:
-                    item['status'] = 'JSON解析失败'
-                except Exception as e:
-                    item['status'] = f'未知错误'
-                
-                results.append(item)
+        except Exception:
+            item['status'] = '网络错误'
         
-        return results
+        return item
+    
+    def _try_sina_lof(self, code: str) -> Optional[Dict]:
+        """尝试新浪LOF场内行情"""
+        try:
+            url = f"http://hq.sinajs.cn/list=sz{code}"
+            resp = self.session.get(url, timeout=3)
+            
+            if 'var hq_str' in resp.text:
+                content = resp.text.split('="')[1].strip('";')
+                fields = content.split(',')
+                
+                if len(fields) > 10 and fields[0]:
+                    current_price = float(fields[3])
+                    prev_close = float(fields[2])
+                    change_pct = ((current_price - prev_close) / prev_close * 100) if prev_close > 0 else 0
+                    
+                    return {
+                        'code': code,
+                        'name': fields[0],
+                        'gz': current_price,
+                        'gszzl': round(change_pct, 2),
+                        'time': fields[31] if len(fields) > 31 else '--',
+                        'status': '场内行情'
+                    }
+        except:
+            pass
+        return None
+    
+    def _try_akshare_lof(self, code: str) -> Optional[Dict]:
+        """尝试AKShare LOF数据"""
+        try:
+            # ✅ 禁用akshare内部进度条
+            import sys
+            from io import StringIO
+            
+            old_stdout = sys.stdout
+            sys.stdout = StringIO()  # 重定向标准输出
+            
+            try:
+                df = ak.fund_lof_spot_em()
+            finally:
+                sys.stdout = old_stdout  # 恢复标准输出
+            
+            row = df[df['代码'] == code]
+            
+            if not row.empty:
+                return {
+                    'code': code,
+                    'name': str(row['名称'].values[0]),
+                    'gz': float(row['最新价'].values[0]),
+                    'gszzl': float(row['涨跌幅'].values[0]),
+                    'time': '--',
+                    'status': 'LOF行情'
+                }
+        except:
+            pass
+        return None
+    
+    def _try_latest_nav(self, code: str) -> Optional[Dict]:
+        """
+        ✅ 降级：使用最新净值
+        备注：适用于005051等无公开实时估值的港股通基金
+        """
+        try:
+            # ✅ 同样禁用进度条
+            import sys
+            from io import StringIO
+            
+            old_stdout = sys.stdout
+            sys.stdout = StringIO()
+            
+            try:
+                df = ak.fund_open_fund_info_em(symbol=code, indicator="单位净值走势")
+            finally:
+                sys.stdout = old_stdout
+            
+            if not df.empty:
+                latest = df.iloc[-1]
+                return {
+                    'code': code,
+                    'name': self.get_fund_name(code),
+                    'gz': float(latest['单位净值']),
+                    'gszzl': None,
+                    'time': latest['净值日期'].strftime('%Y-%m-%d'),
+                    'status': '最新净值'
+                }
+        except:
+            pass
+        return None
 
     def get_historical_nav(self, code: str) -> pd.DataFrame:
         """获取历史净值"""
@@ -218,9 +320,7 @@ class FundTracker:
             return pd.DataFrame()
 
     def _analyze_trend(self, hist_data: pd.DataFrame, direction: str) -> (int, float):
-        """
-        ✅ 核心修复：正确返回带符号的涨跌幅
-        """
+        """分析趋势：返回带符号的涨跌幅"""
         if hist_data.empty: return 0, 0.0
         target = 1 if direction == 'up' else -1
         days = 0
@@ -236,10 +336,8 @@ class FundTracker:
         
         if days == 0: return 0, 0.0
         
-        # 计算累计涨跌幅
         total_chg = np.prod([1 + r for r in changes]) - 1
         
-        # ✅ 关键修复：下跌时返回负值
         if direction == 'down':
             total_chg = -abs(total_chg)
         else:
@@ -255,13 +353,12 @@ class FundTracker:
 
             days, total_chg = self._analyze_trend(hist, direction)
             
-            # 注意：total_chg现在已经带符号
             if days >= min_days or abs(total_chg) >= min_pct:
                 results.append({
                     'code': code,
                     'name': self.get_fund_name(code), 
                     'days': days,
-                    'pct': round(total_chg * 100, 2)  # ✅ 保留正负号
+                    'pct': round(total_chg * 100, 2)
                 })
 
         return results
@@ -305,12 +402,11 @@ class PlotManager:
         start_date = PlotManager.get_start_date(range_str)
         
         fund_data = {}
-        with console.status("[bold cyan]正在获取历史数据..."):
-            for code in tracker.fund_codes:
-                df = tracker.get_historical_nav(code)
-                if not df.empty:
-                    df = df[df['净值日期'] >= start_date]
-                    if not df.empty: fund_data[code] = df
+        for code in tracker.fund_codes:
+            df = tracker.get_historical_nav(code)
+            if not df.empty:
+                df = df[df['净值日期'] >= start_date]
+                if not df.empty: fund_data[code] = df
         
         if not fund_data:
             console.print("[red]无数据可绘图[/red]")
@@ -371,7 +467,14 @@ class PlotManager:
 # 🖥️ 界面渲染 (Rich Table)
 # =============================================================================
 def print_realtime_table(console, data_list):
-    table = Table(title="📈 基金实时估值 (数据源: 天天基金)", show_header=True, header_style="bold magenta", border_style="dim")
+    # ✅ 修复：标题左对齐
+    table = Table(
+        title="\n📈 基金实时估值", 
+        title_justify="left",  # ✅ 左对齐
+        show_header=True, 
+        header_style="bold magenta", 
+        border_style="dim"
+    )
     
     table.add_column("基金代码", justify="left", style="cyan")
     table.add_column("基金名称", justify="left", style="white")
@@ -381,7 +484,6 @@ def print_realtime_table(console, data_list):
     table.add_column("状态/备注", justify="left")
 
     for item in data_list:
-        # ✅ 修复：涨跌幅颜色 (正值红色，负值绿色)
         gszzl = item['gszzl']
         if gszzl is not None:
             try:
@@ -415,18 +517,25 @@ def print_screen_table(console, df, title):
     if df.empty:
         console.print(f"\n  [italic dim]（{title} 无数据）[/italic dim]")
         return
-    table = Table(title=title, show_header=True, header_style="bold magenta", border_style="dim", show_lines=False)
+    
+    # ✅ 修复：标题左对齐
+    table = Table(
+        title=title, 
+        title_justify="left",  # ✅ 左对齐
+        show_header=True, 
+        header_style="bold magenta", 
+        border_style="dim", 
+        show_lines=False
+    )
     
     table.add_column("基金代码", justify="left", style="cyan")
     table.add_column("基金名称", justify="left")
     table.add_column("连续天数", justify="right")
     table.add_column("累计涨跌幅(%)", justify="right")
 
-    # ✅ 修复：使用 iterrows 并正确显示正负值颜色
     for _, row in df.iterrows():
         pct = row['pct']
         
-        # ✅ 关键修复：根据正负值设置颜色
         if pct > 0:
             pct_style = "bold red"
             pct_text = f"+{pct}%"
@@ -461,18 +570,18 @@ if __name__ == "__main__":
         codes = CONFIG["default_funds"]
     tracker.add_funds(codes)
     
-    # 2. ✅ 优化：先加载名称，再获取实时数据
+    # 2. ✅ 静默加载名称
     tracker.ensure_fund_names(console)
     
-    console.print("-" * 30, style="dim")
+    # console.print("-" * 60, style="dim")
 
     # 3. 实时估值
     realtime_list = tracker.get_realtime_estimates_all(console)
     print_realtime_table(console, realtime_list)
 
-    console.print("-" * 30, style="dim")
+    # console.print("-" * 60, style="dim")
 
-    # 4. ✅ 修复：筛选条件描述更清晰
+    # 4. 筛选条件说明
     up_cfg = CONFIG["screen_up"]
     down_cfg = CONFIG["screen_down"]
     console.print(f"\n[bold yellow]📊 筛选条件说明:[/bold yellow]")
@@ -483,9 +592,9 @@ if __name__ == "__main__":
     print_screen_table(console, pd.DataFrame(up_list), "✅ 满足 [连续上涨] 条件的基金")
 
     down_list = tracker.screen_funds('down', down_cfg["days"], down_cfg["pct"], console)
-    print_screen_table(console, pd.DataFrame(down_list), "✅ 满足 [连续下跌] 条件的基金")
+    print_screen_table(console, pd.DataFrame(down_list), "\n✅ 满足 [连续下跌] 条件的基金")
     
-    console.print("-" * 30, style="dim")
+    # console.print("-" * 60, style="dim")
 
     # 5. 绘图
     PlotManager.plot(
