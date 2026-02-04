@@ -8,6 +8,7 @@ import json
 import time
 import os
 import math
+import argparse
 from typing import List, Dict, Optional, Any
 
 # --- 网络重试库 ---
@@ -47,7 +48,7 @@ CONFIG = {
     "show_benchmark": True,
     
     # --- 界面显示 ---
-    "show_name_loading": True  # ✅ 是否显示名称加载过程
+    "show_name_loading": False  # ✅ 是否显示名称加载过程
 }
 
 # =============================================================================
@@ -558,6 +559,26 @@ def print_screen_table(console, df, title):
 # 🚀 主程序
 # =============================================================================
 if __name__ == "__main__":
+    # ✅ 添加命令行参数支持
+    parser = argparse.ArgumentParser(description='基金跟踪器')
+    parser.add_argument('--up_days', type=int, default=CONFIG["screen_up"]["days"])
+    parser.add_argument('--up_pct', type=float, default=CONFIG["screen_up"]["pct"])
+    parser.add_argument('--down_days', type=int, default=CONFIG["screen_down"]["days"])
+    parser.add_argument('--down_pct', type=float, default=CONFIG["screen_down"]["pct"])
+    parser.add_argument('--plot_mode', type=int, default=CONFIG["plot_mode"])
+    parser.add_argument('--plot_range', type=str, default=CONFIG["plot_range"])
+    
+    args = parser.parse_args()
+    
+    # 使用命令行参数覆盖CONFIG
+    if any(vars(args).values()):
+        CONFIG["screen_up"]["days"] = args.up_days
+        CONFIG["screen_up"]["pct"] = args.up_pct
+        CONFIG["screen_down"]["days"] = args.down_days
+        CONFIG["screen_down"]["pct"] = args.down_pct
+        CONFIG["plot_mode"] = args.plot_mode
+        CONFIG["plot_range"] = args.plot_range
+    
     console = Console()
     tracker = FundTracker()
 
