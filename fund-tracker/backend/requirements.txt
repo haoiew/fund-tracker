@@ -1,0 +1,51 @@
+# FastAPI
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# 数据库
+sqlalchemy==2.0.25
+# psycopg2-binary 在Windows上需要编译，使用纯Python方案或conda安装
+# psycopg2-binary==2.9.9
+# 方案1: 使用psycopg3 (有预编译wheel)
+psycopg[binary]==3.1.17
+# 方案2: 使用asyncpg (纯Python异步驱动)
+# asyncpg==0.29.0
+alembic==1.13.1
+
+# 缓存
+redis==5.0.1
+
+# 数据处理
+pandas==2.1.4
+numpy==1.26.3
+
+# 金融数据
+akshare==1.12.0
+
+# HTTP请求
+requests==2.31.0
+urllib3==2.1.0
+
+# 图片处理
+pillow==10.2.0
+
+# OCR识别
+easyocr==1.7.2
+
+# 认证
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+
+# 工具
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# 定时任务
+apscheduler==3.10.4
+
+# 测试
+pytest==7.4.4
+pytest-asyncio==0.23.3
+httpx==0.26.0

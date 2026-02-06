@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: fundtracker-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-funduser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-fundtracker}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fundtracker-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-funduser} -d ${POSTGRES_DB:-fundtracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fundtracker-redis
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - fundtracker-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: fundtracker-backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-funduser}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-fundtracker}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-this}
+      - DEBUG=false
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fundtracker-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  fundtracker-network:
+    driver: bridge

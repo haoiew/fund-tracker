@@ -1,0 +1,144 @@
+// 明亮年轻风格配色 - 低饱和度
+:root {
+  // 主色调 - 柔和蓝
+  --primary-color: #3b82f6;
+  --primary-light: #60a5fa;
+  --primary-lighter: #93c5fd;
+  --primary-dark: #2563eb;
+
+  // 功能色 - 低饱和度
+  --success-color: #10b981;
+  --success-light: #d1fae5;
+  --warning-color: #f59e0b;
+  --warning-light: #fef3c7;
+  --danger-color: #ef4444;
+  --danger-light: #fee2e2;
+  --info-color: #64748b;
+  --info-light: #f1f5f9;
+
+  // 文字颜色
+  --text-primary: #1e293b;
+  --text-regular: #475569;
+  --text-secondary: #64748b;
+  --text-placeholder: #94a3b8;
+
+  // 边框颜色
+  --border-base: #e2e8f0;
+  --border-light: #f1f5f9;
+  --border-lighter: #f8fafc;
+
+  // 背景色
+  --bg-page: #f8fafc;
+  --bg-base: #ffffff;
+  --bg-sidebar: linear-gradient(180deg, #f0f9ff 0%, #f8fafc 100%);
+  --bg-card: #ffffff;
+  --bg-hover: #f1f5f9;
+
+  // 阴影 - 柔和
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+
+  // 圆角
+  --radius-sm: 6px;
+  --radius-base: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  // 间距
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  // 字体
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+
+  // 过渡
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 350ms ease;
+}
+
+// 深色模式
+[data-theme='dark'] {
+  // 主色调 - 调整为更低饱和度的柔和蓝，减少突兀感
+  --primary-color: #5a7a96;
+  --primary-light: #6a8aa6;
+  --primary-lighter: #8aaac6;
+  --primary-dark: #4a6a86;
+
+  // 功能色 - 调整为适合深色的低饱和度，避免蓝绿色
+  --success-color: #5a9a7a;
+  --success-light: rgba(90, 154, 122, 0.15);
+  --warning-color: #c9a45c;
+  --warning-light: rgba(201, 164, 92, 0.15);
+  --danger-color: #b86a6a;
+  --danger-light: rgba(184, 106, 106, 0.15);
+  --info-color: #7a9ab6;
+  --info-light: rgba(122, 154, 182, 0.15);
+
+  // 文字颜色 - 反转
+  --text-primary: #f1f5f9;
+  --text-regular: #cbd5e1;
+  --text-secondary: #94a3b8;
+  --text-placeholder: #64748b;
+
+  // 边框颜色 - 深色系
+  --border-base: #334155;
+  --border-light: #475569;
+  --border-lighter: #64748b;
+
+  // 背景色 - 深色系
+  --bg-page: #0f172a;
+  --bg-base: #1e293b;
+  --bg-sidebar: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+  --bg-card: #1e293b;
+  --bg-hover: #334155;
+
+  // 阴影 - 更深的阴影
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+}
+
+// 动画关键帧
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+// 骨架屏动画
+@keyframes skeleton-loading {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}

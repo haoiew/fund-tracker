@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: fundtracker-postgres
+    environment:
+      POSTGRES_USER: funduser
+      POSTGRES_PASSWORD: fundpass
+      POSTGRES_DB: fundtracker
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - fundtracker-network
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    container_name: fundtracker-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - fundtracker-network
+
+  # 后端API服务
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: fundtracker-backend
+    environment:
+      - DATABASE_URL=postgresql://funduser:fundpass@postgres:5432/fundtracker
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=true
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ../backend:/app
+    networks:
+      - fundtracker-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  fundtracker-network:
+    driver: bridge

@@ -1,0 +1,451 @@
+1.
+D:\workdir\code\Explore\fund-tracker\backend>mamba activate Explore
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_FC="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_FFLAGS="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_LD="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_LDFLAGS="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_AR="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "FC=flang-new"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "LD=lld-link.exe"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "AR=llvm-ar.exe"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "FFLAGS=-D_CRT_SECURE_NO_WARNINGS -fms-runtime-lib=dll -fuse-ld=lld"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "LDFLAGS= -Wl,-defaultlib:C:/Users/138721/AppData/Local/miniforge3/envs/Explore/lib/clang/19/lib/windows/clang_rt.builtins-x86_64.lib"
+
+D:\workdir\code\Explore\fund-tracker\backend>if not "" == "" (set "FFLAGS=-D_CRT_SECURE_NO_WARNINGS -fms-runtime-lib=dll -fuse-ld=lld -I" )  else (set "FFLAGS=-D_CRT_SECURE_NO_WARNINGS -fms-runtime-lib=dll -fuse-ld=lld -IC:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\include" )
+
+D:\workdir\code\Explore\fund-tracker\backend>SET DISTUTILS_USE_SDK=1
+
+D:\workdir\code\Explore\fund-tracker\backend>SET MSSdk=1
+
+D:\workdir\code\Explore\fund-tracker\backend>SET "VS_VERSION=17.0"
+
+D:\workdir\code\Explore\fund-tracker\backend>SET "VS_MAJOR=17"
+
+D:\workdir\code\Explore\fund-tracker\backend>SET "VS_YEAR=2022"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "MSYS2_ARG_CONV_EXCL=/AI;/AL;/OUT;/out"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "MSYS2_ENV_CONV_EXCL=CL"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "PY_VCRUNTIME_REDIST=\bin\vcruntime140.dll"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CXX=cl.exe"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CC=cl.exe"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "VSINSTALLDIR="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "NEWER_VS_WITH_OLDER_VC=0"
+
+D:\workdir\code\Explore\fund-tracker\backend>for /F "usebackq tokens=*" %i in (`vswhere.exe -nologo -products * -version [17.0,18.0) -property installationPath`) do (set "VSINSTALLDIR=%i\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "" (for /F "usebackq tokens=*" %i in (`vswhere.exe -nologo -products * -requires Microsoft.VisualStudio.ComponentGroup.VC.Tools.143.x86.x64 -property installationPath`) do (
+set "VSINSTALLDIR=%i\"
+ set "NEWER_VS_WITH_OLDER_VC=1"
+) )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "" (for /F "usebackq tokens=*" %i in (`vswhere.exe -nologo -products * -requires Microsoft.VisualStudio.Component.VC.v143.x86.x64 -property installationPath`) do (
+set "VSINSTALLDIR=%i\"
+ set "NEWER_VS_WITH_OLDER_VC=1"
+) )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "" (set "VSINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\" (set "VSINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\" (set "VSINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\" (set "VSINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>IF NOT "" == "" (
+set "INCLUDE=;"
+ set "LIB=;"
+ set "CMAKE_PREFIX_PATH=;"
+)  else (
+set "INCLUDE=C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\include;"
+ set "LIB=C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\lib;"
+ set "CMAKE_PREFIX_PATH=C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library;"
+)
+
+D:\workdir\code\Explore\fund-tracker\backend>call :GetWin10SdkDir
+
+D:\workdir\code\Explore\fund-tracker\backend>call :GetWin10SdkDirHelper HKLM\SOFTWARE\Wow6432Node  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKCU\SOFTWARE\Wow6432Node  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKLM\SOFTWARE  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKCU\SOFTWARE  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 exit /B 1
+
+D:\workdir\code\Explore\fund-tracker\backend>exit /B 0
+
+D:\workdir\code\Explore\fund-tracker\backend>for /F %i in ('dir /ON /B "\include\10.*"') DO (SET WindowsSDKVer=%~i )
+系统找不到指定的文件。
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 (echo "Didn't find any windows 10 SDK. I'm not sure if things will work, but let's try..." )  else (echo Windows SDK version found as: "" )
+Windows SDK version found as: ""
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CMAKE_PLAT=x64"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "VCVARSBAT=64"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CMAKE_ARGS=-DCMAKE_BUILD_TYPE=Release"
+
+D:\workdir\code\Explore\fund-tracker\backend>IF "" == "1" (set "CMAKE_ARGS=-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX= -DPython_FIND_REGISTRY=NEVER -DPython3_FIND_REGISTRY=NEVER -DCMAKE_PROGRAM_PATH=\bin;\Scripts;\Library\bin;\bin;\Scripts;\Library\bin" )
+
+D:\workdir\code\Explore\fund-tracker\backend>IF 2022 GEQ 2019 (
+set "CMAKE_GEN=Visual Studio 17 2022"
+ set "USE_NEW_CMAKE_GEN_SYNTAX=1"
+)  ELSE (
+IF "win-64" == "win-64" (set "CMAKE_GEN=Visual Studio 17 2022 Win64" )  else (set "CMAKE_GEN=Visual Studio 17 2022" )
+ set "USE_NEW_CMAKE_GEN_SYNTAX=0"
+)
+
+D:\workdir\code\Explore\fund-tracker\backend>echo "NEWER_VS_WITH_OLDER_VC=0"
+"NEWER_VS_WITH_OLDER_VC=0"
+
+D:\workdir\code\Explore\fund-tracker\backend>set /p LATEST_VS= 0<"C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt"
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>type "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt"
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>dir "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\\VC\Redist\MSVC\"
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>if "0" == "1" (
+echo ""
+ if "~0,4" == "14.2" (set "CMAKE_GEN=Visual Studio 16 2019" )  else (set "CMAKE_GEN=Visual Studio 17 2022" )
+ set "USE_NEW_CMAKE_GEN_SYNTAX=1"
+)
+
+D:\workdir\code\Explore\fund-tracker\backend>IF "" == "" SET "CMAKE_GENERATOR=Visual Studio 17 2022"
+
+D:\workdir\code\Explore\fund-tracker\backend>IF "1" == "1" (
+IF "" == "" SET "CMAKE_GENERATOR_PLATFORM=x64"
+ IF "" == "" SET "CMAKE_GENERATOR_TOOLSET=v143"
+)
+
+D:\workdir\code\Explore\fund-tracker\backend>pushd C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>if "~0,5" LSS "14.44" (
+
+ CALL "VC\Auxiliary\Build\vcvars64.bat" -vcvars_ver=~0,5WindowsSDKVer
+)  else (CALL "VC\Auxiliary\Build\vcvars64.bat" -vcvars_ver=14.44  )
+系统找不到指定的驱动器。
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>if 1 NEQ 0 (if "" == "" (CALL "VC\Auxiliary\Build\vcvars64.bat" ) )
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>popd
+
+D:\workdir\code\Explore\fund-tracker\backend>IF NOT "" == "" (set "PATH=;\Library\bin;\Scripts;\bin;;\Library\bin;\Scripts;\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\mingw-w64\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\usr\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Scripts;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\bin;C:\Users\138721\AppData\Local\miniforge3\condabin;C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\Java\jdk1.7.0_51\bin;C:\Program Files\Java\jre7\bin;C:\Program Files\Java\jdk1.7.0_51\jre\bin;C:\Program Files\Java\jdk1.7.0_51\jre\bin\server;C:\Program Files\PowerShell\7\;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files\Git\cmd;C:\Program Files\Bandizip\;C:\Program Files\Sniffnet\;C:\Program Files\nodejs\;C:\Program Files\Docker\Docker\resources\bin;c:\Users\138721\AppData\Local\Programs\Trae\bin;c:\Users\138721\AppData\Local\Programs\Trae CN\bin;C:\Users\138721\AppData\Local\Microsoft\WindowsApps;C:\Users\138721\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\138721\AppData\Local\Programs\Antigravity\bin;C:\Users\138721\AppData\Local\Programs\Ollama;C:\Users\138721\AppData\Roaming\npm" )  else (set "PATH=C:\Users\138721\AppData\Local\miniforge3\envs\Explore;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Scripts;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\mingw-w64\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\usr\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Scripts;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\bin;C:\Users\138721\AppData\Local\miniforge3\condabin;C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\Java\jdk1.7.0_51\bin;C:\Program Files\Java\jre7\bin;C:\Program Files\Java\jdk1.7.0_51\jre\bin;C:\Program Files\Java\jdk1.7.0_51\jre\bin\server;C:\Program Files\PowerShell\7\;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files\Git\cmd;C:\Program Files\Bandizip\;C:\Program Files\Sniffnet\;C:\Program Files\nodejs\;C:\Program Files\Docker\Docker\resources\bin;c:\Users\138721\AppData\Local\Programs\Trae\bin;c:\Users\138721\AppData\Local\Programs\Trae CN\bin;C:\Users\138721\AppData\Local\Microsoft\WindowsApps;C:\Users\138721\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\138721\AppData\Local\Programs\Antigravity\bin;C:\Users\138721\AppData\Local\Programs\Ollama;C:\Users\138721\AppData\Roaming\npm" )
+
+D:\workdir\code\Explore\fund-tracker\backend>IF NOT "win-64" == "win-64" (
+set "CONDA_BUILD_CROSS_COMPILATION=1"
+ set "CMAKE_ARGS=-DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=AMD64"
+ setlocal enabledelayedexpansion
+ set CL_DIR1=
+ set CL_DIR2=
+ set CL_EXE=
+ FOR /F "delims=" %i IN ('where cl.exe') DO if not defined CL_EXE set "CL_EXE=%i"
+ call :GetDirName CL_EXE CL_DIR1
+ call :GetDirName CL_DIR1 CL_DIR2
+
+ subst Z: "!CL_DIR2!"
+ endlocal
+ set "CC_FOR_BUILD=Z:/x64/cl.exe"
+ set "CXX_FOR_BUILD=Z:/x64/cl.exe"
+ call :ReplaceInTargetVariable "C:\Users\138721\AppData\Local\miniforge3\envs\Explore/Library/lib;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\lib;" LIB_FOR_BUILD
+ call :ReplaceInTargetVariable "C:\Users\138721\AppData\Local\miniforge3\envs\Explore/Library/include;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\include;" INCLUDE_FOR_BUILD
+ set "LDFLAGS_FOR_BUILD= -Wl,-defaultlib:C:/Users/138721/AppData/Local/miniforge3/envs/Explore/lib/clang/19/lib/windows/clang_rt.builtins-x86_64.lib /MACHINE:x64"
+)  else (set "CONDA_BUILD_CROSS_COMPILATION=0" )
+
+D:\workdir\code\Explore\fund-tracker\backend>call :GetWin10SdkDirHelper HKLM\SOFTWARE\Wow6432Node  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKCU\SOFTWARE\Wow6432Node  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKLM\SOFTWARE  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKCU\SOFTWARE  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 exit /B 1
+
+D:\workdir\code\Explore\fund-tracker\backend>exit /B 0
+2026-02-05 16:02:11 | INFO     | fund_tracker.cache_service | Redis 缓存服务已启用
+正在初始化 EasyOCR...
+Using CPU. Note: This module is much faster with a GPU.
+✅ EasyOCR 初始化成功！
+2026-02-05 16:02:22 | INFO     | fund_tracker.main | 数据库表创建成功
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup | 🔍 开始启动检查...
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup |
+📋 依赖检查...
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup | ✅ 所有依赖检查通过
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup |
+📋 数据库检查...
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup | ✅ 数据库连接正常
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup |
+📋 Redis检查...
+2026-02-05 16:02:23 | INFO     | fund_tracker.startup | ✅ Redis连接正常
+2026-02-05 16:02:23 | INFO     | fund_tracker.startup |
+📋 OCR依赖检查...
+2026-02-05 16:02:23 | INFO     | fund_tracker.startup | ✅ OCR依赖检查通过
+2026-02-05 16:02:23 | INFO     | fund_tracker.startup |
+✅ 所有启动检查通过，应用即将启动
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 数据库表创建成功
+INFO:     Started server process [50832]
+INFO:     Waiting for application startup.
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 🚀 基金跟踪器 v2.0.0 启动成功！
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 📍 服务地址: http://0.0.0.0:8001
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 📚 API文档: http://0.0.0.0:8001/docs
+2026-02-05 16:02:23 | INFO     | fund_tracker.scheduler_service | 📋 已注册 3 个定时任务
+2026-02-05 16:02:23 | INFO     | fund_tracker.scheduler_service | ✅ 调度器服务已启动
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 🔄 启动数据预加载...
+2026-02-05 16:02:23 | INFO     | fund_tracker.preload_service | 🚀 开始数据预加载...
+2026-02-05 16:02:23 | INFO     | fund_tracker.preload_service | 📦 优先级 P1: 加载 5 只基金
+2026-02-05 16:02:29 | INFO     | fund_tracker.preload_service | ✅ 预加载完成: 5 只基金, 耗时 6.43s
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+
+2.  VITE v7.3.1  ready in 425 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help
+
+3.
+D:\workdir\code\Explore\fund-tracker\backend>mamba activate Explore
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_FC="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_FFLAGS="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_LD="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_LDFLAGS="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CONDA_BACKUP_AR="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "FC=flang-new"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "LD=lld-link.exe"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "AR=llvm-ar.exe"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "FFLAGS=-D_CRT_SECURE_NO_WARNINGS -fms-runtime-lib=dll -fuse-ld=lld"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "LDFLAGS= -Wl,-defaultlib:C:/Users/138721/AppData/Local/miniforge3/envs/Explore/lib/clang/19/lib/windows/clang_rt.builtins-x86_64.lib"
+
+D:\workdir\code\Explore\fund-tracker\backend>if not "" == "" (set "FFLAGS=-D_CRT_SECURE_NO_WARNINGS -fms-runtime-lib=dll -fuse-ld=lld -I" )  else (set "FFLAGS=-D_CRT_SECURE_NO_WARNINGS -fms-runtime-lib=dll -fuse-ld=lld -IC:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\include" )
+
+D:\workdir\code\Explore\fund-tracker\backend>SET DISTUTILS_USE_SDK=1
+
+D:\workdir\code\Explore\fund-tracker\backend>SET MSSdk=1
+
+D:\workdir\code\Explore\fund-tracker\backend>SET "VS_VERSION=17.0"
+
+D:\workdir\code\Explore\fund-tracker\backend>SET "VS_MAJOR=17"
+
+D:\workdir\code\Explore\fund-tracker\backend>SET "VS_YEAR=2022"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "MSYS2_ARG_CONV_EXCL=/AI;/AL;/OUT;/out"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "MSYS2_ENV_CONV_EXCL=CL"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "PY_VCRUNTIME_REDIST=\bin\vcruntime140.dll"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CXX=cl.exe"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CC=cl.exe"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "VSINSTALLDIR="
+
+D:\workdir\code\Explore\fund-tracker\backend>set "NEWER_VS_WITH_OLDER_VC=0"
+
+D:\workdir\code\Explore\fund-tracker\backend>for /F "usebackq tokens=*" %i in (`vswhere.exe -nologo -products * -version [17.0,18.0) -property installationPath`) do (set "VSINSTALLDIR=%i\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "" (for /F "usebackq tokens=*" %i in (`vswhere.exe -nologo -products * -requires Microsoft.VisualStudio.ComponentGroup.VC.Tools.143.x86.x64 -property installationPath`) do (
+set "VSINSTALLDIR=%i\"
+ set "NEWER_VS_WITH_OLDER_VC=1"
+) )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "" (for /F "usebackq tokens=*" %i in (`vswhere.exe -nologo -products * -requires Microsoft.VisualStudio.Component.VC.v143.x86.x64 -property installationPath`) do (
+set "VSINSTALLDIR=%i\"
+ set "NEWER_VS_WITH_OLDER_VC=1"
+) )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "" (set "VSINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\" (set "VSINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\" (set "VSINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>if not exist "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\" (set "VSINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\" )
+
+D:\workdir\code\Explore\fund-tracker\backend>IF NOT "" == "" (
+set "INCLUDE=;"
+ set "LIB=;"
+ set "CMAKE_PREFIX_PATH=;"
+)  else (
+set "INCLUDE=C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\include;"
+ set "LIB=C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\lib;"
+ set "CMAKE_PREFIX_PATH=C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library;"
+)
+
+D:\workdir\code\Explore\fund-tracker\backend>call :GetWin10SdkDir
+
+D:\workdir\code\Explore\fund-tracker\backend>call :GetWin10SdkDirHelper HKLM\SOFTWARE\Wow6432Node  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKCU\SOFTWARE\Wow6432Node  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKLM\SOFTWARE  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKCU\SOFTWARE  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 exit /B 1
+
+D:\workdir\code\Explore\fund-tracker\backend>exit /B 0
+
+D:\workdir\code\Explore\fund-tracker\backend>for /F %i in ('dir /ON /B "\include\10.*"') DO (SET WindowsSDKVer=%~i )
+系统找不到指定的文件。
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 (echo "Didn't find any windows 10 SDK. I'm not sure if things will work, but let's try..." )  else (echo Windows SDK version found as: "" )
+Windows SDK version found as: ""
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CMAKE_PLAT=x64"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "VCVARSBAT=64"
+
+D:\workdir\code\Explore\fund-tracker\backend>set "CMAKE_ARGS=-DCMAKE_BUILD_TYPE=Release"
+
+D:\workdir\code\Explore\fund-tracker\backend>IF "" == "1" (set "CMAKE_ARGS=-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX= -DPython_FIND_REGISTRY=NEVER -DPython3_FIND_REGISTRY=NEVER -DCMAKE_PROGRAM_PATH=\bin;\Scripts;\Library\bin;\bin;\Scripts;\Library\bin" )
+
+D:\workdir\code\Explore\fund-tracker\backend>IF 2022 GEQ 2019 (
+set "CMAKE_GEN=Visual Studio 17 2022"
+ set "USE_NEW_CMAKE_GEN_SYNTAX=1"
+)  ELSE (
+IF "win-64" == "win-64" (set "CMAKE_GEN=Visual Studio 17 2022 Win64" )  else (set "CMAKE_GEN=Visual Studio 17 2022" )
+ set "USE_NEW_CMAKE_GEN_SYNTAX=0"
+)
+
+D:\workdir\code\Explore\fund-tracker\backend>echo "NEWER_VS_WITH_OLDER_VC=0"
+"NEWER_VS_WITH_OLDER_VC=0"
+
+D:\workdir\code\Explore\fund-tracker\backend>set /p LATEST_VS= 0<"C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt"
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>type "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt"
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>dir "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\\VC\Redist\MSVC\"
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>if "0" == "1" (
+echo ""
+ if "~0,4" == "14.2" (set "CMAKE_GEN=Visual Studio 16 2019" )  else (set "CMAKE_GEN=Visual Studio 17 2022" )
+ set "USE_NEW_CMAKE_GEN_SYNTAX=1"
+)
+
+D:\workdir\code\Explore\fund-tracker\backend>IF "" == "" SET "CMAKE_GENERATOR=Visual Studio 17 2022"
+
+D:\workdir\code\Explore\fund-tracker\backend>IF "1" == "1" (
+IF "" == "" SET "CMAKE_GENERATOR_PLATFORM=x64"
+ IF "" == "" SET "CMAKE_GENERATOR_TOOLSET=v143"
+)
+
+D:\workdir\code\Explore\fund-tracker\backend>pushd C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>if "~0,5" LSS "14.44" (
+
+ CALL "VC\Auxiliary\Build\vcvars64.bat" -vcvars_ver=~0,5WindowsSDKVer
+)  else (CALL "VC\Auxiliary\Build\vcvars64.bat" -vcvars_ver=14.44  )
+系统找不到指定的驱动器。
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>if 1 NEQ 0 (if "" == "" (CALL "VC\Auxiliary\Build\vcvars64.bat" ) )
+系统找不到指定的路径。
+
+D:\workdir\code\Explore\fund-tracker\backend>popd
+
+D:\workdir\code\Explore\fund-tracker\backend>IF NOT "" == "" (set "PATH=;\Library\bin;\Scripts;\bin;;\Library\bin;\Scripts;\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\mingw-w64\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\usr\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Scripts;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\bin;C:\Users\138721\AppData\Local\miniforge3\condabin;C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\Java\jdk1.7.0_51\bin;C:\Program Files\Java\jre7\bin;C:\Program Files\Java\jdk1.7.0_51\jre\bin;C:\Program Files\Java\jdk1.7.0_51\jre\bin\server;C:\Program Files\PowerShell\7\;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files\Git\cmd;C:\Program Files\Bandizip\;C:\Program Files\Sniffnet\;C:\Program Files\nodejs\;C:\Program Files\Docker\Docker\resources\bin;c:\Users\138721\AppData\Local\Programs\Trae\bin;c:\Users\138721\AppData\Local\Programs\Trae CN\bin;C:\Users\138721\AppData\Local\Microsoft\WindowsApps;C:\Users\138721\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\138721\AppData\Local\Programs\Antigravity\bin;C:\Users\138721\AppData\Local\Programs\Ollama;C:\Users\138721\AppData\Roaming\npm" )  else (set "PATH=C:\Users\138721\AppData\Local\miniforge3\envs\Explore;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Scripts;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\mingw-w64\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\usr\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\bin;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Scripts;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\bin;C:\Users\138721\AppData\Local\miniforge3\condabin;C:\Program Files\Eclipse Adoptium\jdk-17.0.16.8-hotspot\bin;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\Java\jdk1.7.0_51\bin;C:\Program Files\Java\jre7\bin;C:\Program Files\Java\jdk1.7.0_51\jre\bin;C:\Program Files\Java\jdk1.7.0_51\jre\bin\server;C:\Program Files\PowerShell\7\;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Program Files\Git\cmd;C:\Program Files\Bandizip\;C:\Program Files\Sniffnet\;C:\Program Files\nodejs\;C:\Program Files\Docker\Docker\resources\bin;c:\Users\138721\AppData\Local\Programs\Trae\bin;c:\Users\138721\AppData\Local\Programs\Trae CN\bin;C:\Users\138721\AppData\Local\Microsoft\WindowsApps;C:\Users\138721\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\138721\AppData\Local\Programs\Antigravity\bin;C:\Users\138721\AppData\Local\Programs\Ollama;C:\Users\138721\AppData\Roaming\npm" )
+
+D:\workdir\code\Explore\fund-tracker\backend>IF NOT "win-64" == "win-64" (
+set "CONDA_BUILD_CROSS_COMPILATION=1"
+ set "CMAKE_ARGS=-DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=AMD64"
+ setlocal enabledelayedexpansion
+ set CL_DIR1=
+ set CL_DIR2=
+ set CL_EXE=
+ FOR /F "delims=" %i IN ('where cl.exe') DO if not defined CL_EXE set "CL_EXE=%i"
+ call :GetDirName CL_EXE CL_DIR1
+ call :GetDirName CL_DIR1 CL_DIR2
+
+ subst Z: "!CL_DIR2!"
+ endlocal
+ set "CC_FOR_BUILD=Z:/x64/cl.exe"
+ set "CXX_FOR_BUILD=Z:/x64/cl.exe"
+ call :ReplaceInTargetVariable "C:\Users\138721\AppData\Local\miniforge3\envs\Explore/Library/lib;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\lib;" LIB_FOR_BUILD
+ call :ReplaceInTargetVariable "C:\Users\138721\AppData\Local\miniforge3\envs\Explore/Library/include;C:\Users\138721\AppData\Local\miniforge3\envs\Explore\Library\include;" INCLUDE_FOR_BUILD
+ set "LDFLAGS_FOR_BUILD= -Wl,-defaultlib:C:/Users/138721/AppData/Local/miniforge3/envs/Explore/lib/clang/19/lib/windows/clang_rt.builtins-x86_64.lib /MACHINE:x64"
+)  else (set "CONDA_BUILD_CROSS_COMPILATION=0" )
+
+D:\workdir\code\Explore\fund-tracker\backend>call :GetWin10SdkDirHelper HKLM\SOFTWARE\Wow6432Node  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKCU\SOFTWARE\Wow6432Node  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKLM\SOFTWARE  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 call :GetWin10SdkDirHelper HKCU\SOFTWARE  1>nul 2>&1
+
+D:\workdir\code\Explore\fund-tracker\backend>if errorlevel 1 exit /B 1
+
+D:\workdir\code\Explore\fund-tracker\backend>exit /B 0
+2026-02-05 16:02:11 | INFO     | fund_tracker.cache_service | Redis 缓存服务已启用
+正在初始化 EasyOCR...
+Using CPU. Note: This module is much faster with a GPU.
+✅ EasyOCR 初始化成功！
+2026-02-05 16:02:22 | INFO     | fund_tracker.main | 数据库表创建成功
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup | 🔍 开始启动检查...
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup |
+📋 依赖检查...
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup | ✅ 所有依赖检查通过
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup |
+📋 数据库检查...
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup | ✅ 数据库连接正常
+2026-02-05 16:02:22 | INFO     | fund_tracker.startup |
+📋 Redis检查...
+2026-02-05 16:02:23 | INFO     | fund_tracker.startup | ✅ Redis连接正常
+2026-02-05 16:02:23 | INFO     | fund_tracker.startup |
+📋 OCR依赖检查...
+2026-02-05 16:02:23 | INFO     | fund_tracker.startup | ✅ OCR依赖检查通过
+2026-02-05 16:02:23 | INFO     | fund_tracker.startup |
+✅ 所有启动检查通过，应用即将启动
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 数据库表创建成功
+INFO:     Started server process [50832]
+INFO:     Waiting for application startup.
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 🚀 基金跟踪器 v2.0.0 启动成功！
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 📍 服务地址: http://0.0.0.0:8001
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 📚 API文档: http://0.0.0.0:8001/docs
+2026-02-05 16:02:23 | INFO     | fund_tracker.scheduler_service | 📋 已注册 3 个定时任务
+2026-02-05 16:02:23 | INFO     | fund_tracker.scheduler_service | ✅ 调度器服务已启动
+2026-02-05 16:02:23 | INFO     | fund_tracker.main | 🔄 启动数据预加载...
+2026-02-05 16:02:23 | INFO     | fund_tracker.preload_service | 🚀 开始数据预加载...
+2026-02-05 16:02:23 | INFO     | fund_tracker.preload_service | 📦 优先级 P1: 加载 5 只基金
+2026-02-05 16:02:29 | INFO     | fund_tracker.preload_service | ✅ 预加载完成: 5 只基金, 耗时 6.43s
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)

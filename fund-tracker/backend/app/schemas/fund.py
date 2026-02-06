@@ -1,0 +1,111 @@
+# -*- coding: utf-8 -*-
+"""
+基金相关Pydantic模型
+"""
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Optional, List
+from pydantic import BaseModel, Field
+
+
+class FundBase(BaseModel):
+    """基金基础模型"""
+    code: str = Field(..., description="基金代码", min_length=6, max_length=10)
+    name: str = Field(..., description="基金名称", max_length=100)
+    fund_type: Optional[str] = Field(None, description="基金类型")
+    company: Optional[str] = Field(None, description="基金公司")
+
+
+class FundCreate(FundBase):
+    """创建基金"""
+    pass
+
+
+class FundUpdate(BaseModel):
+    """更新基金"""
+    name: Optional[str] = None
+    fund_type: Optional[str] = None
+    company: Optional[str] = None
+
+
+class FundResponse(FundBase):
+    """基金响应模型"""
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class FundNavHistoryBase(BaseModel):
+    """基金历史净值基础模型"""
+    fund_code: str
+    nav_date: date
+    nav: Optional[Decimal] = Field(None, description="单位净值")
+    accum_nav: Optional[Decimal] = Field(None, description="累计净值")
+    daily_change: Optional[Decimal] = Field(None, description="日涨跌幅(%)")
+
+
+class FundNavHistoryCreate(FundNavHistoryBase):
+    """创建历史净值"""
+    pass
+
+
+class FundNavHistoryResponse(FundNavHistoryBase):
+    """历史净值响应模型"""
+    id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class FundRealtimeData(BaseModel):
+    """基金实时估值数据"""
+    code: str = Field(..., description="基金代码")
+    name: str = Field(..., description="基金名称")
+    estimate_nav: Optional[Decimal] = Field(None, description="估算净值")
+    estimate_change: Optional[Decimal] = Field(None, description="估算涨跌幅(%)")
+    update_time: str = Field(default="--", description="估值更新时间")
+    status: str = Field(default="获取中", description="数据状态")
+    data_source: str = Field(default="unknown", description="数据来源")
+    data_timestamp: Optional[str] = Field(None, description="数据获取时间戳")
+    # 新增字段
+    previous_nav: Optional[Decimal] = Field(None, description="昨日净值")
+    accumulated_nav: Optional[Decimal] = Field(None, description="累计净值")
+    daily_growth: Optional[Decimal] = Field(None, description="日增长率(%)")
+
+
+class FundTrendScreenResult(BaseModel):
+    """基金趋势筛选结果"""
+    code: str
+    name: str
+    days: int = Field(..., description="连续天数")
+    pct: Decimal = Field(..., description="累计涨跌幅(%)")
+
+
+class FundSearchRequest(BaseModel):
+    """基金搜索请求"""
+    keyword: str = Field(..., description="搜索关键词", min_length=1, max_length=50)
+    limit: int = Field(default=10, ge=1, le=50, description="返回数量限制")
+
+
+class FundHistoryRequest(BaseModel):
+    """基金历史数据请求"""
+    code: str
+    range: str = Field(default="3M", description="时间范围: 1W/1M/3M/6M/1Y/ALL")
+
+
+class FundChartData(BaseModel):
+    """基金图表数据"""
+    dates: List[str]
+    values: List[Decimal]
+    changes: List[Optional[Decimal]]
+
+
+class FundCompareRequest(BaseModel):
+    """基金对比请求"""
+    codes: List[str] = Field(..., min_items=1, max_items=10)
+    range: str = Field(default="3M", description="时间范围")
+    include_benchmark: bool = Field(default=True, description="是否包含基准指数")
