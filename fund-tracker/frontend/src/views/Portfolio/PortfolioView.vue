@@ -1,0 +1,1002 @@
+<template>
+  <div class="portfolio-view">
+    <!-- 统计卡片 -->
+    <el-row :gutter="24" class="stats-row">
+      <el-col :xs="24" :sm="12" :lg="8">
+        <div class="stat-card">
+          <div class="stat-icon">
+            <el-icon><Wallet /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value">¥{{ formatNumber(portfolioStore.totalValue) }}</div>
+            <div class="stat-label">{{ $t('portfolio.totalValue') }}</div>
+          </div>
+        </div>
+      </el-col>
+
+      <el-col :xs="24" :sm="12" :lg="8">
+        <div class="stat-card">
+          <div class="stat-icon" :class="portfolioStore.profitPositive ? 'up' : 'down'">
+            <el-icon><TrendCharts /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value" :class="portfolioStore.profitPositive ? 'text-success' : 'text-danger'">
+              {{ portfolioStore.profitPositive ? '+' : '' }}¥{{ formatNumber(portfolioStore.totalProfit) }}
+            </div>
+            <div class="stat-label">{{ $t('portfolio.totalProfit') }}</div>
+          </div>
+        </div>
+      </el-col>
+
+      <el-col :xs="24" :sm="12" :lg="8">
+        <div class="stat-card">
+          <div class="stat-icon" :class="portfolioStore.profitPositive ? 'up' : 'down'">
+            <el-icon><Percentage /></el-icon>
+          </div>
+          <div class="stat-info">
+            <div class="stat-value" :class="portfolioStore.profitPositive ? 'text-success' : 'text-danger'">
+              {{ portfolioStore.profitPositive ? '+' : '' }}{{ portfolioStore.totalProfitPct.toFixed(2) }}%
+            </div>
+            <div class="stat-label">{{ $t('portfolio.profitRate') }}</div>
+          </div>
+        </div>
+      </el-col>
+    </el-row>
+
+    <!-- 操作栏 -->
+    <el-card class="action-card" shadow="never">
+      <div class="action-bar">
+        <el-button type="primary" :icon="Plus" @click="showAddDialog = true">{{ $t('portfolio.addPosition') }}</el-button>
+        <el-button :icon="Refresh" @click="refreshData">{{ $t('home.refresh') }}</el-button>
+        <el-button :icon="Delete" @click="clearCache" type="danger" plain>清除缓存</el-button>
+        <el-button :icon="Upload" @click="showImportDialog = true">导入持仓</el-button>
+        <el-button
+          v-if="pendingItems.length > 0"
+          type="warning"
+          :icon="Loading"
+          :loading="importLoading"
+          @click="completeAllPending"
+        >
+          补全数据 ({{ pendingItems.length }})
+        </el-button>
+        <el-button
+          v-if="selectedItems.length > 0"
+          type="danger"
+          :icon="Delete"
+          @click="batchDelete"
+        >
+          批量删除 ({{ selectedItems.length }})
+        </el-button>
+      </div>
+    </el-card>
+
+    <!-- 持仓列表 -->
+    <el-card class="portfolio-list-card" shadow="never">
+      <template #header>
+        <div class="card-header">
+          <span>{{ $t('portfolio.myPositions') }}</span>
+          <span class="subtitle">{{ $t('portfolio.positionCount', { count: portfolioStore.itemCount }) }}</span>
+        </div>
+      </template>
+
+      <div v-if="portfolioStore.error && portfolioStore.items.length === 0 && !portfolioStore.loading" style="padding: 20px; background: #fef0f0; color: #f56c6c; margin-bottom: 20px; border-radius: 4px;">
+        <strong>数据加载错误:</strong> {{ portfolioStore.error }}
+        <el-button type="primary" size="small" style="margin-left: 12px;" @click="refreshData">重新加载</el-button>
+      </div>
+
+      <div v-if="portfolioStore.items.length > 0" style="margin-bottom: 10px; color: #909399; font-size: 12px;">
+        共 {{ portfolioStore.items.length }} 条数据
+      </div>
+
+      <el-table
+        :data="portfolioStore.items"
+        stripe
+        style="width: 100%"
+        v-loading="portfolioStore.loading"
+        :empty-text="portfolioStore.loading ? '加载中...' : '暂无数据'"
+        border
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="55" align="center" />
+        <el-table-column prop="fund_code" :label="$t('home.fundList.code')" min-width="120" sortable>
+          <template #default="{ row }">
+            <div v-if="row.fund_code" class="fund-code-cell">
+              <el-tag size="small" type="primary">{{ row.fund_code }}</el-tag>
+            </div>
+            <div v-else class="fund-code-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              <span class="loading-text">加载中...</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="fund_name" :label="$t('home.fundList.name')" min-width="180" show-overflow-tooltip sortable />
+        <el-table-column prop="hold_shares" :label="$t('portfolio.holdShares')" min-width="100" align="right" sortable>
+          <template #default="{ row }">
+            {{ formatNumber(row.hold_shares || 0) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="cost_nav" :label="$t('portfolio.costPrice')" min-width="90" align="right" sortable>
+          <template #default="{ row }">
+            ¥{{ Number(row.cost_nav || 0).toFixed(4) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="current_nav" :label="$t('portfolio.currentNav')" min-width="90" align="right" sortable>
+          <template #default="{ row }">
+            <span :class="getProfitClass(row)">
+              ¥{{ Number(row.current_nav || row.cost_nav || 0).toFixed(4) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="current_value" :label="$t('portfolio.currentValue')" min-width="110" align="right" sortable>
+          <template #default="{ row }">
+            ¥{{ formatNumber(row.current_value || row.cost_amount || 0) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="profit_amount" :label="$t('portfolio.profitAmount')" min-width="110" align="right" sortable>
+          <template #default="{ row }">
+            <span :class="(row.profit_amount || 0) >= 0 ? 'text-success' : 'text-danger'">
+              {{ (row.profit_amount || 0) >= 0 ? '+' : '' }}¥{{ formatNumber(row.profit_amount || 0) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="profit_rate" :label="$t('portfolio.profitRate')" min-width="90" align="right" sortable>
+          <template #default="{ row }">
+            <span :class="(row.profit_rate || 0) >= 0 ? 'text-success' : 'text-danger'">
+              {{ (row.profit_rate || 0) >= 0 ? '+' : '' }}{{ (row.profit_rate || 0).toFixed(2) }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="130" align="center" fixed="right">
+          <template #default="{ row }">
+            <div style="display: flex; gap: 8px; justify-content: center;">
+              <el-button link type="primary" size="small" @click="editItem(row)">{{ $t('common.edit') }}</el-button>
+              <el-button link type="danger" size="small" @click="deleteItem(row)">{{ $t('common.delete') }}</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-empty
+        v-if="!portfolioStore.loading && portfolioStore.items.length === 0"
+        :description="portfolioStore.error ? '数据加载失败，请点击上方按钮重试' : '暂无持仓数据，点击上方按钮添加'"
+      >
+        <el-button v-if="!portfolioStore.error" type="primary" @click="showAddDialog = true">添加持仓</el-button>
+      </el-empty>
+    </el-card>
+
+    <!-- 添加/编辑对话框 -->
+    <el-dialog
+      v-model="showAddDialog"
+      :title="isEdit ? $t('portfolio.editPosition') : $t('portfolio.addPosition')"
+      width="600px"
+    >
+      <!-- 编辑模式 -->
+      <el-form v-if="isEdit" :model="form" label-width="100px">
+        <el-form-item :label="$t('home.fundList.code')">
+          <el-input v-model="form.fund_code" :disabled="true" />
+        </el-form-item>
+        <el-form-item :label="$t('home.fundList.name')">
+          <el-input v-model="form.fund_name" :disabled="true" />
+        </el-form-item>
+        <el-form-item :label="$t('portfolio.holdShares')">
+          <el-input-number v-model="form.hold_shares" :min="0" :precision="2" style="width: 100%" />
+        </el-form-item>
+        <el-form-item :label="$t('portfolio.costPrice')">
+          <el-input-number v-model="form.cost_nav" :min="0" :precision="4" style="width: 100%" />
+        </el-form-item>
+      </el-form>
+
+      <!-- 添加模式 -->
+      <el-form v-else :model="form" label-width="100px">
+        <el-form-item :label="$t('home.fundList.code')">
+          <el-select
+            v-model="selectedFund"
+            filterable
+            remote
+            reserve-keyword
+            placeholder="输入基金代码或名称搜索"
+            :remote-method="searchFunds"
+            :loading="searchLoading"
+            style="width: 100%"
+            @change="onFundSelect"
+          >
+            <el-option
+              v-for="item in searchResults"
+              :key="item.code"
+              :label="`${item.code} - ${item.name}`"
+              :value="item"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item :label="$t('home.fundList.name')">
+          <el-input v-model="form.fund_name" :disabled="true" />
+        </el-form-item>
+
+        <el-form-item label="昨日净值" v-if="form.previous_nav">
+          <div class="previous-nav-display">
+            <span class="nav-value">{{ form.previous_nav.toFixed(4) }}</span>
+            <el-tag size="small" type="info">已自动填入成本价</el-tag>
+          </div>
+        </el-form-item>
+
+        <el-form-item :label="$t('portfolio.holdShares')">
+          <el-input-number v-model="form.hold_shares" :min="0" :precision="2" style="width: 100%" />
+        </el-form-item>
+        <el-form-item :label="$t('portfolio.costPrice')">
+          <el-input-number v-model="form.cost_nav" :min="0" :precision="4" style="width: 100%" />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="showAddDialog = false">{{ $t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveItem">{{ $t('common.confirm') }}</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 导入持仓对话框 -->
+    <el-dialog
+      v-model="showImportDialog"
+      title="导入持仓数据"
+      width="700px"
+      destroy-on-close
+    >
+      <div class="import-dialog-content">
+        <el-upload
+          class="import-uploader"
+          drag
+          action="#"
+          :auto-upload="false"
+          :on-change="handleImportFileChange"
+          :limit="1"
+          accept=".json"
+        >
+          <el-icon class="el-icon--upload"><Upload /></el-icon>
+          <div class="el-upload__text">
+            拖拽文件到此处或 <em>点击上传</em>
+          </div>
+          <template #tip>
+            <div class="el-upload__tip">
+              支持导入 JSON 格式的持仓数据文件
+            </div>
+          </template>
+        </el-upload>
+
+        <div v-if="importStats.total_value > 0" class="import-stats">
+          <el-descriptions :column="3" border size="small">
+            <el-descriptions-item label="总金额">¥{{ importStats.total_value?.toFixed(2) }}</el-descriptions-item>
+            <el-descriptions-item label="总收益">
+              <span :class="importStats.total_holding_return >= 0 ? 'text-success' : 'text-danger'">
+                {{ importStats.total_holding_return >= 0 ? '+' : '' }}¥{{ importStats.total_holding_return?.toFixed(2) }}
+              </span>
+            </el-descriptions-item>
+            <el-descriptions-item label="基金数量">{{ importStats.holdings_count }} 只</el-descriptions-item>
+          </el-descriptions>
+        </div>
+
+        <div v-if="importLoading" class="import-progress-section">
+          <div class="progress-header">
+            <span>导入进度</span>
+            <span class="progress-text">{{ importProgress.current }}/{{ importProgress.total }} ({{ importProgress.percentage }}%)</span>
+          </div>
+          <el-progress :percentage="importProgress.percentage" :show-text="false" status="success" />
+          <div class="progress-status">
+            <span v-if="importProgress.percentage < 30">正在查询基金代码...</span>
+            <span v-else-if="importProgress.percentage < 100">正在添加持仓...</span>
+            <span v-else>导入完成！</span>
+          </div>
+        </div>
+
+        <div v-if="importPreview.length > 0 && !importLoading" class="import-preview">
+          <div class="preview-header">
+            <span>预览数据 ({{ importPreview.length }} 条)</span>
+            <el-tag type="success">待导入</el-tag>
+          </div>
+          <el-table :data="importPreview" size="small" border height="300">
+            <el-table-column type="index" label="序号" width="60" />
+            <el-table-column prop="fund_name" label="基金名称" min-width="200" show-overflow-tooltip />
+            <el-table-column prop="market_value" label="市值" width="110" align="right">
+              <template #default="{ row }">
+                ¥{{ row.market_value?.toFixed(2) || '--' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="holding_return" label="持有收益" width="110" align="right">
+              <template #default="{ row }">
+                <span :class="row.holding_return >= 0 ? 'text-success' : 'text-danger'">
+                  {{ row.holding_return >= 0 ? '+' : '' }}¥{{ row.holding_return?.toFixed(2) || '--' }}
+                </span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="showImportDialog = false" :disabled="importLoading">取消</el-button>
+        <el-button 
+          type="primary" 
+          :disabled="importPreview.length === 0 || importLoading" 
+          :loading="importLoading"
+          @click="confirmImport"
+        >
+          {{ importLoading ? '导入中...' : `确认导入 (${importPreview.length})` }}
+        </el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+defineOptions({
+  name: 'PortfolioView'
+})
+
+import { ref, reactive, onMounted } from 'vue'
+import { Plus, Refresh, Wallet, TrendCharts, TrendCharts as Percentage, Delete, Upload, Loading } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
+import { usePortfolioStore } from '@/stores/portfolioStore'
+import { useFundStore } from '@/stores/fundStore'
+import { dataManager } from '@/stores/dataManager'
+import type { PortfolioItem } from '@/api/portfolio'
+import portfolioApi from '@/api/portfolio'
+import fundApi, { type FundSearchItem } from '@/api/fund'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import type { UploadFile } from 'element-plus'
+
+const { t } = useI18n()
+const portfolioStore = usePortfolioStore()
+const fundStore = useFundStore()
+
+const showAddDialog = ref(false)
+const isEdit = ref(false)
+const editingId = ref<number | null>(null)
+
+const searchLoading = ref(false)
+const searchResults = ref<FundSearchItem[]>([])
+const selectedFund = ref<FundSearchItem | null>(null)
+
+const selectedItems = ref<PortfolioItem[]>([])
+
+const showImportDialog = ref(false)
+const importPreview = ref<any[]>([])
+const importFile = ref<File | null>(null)
+const importStats = ref({
+  total_value: 0,
+  total_holding_return: 0,
+  holdings_count: 0
+})
+
+const form = reactive({
+  fund_code: '',
+  fund_name: '',
+  hold_shares: 0,
+  cost_amount: 0,
+  cost_nav: 0,
+  previous_nav: null as number | null
+})
+
+const formatNumber = (num: number | string | null | undefined): string => {
+  const value = typeof num === 'string' ? parseFloat(num) : Number(num)
+  
+  if (isNaN(value) || !isFinite(value)) {
+    return '0.00'
+  }
+  
+  return value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+const getProfitClass = (row: PortfolioItem) => {
+  const profit = (row.profit_amount || 0)
+  if (profit > 0) return 'text-success'
+  if (profit < 0) return 'text-danger'
+  return ''
+}
+
+const refreshData = async () => {
+  try {
+    await portfolioStore.refreshPortfolio()
+    if (!portfolioStore.error) {
+      ElMessage.success(t('common.success'))
+    }
+  } catch (e) {
+    console.error('刷新持仓数据失败:', e)
+  }
+}
+
+// 清除缓存数据
+const clearCache = () => {
+  localStorage.removeItem('fund_tracker_portfolio_items')
+  localStorage.removeItem('fund_tracker_portfolio_stats')
+  localStorage.removeItem('fund_tracker_portfolio_fetch_time')
+  localStorage.removeItem('fund_tracker_fund_list')
+  localStorage.removeItem('fund_tracker_realtime_data')
+  localStorage.removeItem('fund_tracker_realtime_fetch_time')
+  portfolioStore.clearError()
+  window.location.reload()
+}
+
+const searchFunds = async (query: string) => {
+  if (!query || query.length < 2) {
+    searchResults.value = []
+    return
+  }
+
+  searchLoading.value = true
+  try {
+    const results = await fundApi.search(query, 20)
+    searchResults.value = results
+  } catch (e) {
+    console.error('搜索基金失败:', e)
+    searchResults.value = []
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+const onFundSelect = async (fund: FundSearchItem) => {
+  if (!fund) return
+
+  form.fund_code = fund.code
+  form.fund_name = fund.name
+
+  try {
+    const fundData = await fundApi.getRealtime(fund.code)
+    if (fundData && fundData.previous_nav) {
+      form.previous_nav = fundData.previous_nav
+      form.cost_nav = fundData.previous_nav
+    } else if (fundData && fundData.estimate_nav) {
+      form.cost_nav = fundData.estimate_nav
+    }
+  } catch (e) {
+    console.error('获取基金详情失败:', e)
+  }
+}
+
+const editItem = (row: PortfolioItem) => {
+  isEdit.value = true
+  editingId.value = row.id || null
+  form.fund_code = row.fund_code
+  form.fund_name = row.fund_name || ''
+  form.hold_shares = row.hold_shares || 0
+  form.cost_amount = row.cost_amount || 0
+  form.cost_nav = row.cost_nav || 0
+  form.previous_nav = null
+  selectedFund.value = null
+  showAddDialog.value = true
+}
+
+const handleSelectionChange = (selection: PortfolioItem[]) => {
+  selectedItems.value = selection
+}
+
+const batchDelete = async () => {
+  if (selectedItems.value.length === 0) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedItems.value.length} 条持仓吗？`,
+      '确认批量删除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    const ids = selectedItems.value
+      .map(item => item.id)
+      .filter((id): id is number => id !== undefined && id !== null)
+
+    if (ids.length === 0) {
+      ElMessage.warning('没有有效的持仓数据可删除')
+      return
+    }
+
+    const results = await Promise.allSettled(
+      ids.map(id => portfolioStore.deleteItem(id))
+    )
+
+    const succeeded = results.filter(r => r.status === 'fulfilled' && r.value === true).length
+    const failed = results.length - succeeded
+
+    if (failed === 0) {
+      ElMessage.success(`成功删除 ${succeeded} 条持仓`)
+    } else if (succeeded === 0) {
+      ElMessage.error(`删除失败：${failed} 条持仓未能删除`)
+    } else {
+      ElMessage.warning(`删除完成：成功 ${succeeded} 条，失败 ${failed} 条`)
+    }
+
+    selectedItems.value = []
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('批量删除失败:', error)
+      ElMessage.error('批量删除操作失败，请重试')
+    }
+  }
+}
+
+const deleteItem = async (row: PortfolioItem) => {
+  if (!row.id) {
+    ElMessage.error('无效的持仓数据，无法删除')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除 ${row.fund_name || '该持仓'} 的持仓吗？`,
+      '确认删除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    const success = await portfolioStore.deleteItem(row.id)
+    if (success) {
+      ElMessage.success('删除成功')
+    }
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      console.error('删除失败:', error)
+      ElMessage.error('删除操作失败，请重试')
+    }
+  }
+}
+
+const saveItem = async () => {
+  if (!form.fund_code || !form.fund_name) {
+    ElMessage.warning('请填写基金代码和名称')
+    return
+  }
+
+  if (form.hold_shares <= 0) {
+    ElMessage.warning('请输入有效的持有份额')
+    return
+  }
+
+  if (form.cost_nav <= 0) {
+    ElMessage.warning('请输入有效的成本价')
+    return
+  }
+
+  const costAmount = form.cost_nav * form.hold_shares
+
+  const itemData = {
+    fund_code: form.fund_code,
+    fund_name: form.fund_name,
+    hold_shares: form.hold_shares,
+    cost_amount: costAmount,
+    cost_nav: form.cost_nav
+  }
+
+  const success = isEdit.value && editingId.value
+    ? await portfolioStore.updateItem(editingId.value, itemData)
+    : await portfolioStore.addItem(itemData)
+
+  if (success) {
+    ElMessage.success(isEdit.value ? '更新成功' : '添加成功')
+    showAddDialog.value = false
+    resetForm()
+  }
+}
+
+const resetForm = () => {
+  form.fund_code = ''
+  form.fund_name = ''
+  form.hold_shares = 0
+  form.cost_amount = 0
+  form.cost_nav = 0
+  form.previous_nav = null
+  isEdit.value = false
+  editingId.value = null
+  selectedFund.value = null
+  searchResults.value = []
+}
+
+onMounted(() => {
+  console.log('[PortfolioView] 页面已挂载，数据由 DataManager 统一管理')
+})
+
+const handleImportFileChange = (uploadFile: UploadFile) => {
+  const file = uploadFile.raw
+  if (!file) return
+
+  importFile.value = file
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const content = e.target?.result as string
+      const data = JSON.parse(content)
+
+      if (data.holdings && Array.isArray(data.holdings)) {
+        importPreview.value = data.holdings
+
+        importStats.value = {
+          total_value: data.total_value || 0,
+          total_holding_return: data.total_holding_return || 0,
+          holdings_count: data.holdings_count || data.holdings.length
+        }
+
+        ElMessage.success(`成功读取 ${data.holdings.length} 条持仓数据`)
+      } else {
+        ElMessage.error('文件格式不正确，缺少 holdings 字段')
+      }
+    } catch (error) {
+      console.error('解析文件失败:', error)
+      ElMessage.error('文件解析失败，请检查 JSON 格式')
+    }
+  }
+  reader.readAsText(file)
+}
+
+const importLoading = ref(false)
+const importProgress = ref({
+  current: 0,
+  total: 0,
+  percentage: 0
+})
+
+const pendingItems = ref<{ id: number; fund_name: string }[]>([])
+
+const confirmImport = async () => {
+  if (importPreview.value.length === 0) {
+    ElMessage.warning('没有数据可导入')
+    return
+  }
+
+  importLoading.value = true
+  const totalCount = importPreview.value.length
+  importProgress.value = { current: 0, total: totalCount, percentage: 0 }
+  let addedCount = 0
+
+  const addedItems: { tempId: number; fund_name: string; cost_amount: number }[] = []
+
+  for (let i = 0; i < importPreview.value.length; i++) {
+    const item = importPreview.value[i]
+    try {
+      const costAmount = item.market_value || 0
+
+      // Search for fund code by name before creating portfolio item
+      let fundCode = ''
+      let fundName = item.fund_name
+      try {
+        const searchResults = await fundApi.search(item.fund_name, 5)
+        if (searchResults && searchResults.length > 0) {
+          const match = searchResults.find(r =>
+            r.name.includes(item.fund_name) || item.fund_name.includes(r.name)
+          )
+          const fundInfo = match ?? searchResults[0]!
+          fundCode = fundInfo.code
+          fundName = fundInfo.name
+        }
+      } catch (searchErr) {
+        console.warn(`[Import] 搜索基金代码失败: ${item.fund_name}`, searchErr)
+      }
+
+      if (!fundCode) {
+        console.warn(`[Import] 跳过未找到代码的基金: ${item.fund_name}`)
+        continue
+      }
+
+      const result = await portfolioApi.add({
+        fund_code: fundCode,
+        fund_name: fundName,
+        hold_shares: 0,
+        cost_amount: costAmount,
+        cost_nav: undefined
+      })
+
+      if (result && result.id) {
+        addedItems.push({
+          tempId: result.id,
+          fund_name: fundName,
+          cost_amount: costAmount
+        })
+      }
+
+      addedCount++
+      importProgress.value = {
+        current: addedCount,
+        total: totalCount,
+        percentage: Math.round((addedCount / totalCount) * 50)
+      }
+    } catch (e: any) {
+      console.error(`[Import] 添加失败: ${item.fund_name}`, e)
+    }
+  }
+
+  ElMessage.success(`已导入 ${addedCount} 条持仓`)
+
+  showImportDialog.value = false
+  importPreview.value = []
+  importFile.value = null
+  importStats.value = {
+    total_value: 0,
+    total_holding_return: 0,
+    holdings_count: 0
+  }
+
+  await dataManager.refreshPortfolio()
+}
+
+const completeMissingData = async (items: { tempId: number; fund_name: string; cost_amount: number }[]) => {
+  let completedCount = 0
+  let failedCount = 0
+
+  for (const [i, item] of items.entries()) {
+    try {
+      const cachedFund = fundStore.getFundByName(item.fund_name)
+      if (cachedFund) {
+        await updatePortfolioFundCode(item.tempId, cachedFund.code, cachedFund.name)
+        completedCount++
+        continue
+      }
+
+      try {
+        const searchResults = await fundApi.search(item.fund_name, 5)
+
+        if (searchResults && searchResults.length > 0) {
+          const match = searchResults.find(r =>
+            r.name.includes(item.fund_name) || item.fund_name.includes(r.name)
+          )
+          const fundInfo = match ?? searchResults[0]!
+
+          await updatePortfolioFundCode(item.tempId, fundInfo.code, fundInfo.name)
+          completedCount++
+        } else {
+          failedCount++
+          pendingItems.value.push({ id: item.tempId, fund_name: item.fund_name })
+        }
+      } catch (searchError) {
+        console.error(`[Complete] 搜索失败: ${item.fund_name}`, searchError)
+        failedCount++
+        pendingItems.value.push({ id: item.tempId, fund_name: item.fund_name })
+      }
+
+      if ((i + 1) % 3 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    } catch (e: any) {
+      console.error(`[Complete] 补全失败: ${item.fund_name}`, e)
+      failedCount++
+      pendingItems.value.push({ id: item.tempId, fund_name: item.fund_name })
+    }
+
+    importProgress.value = {
+      current: i + 1,
+      total: items.length,
+      percentage: 50 + Math.round(((i + 1) / items.length) * 50)
+    }
+  }
+
+  importLoading.value = false
+  importProgress.value = { current: 0, total: 0, percentage: 0 }
+
+  if (completedCount > 0) {
+    ElMessage.success(`已自动补全 ${completedCount} 条持仓数据`)
+  }
+  if (failedCount > 0) {
+    ElMessage.warning(`${failedCount} 条持仓需要手动补全数据，点击"补全数据"按钮处理`)
+  }
+
+  await dataManager.refreshPortfolio()
+}
+
+const updatePortfolioFundCode = async (id: number, fundCode: string, fundName: string) => {
+  try {
+    await portfolioApi.update(id, {
+      fund_code: fundCode,
+      fund_name: fundName
+    })
+  } catch (e) {
+    console.error(`[Update] 更新失败: id=${id}`, e)
+  }
+}
+
+const completeAllPending = async () => {
+  if (pendingItems.value.length === 0) {
+    ElMessage.info('没有需要补全的数据')
+    return
+  }
+
+  importLoading.value = true
+  const items = [...pendingItems.value]
+  pendingItems.value = []
+
+  await completeMissingData(items.map(item => ({
+    tempId: item.id,
+    fund_name: item.fund_name,
+    cost_amount: 0
+  })))
+}
+</script>
+
+<style scoped lang="scss">
+.portfolio-view {
+  .stats-row {
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--bg-base);
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: var(--shadow-light);
+
+    .stat-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      background: rgba(64, 158, 255, 0.1);
+      color: var(--primary-color);
+
+      &.up {
+        background: rgba(103, 194, 58, 0.1);
+        color: var(--success-color);
+      }
+
+      &.down {
+        background: rgba(245, 108, 108, 0.1);
+        color: var(--danger-color);
+      }
+    }
+
+    .stat-info {
+      .stat-value {
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      .stat-label {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-top: 4px;
+      }
+    }
+  }
+
+  .action-card {
+    margin-bottom: 24px;
+    border-radius: var(--radius-lg);
+  }
+
+  .portfolio-list-card {
+    border-radius: var(--radius-lg);
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      .subtitle {
+        font-size: 14px;
+        color: var(--text-secondary);
+        font-weight: normal;
+      }
+    }
+  }
+
+  .text-success {
+    color: var(--success-color);
+  }
+
+  .text-danger {
+    color: var(--danger-color);
+  }
+
+  .fund-code-cell {
+    display: flex;
+    align-items: center;
+  }
+
+  .fund-code-loading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+
+    .is-loading {
+      animation: rotating 2s linear infinite;
+    }
+
+    .loading-text {
+      color: var(--text-secondary);
+    }
+  }
+
+  @keyframes rotating {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .previous-nav-display {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    .nav-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+  }
+
+  .import-dialog-content {
+    .import-uploader {
+      margin-bottom: 20px;
+
+      :deep(.el-upload) {
+        width: 100%;
+      }
+
+      :deep(.el-upload-dragger) {
+        width: 100%;
+        height: 180px;
+      }
+    }
+
+    .import-stats {
+      margin-bottom: 20px;
+      padding: 16px;
+      background: var(--bg-page);
+      border-radius: var(--radius-base);
+
+      :deep(.el-descriptions__label) {
+        font-weight: 500;
+      }
+    }
+
+    .import-preview {
+      .preview-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        font-weight: 500;
+      }
+    }
+
+    .import-progress-section {
+      margin: 20px 0;
+      padding: 20px;
+      background: var(--bg-page);
+      border-radius: var(--radius-base);
+
+      .progress-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        font-weight: 500;
+
+        .progress-text {
+          color: var(--primary-color);
+          font-weight: 600;
+        }
+      }
+
+      .progress-status {
+        margin-top: 12px;
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+    }
+  }
+}
+</style>

@@ -33,9 +33,8 @@ class FundResponse(FundBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
+
+    model_config = {"from_attributes": True}
 
 
 class FundNavHistoryBase(BaseModel):
@@ -56,9 +55,8 @@ class FundNavHistoryResponse(FundNavHistoryBase):
     """历史净值响应模型"""
     id: int
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
+
+    model_config = {"from_attributes": True}
 
 
 class FundRealtimeData(BaseModel):
@@ -106,6 +104,13 @@ class FundChartData(BaseModel):
 
 class FundCompareRequest(BaseModel):
     """基金对比请求"""
-    codes: List[str] = Field(..., min_items=1, max_items=10)
+    codes: List[str] = Field(..., min_length=1, max_length=10)
     range: str = Field(default="3M", description="时间范围")
+    include_benchmark: bool = Field(default=True, description="是否包含基准指数")
+
+
+class FundCompareMultiRequest(BaseModel):
+    """基金多周期对比请求"""
+    codes: List[str] = Field(..., min_length=1, max_length=10)
+    ranges: List[str] = Field(default_factory=lambda: ["1W", "1M", "3M", "6M", "1Y"], min_length=1, max_length=12)
     include_benchmark: bool = Field(default=True, description="是否包含基准指数")

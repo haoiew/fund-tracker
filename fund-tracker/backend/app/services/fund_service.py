@@ -1,320 +1,355 @@
 # -*- coding: utf-8 -*-
 """
-基金数据服务 - 核心业务逻辑
+基金核心服务 - 统一管理基金数据
+合并原FundCoreService + FundDataSourceManager
+使用新的DataSourceManager（efinance+eastmoney_direct）和MemoryCache
 """
+import asyncio
 import json
 import time
+import os
 import re
+import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import List, Dict, Optional, Any
-import requests
-import akshare as ak
+from typing import List, Dict, Optional, Any, Tuple
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
-from sqlalchemy.orm import Session
+import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from app.config import fund_config, chart_config
-from app.models.fund import Fund, FundNavHistory, FundRealtimeCache
-from app.schemas.fund import FundRealtimeData, FundTrendScreenResult, FundChartData
-from app.services.cache_service import get_cache_service
+from app.config import settings
+from app.core.cache import get_cache
+from app.core.data_source import get_data_source, FundDataResult
+from app.schemas.fund import FundRealtimeData
 from app.logger import get_logger
 
 logger = get_logger("fund_service")
 
-class FundDataService:
-    """基金数据服务类"""
-    
+os.environ['TQDM_DISABLE'] = '1'
+
+
+class FundService:
+    """基金核心服务单例"""
+
+    _instance: Optional['FundService'] = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+
+        self.cache = get_cache()
+        self._data_source = get_data_source()
+        self._fund_names_cache: Dict[str, str] = {}
+
         self.session = requests.Session()
-        retries = Retry(
-            total=fund_config.REQUEST_RETRY_TIMES,
-            backoff_factor=0.5,
-            status_forcelist=[500, 502, 503, 504],
-            allowed_methods=["GET"]
-        )
+        retries = Retry(total=2, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
         self.session.mount('http://', HTTPAdapter(max_retries=retries))
         self.session.mount('https://', HTTPAdapter(max_retries=retries))
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.0'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
-        
-        # 禁用akshare进度条
-        import os
-        os.environ['TQDM_DISABLE'] = '1'
-        
-        # 初始化缓存服务
-        self.cache = get_cache_service()
-        
-        # 错误统计
-        self.error_stats = {
-            'tiantian': {'success': 0, 'failure': 0},
-            'sina_lof': {'success': 0, 'failure': 0},
-            'akshare_lof': {'success': 0, 'failure': 0},
-            'latest_nav': {'success': 0, 'failure': 0}
-        }
-    
+
+        self._init_fund_list()
+
+    def _init_fund_list(self):
+        self._fund_list: List[str] = []
+        fund_file = settings.fund_file_abs_path
+
+        if os.path.exists(fund_file):
+            with open(fund_file, 'r', encoding='utf-8') as f:
+                self._fund_list = [line.strip() for line in f if line.strip()]
+        else:
+            self._fund_list = settings.DEFAULT_FUNDS.copy()
+            self.save_fund_list()
+
+        logger.info(f"基金列表已加载: {len(self._fund_list)} 只")
+
+    def save_fund_list(self):
+        try:
+            with open(settings.fund_file_abs_path, 'w', encoding='utf-8') as f:
+                for code in self._fund_list:
+                    f.write(f"{code}\n")
+        except Exception as e:
+            logger.error(f"保存基金列表失败: {e}")
+
+    def get_fund_list(self) -> List[str]:
+        return self._fund_list.copy()
+
+    def get_fund_codes(self) -> List[str]:
+        return self._fund_list.copy()
+
+    def add_fund(self, code: str) -> bool:
+        code = str(code).strip()
+        if code not in self._fund_list:
+            self._fund_list.append(code)
+            self.save_fund_list()
+            return True
+        return False
+
+    def remove_fund(self, code: str) -> bool:
+        code = str(code).strip()
+        if code in self._fund_list:
+            self._fund_list.remove(code)
+            self.save_fund_list()
+            return True
+        return False
+
     def get_fund_name(self, code: str) -> str:
-        """获取基金名称（三级降级策略）"""
-        from app.logger import get_logger
-        logger = get_logger("fund_service")
-        
-        # 策略1: 天天基金
-        try:
-            ts = int(time.time() * 1000)
-            url = f"http://fundgz.1234567.com.cn/js/{code}.js?rt={ts}"
-            resp = self.session.get(url, timeout=3)
-            if resp.status_code == 200 and resp.text:
-                text = resp.text.strip().replace("jsonpgz(", "").replace(");", "")
-                if text:
-                    data = json.loads(text)
-                    if 'name' in data and data['name']:
-                        return data['name']
-        except Exception as e:
-            logger.debug(f"天天基金获取名称失败 {code}: {e}")
-        
-        # 策略2: 腾讯基金
-        try:
-            url = f"http://qt.gtimg.cn/q=jj{code}"
-            resp = self.session.get(url, timeout=3)
-            if resp.status_code == 200 and "v_jj" in resp.text:
-                content = resp.text.split('="')[1].strip('";\n')
-                parts = content.split('~')
-                if len(parts) > 1 and parts[1]:
-                    return parts[1]
-        except Exception as e:
-            logger.debug(f"腾讯基金获取名称失败 {code}: {e}")
-        
-        # 策略3: AKShare
-        try:
-            df = ak.fund_individual_basic_info_em(symbol=code)
-            for kw in ["基金简称", "基金全称", "基金名称"]:
-                row = df[df['item'] == kw]
-                if not row.empty:
-                    name = row['value'].values[0]
-                    if name and str(name).strip():
-                        return str(name).strip()
-        except Exception as e:
-            logger.debug(f"AKShare获取名称失败 {code}: {e}")
-        
+        if code in self._fund_names_cache:
+            return self._fund_names_cache[code]
+        cached = self.cache.get(f"fund_name:{code}")
+        if cached:
+            self._fund_names_cache[code] = cached
+            return cached
         return code
-    
-    def get_realtime_data(self, code: str) -> FundRealtimeData:
-        """获取实时估值数据（带缓存）"""
-        # 检查缓存
+
+    async def get_realtime_data(self, code: str) -> FundRealtimeData:
+        """获取单只基金实时数据"""
         cache_key = f"realtime:{code}"
         cached = self.cache.get(cache_key)
-        
-        if cached:
-            logger.info(f"✅ 使用缓存数据: {code}")
-            # 将字典转换回Pydantic模型
-            if isinstance(cached, dict):
-                try:
-                    return FundRealtimeData(**cached)
-                except Exception as e:
-                    logger.warning(f"缓存数据转换失败 {code}: {e}")
-                    # 缓存数据损坏，删除缓存
-                    self.cache.delete(cache_key)
-            else:
-                return cached
-        
-        # 缓存未命中，获取数据
+        if cached and isinstance(cached, FundRealtimeData):
+            return cached
+
         name = self.get_fund_name(code)
-        
-        # 优先级1: 天天基金
-        result = self._try_tiantian_fund(code, name)
-        
-        # 优先级2: LOF场内行情
-        if result.status in ['无数据(解析空)', '非交易时段'] and code.startswith(('16', '50')):
-            lof_data = self._try_sina_lof(code)
-            if lof_data:
-                result = lof_data
-        
-        # 优先级3: AKShare LOF
-        if result.status in ['无数据(解析空)', '非交易时段']:
-            ak_data = self._try_akshare_lof(code)
-            if ak_data:
-                result = ak_data
-        
-        # 优先级4: 最新净值
-        if result.status in ['无数据(解析空)', '非交易时段']:
-            fallback = self._try_latest_nav(code, name)
-            if fallback:
-                result = fallback
-        
-        # 写入缓存
-        self.cache.set(cache_key, result, 60)  # 60 秒 TTL
-        
-        return result
-    
-    def _try_tiantian_fund(self, code: str, name: str) -> FundRealtimeData:
-        """尝试天天基金接口（带错误统计）"""
-        result = FundRealtimeData(code=code, name=name, status="获取中")
+        result = await self._data_source.fetch_single(code)
 
-        try:
-            ts = int(time.time() * 1000)
-            url = f"http://fundgz.1234567.com.cn/js/{code}.js?rt={ts}"
-            resp = self.session.get(url, timeout=5)
+        if result.is_success:
+            rt = FundRealtimeData(
+                code=code,
+                name=result.name or name,
+                estimate_nav=Decimal(str(result.nav)) if result.nav else None,
+                estimate_change=Decimal(str(result.change_pct)) if result.change_pct else None,
+                update_time=result.update_time or '--',
+                status='正常',
+                data_source=result.source,
+            )
+            if result.name and result.name != code:
+                self._fund_names_cache[code] = result.name
+                self.cache.set(f"fund_name:{code}", result.name, settings.FUND_INFO_CACHE_TTL)
+        else:
+            rt = FundRealtimeData(
+                code=code, name=name,
+                status='获取失败',
+                data_source=result.source or 'unknown'
+            )
 
-            if resp.status_code == 200 and resp.text:
-                text = resp.text.replace("jsonpgz(", "").replace(");", "").strip()
+        self.cache.set(cache_key, rt, settings.REALTIME_CACHE_TTL)
+        return rt
 
-                if text:
-                    data = json.loads(text)
+    async def get_realtime_batch(self, codes: List[str]) -> List[FundRealtimeData]:
+        """批量获取实时数据"""
+        if not codes:
+            return []
 
-                    if 'name' in data and data['name']:
-                        result.name = data['name']
+        results = []
+        uncached_codes = []
+        uncached_indices = []
 
-                    # 估算净值和涨跌幅
-                    result.estimate_nav = Decimal(str(data.get('gsz'))) if data.get('gsz') else None
-                    result.estimate_change = Decimal(str(data.get('gszzl'))) if data.get('gszzl') else None
-
-                    # 昨日净值 (dwjz)
-                    if data.get('dwjz'):
-                        result.previous_nav = Decimal(str(data.get('dwjz')))
-
-                    # 累计净值 (ljjz)
-                    if data.get('ljjz'):
-                        result.accumulated_nav = Decimal(str(data.get('ljjz')))
-
-                    # 计算日增长率 (基于昨日净值和估算净值)
-                    if result.estimate_nav and result.previous_nav and result.previous_nav > 0:
-                        daily_growth = ((result.estimate_nav - result.previous_nav) / result.previous_nav * 100)
-                        result.daily_growth = Decimal(str(round(daily_growth, 2)))
-
-                    result.update_time = data.get('gztime', '--')
-                    result.status = '正常' if result.estimate_nav else '非交易时段'
-                    result.data_source = 'tiantian'
-
-                    self.error_stats['tiantian']['success'] += 1
-                else:
-                    result.status = '无数据(解析空)'
+        for i, code in enumerate(codes):
+            cached = self.cache.get(f"realtime:{code}")
+            if cached and isinstance(cached, FundRealtimeData):
+                results.append(cached)
             else:
-                result.status = f'HTTP {resp.status_code}'
-        except Exception as e:
-            logger.debug(f"天天基金接口失败 {code}: {e}")
-            self.error_stats['tiantian']['failure'] += 1
-            result.status = '网络错误'
+                results.append(None)
+                uncached_codes.append(code)
+                uncached_indices.append(i)
 
-        return result
-    
-    def _try_sina_lof(self, code: str) -> Optional[FundRealtimeData]:
-        """尝试新浪LOF场内行情"""
-        try:
-            url = f"http://hq.sinajs.cn/list=sz{code}"
-            resp = self.session.get(url, timeout=3)
-            
-            if 'var hq_str' in resp.text:
-                content = resp.text.split('="')[1].strip('";')
-                fields = content.split(',')
-                
-                if len(fields) > 10 and fields[0]:
-                    current_price = float(fields[3])
-                    prev_close = float(fields[2])
-                    change_pct = ((current_price - prev_close) / prev_close * 100) if prev_close > 0 else 0
-                    
-                    return FundRealtimeData(
+        if uncached_codes:
+            ds_results = await self._data_source.fetch_batch(uncached_codes)
+            for idx, result in zip(uncached_indices, ds_results):
+                code = codes[idx]
+                name = self.get_fund_name(code)
+
+                if result.is_success:
+                    rt = FundRealtimeData(
                         code=code,
-                        name=fields[0],
-                        estimate_nav=Decimal(str(current_price)),
-                        estimate_change=Decimal(str(round(change_pct, 2))),
-                        update_time=fields[31] if len(fields) > 31 else '--',
-                        status='场内行情',
-                        data_source='sina_lof'
+                        name=result.name or name,
+                        estimate_nav=Decimal(str(result.nav)) if result.nav else None,
+                        estimate_change=Decimal(str(result.change_pct)) if result.change_pct else None,
+                        update_time=result.update_time or '--',
+                        status='正常',
+                        data_source=result.source,
                     )
-        except Exception as e:
-            logger.debug(f"新浪LOF接口失败 {code}: {e}")
-        return None
-    
-    def _try_akshare_lof(self, code: str) -> Optional[FundRealtimeData]:
-        """尝试AKShare LOF数据"""
+                    if result.name and result.name != code:
+                        self._fund_names_cache[code] = result.name
+                        self.cache.set(f"fund_name:{code}", result.name, settings.FUND_INFO_CACHE_TTL)
+                else:
+                    rt = FundRealtimeData(
+                        code=code, name=name,
+                        status='获取失败',
+                        data_source=result.source or 'unknown'
+                    )
+                results[idx] = rt
+                self.cache.set(f"realtime:{code}", rt, settings.REALTIME_CACHE_TTL)
+
+        return results
+
+    def get_historical_nav(self, code: str, days: int = 365, max_retries: int = 2) -> pd.DataFrame:
+        """获取历史净值"""
+        cache_key = f"nav_history:{code}:{days}"
+        cached = self.cache.get(cache_key)
+        if cached is not None and isinstance(cached, pd.DataFrame) and not cached.empty:
+            return cached
+
+        df = self._get_historical_from_eastmoney(code, days, max_retries)
+        if not df.empty:
+            self.cache.set(cache_key, df, settings.HISTORY_CACHE_TTL)
+            return df
+
         try:
-            import sys
-            from io import StringIO
-            
+            import akshare as ak
+            import sys, io
             old_stdout = sys.stdout
-            sys.stdout = StringIO()
-            
+            sys.stdout = io.StringIO()
             try:
-                df = ak.fund_lof_spot_em()
+                df = ak.fund_open_fund_info_em(symbol=code, indicator="累计净值走势")
             finally:
                 sys.stdout = old_stdout
-            
-            row = df[df['代码'] == code]
-            
-            if not row.empty:
-                return FundRealtimeData(
-                    code=code,
-                    name=str(row['名称'].values[0]),
-                    estimate_nav=Decimal(str(row['最新价'].values[0])),
-                    estimate_change=Decimal(str(row['涨跌幅'].values[0])),
-                    update_time='--',
-                    status='LOF行情',
-                    data_source='akshare_lof'
-                )
-        except:
-            pass
-        return None
-    
-    def _try_latest_nav(self, code: str, name: str) -> Optional[FundRealtimeData]:
-        """尝试获取最新净值"""
-        try:
-            import sys
-            from io import StringIO
-            
-            old_stdout = sys.stdout
-            sys.stdout = StringIO()
-            
-            try:
-                df = ak.fund_open_fund_info_em(symbol=code, indicator="单位净值走势")
-            finally:
-                sys.stdout = old_stdout
-            
-            if not df.empty:
-                latest = df.iloc[-1]
-                return FundRealtimeData(
-                    code=code,
-                    name=name,
-                    estimate_nav=Decimal(str(latest['单位净值'])),
-                    estimate_change=None,
-                    update_time=latest['净值日期'].strftime('%Y-%m-%d'),
-                    status='最新净值',
-                    data_source='latest_nav'
-                )
+
+            if df is not None and not df.empty:
+                df['净值日期'] = pd.to_datetime(df['净值日期'])
+                df['累计净值'] = pd.to_numeric(df['累计净值'])
+                df = df.sort_values('净值日期').reset_index(drop=True)
+                df['pct_change'] = df['累计净值'].pct_change().fillna(0)
+                if days > 0:
+                    start_date = datetime.now() - timedelta(days=days)
+                    df = df[df['净值日期'] >= start_date]
+                self.cache.set(cache_key, df, settings.HISTORY_CACHE_TTL)
+                return df
         except Exception as e:
-            logger.debug(f"获取最新净值失败 {code}: {e}")
-        return None
-    
-    def get_historical_nav(self, code: str, days: int = 365) -> pd.DataFrame:
-        """获取历史净值数据"""
+            logger.debug(f"AKShare获取历史净值失败 {code}: {e}")
+
+        return pd.DataFrame()
+
+    def _get_historical_from_eastmoney(self, code: str, days: int, max_retries: int) -> pd.DataFrame:
+        for attempt in range(max_retries):
+            try:
+                url = f"http://fund.eastmoney.com/pingzhongdata/{code}.js"
+                resp = self.session.get(url, timeout=10)
+                if resp.status_code != 200:
+                    if attempt < max_retries - 1:
+                        time.sleep(2 ** attempt)
+                        continue
+                    return pd.DataFrame()
+
+                match = re.search(r'Data_netWorthTrend\s*=\s*(\[.*?\]);', resp.text, re.DOTALL)
+                if not match:
+                    return pd.DataFrame()
+                data = json.loads(match.group(1))
+                if not data:
+                    return pd.DataFrame()
+
+                df = pd.DataFrame(data)
+                df['x'] = pd.to_datetime(df['x'], unit='ms')
+                df['y'] = pd.to_numeric(df['y'])
+                df = df.rename(columns={'x': '净值日期', 'y': '累计净值'})
+                df = df.sort_values('净值日期').reset_index(drop=True)
+                df['pct_change'] = df['累计净值'].pct_change().fillna(0)
+                if days > 0:
+                    start_date = datetime.now() - timedelta(days=days)
+                    df = df[df['净值日期'] >= start_date]
+                return df
+            except Exception:
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+        return pd.DataFrame()
+
+    async def get_chart_data(self, code: str, range_str: str = "3M") -> Dict[str, Any]:
+        from app.services.history_service import get_history_service
+        return await get_history_service().get_chart_data_with_fallback(code, range_str)
+
+    def get_benchmark_data(self, symbol: str, days: int = 365) -> Dict:
+        cache_key = f"benchmark:{symbol}:{days}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+
         try:
-            df = ak.fund_open_fund_info_em(symbol=code, indicator="累计净值走势")
-            df['净值日期'] = pd.to_datetime(df['净值日期'])
-            df['累计净值'] = pd.to_numeric(df['累计净值'])
-            df = df.sort_values('净值日期').reset_index(drop=True)
-            df['pct_change'] = df['累计净值'].pct_change().fillna(0)
-            
-            # 过滤日期范围
+            import akshare as ak
+            df = ak.stock_zh_index_daily(symbol=symbol)
+            df['date'] = pd.to_datetime(df['date'])
             if days > 0:
                 start_date = datetime.now() - timedelta(days=days)
-                df = df[df['净值日期'] >= start_date]
-            
-            return df
+                df = df[df['date'] >= start_date]
+            df = df.sort_values('date')
+
+            if df.empty:
+                result = {"dates": [], "values": [], "changes": []}
+            else:
+                start_value = df['close'].iloc[0]
+                df['pct_change'] = ((df['close'] - start_value) / start_value * 100).round(2)
+                result = {
+                    "symbol": symbol,
+                    "dates": df['date'].dt.strftime('%Y-%m-%d').tolist(),
+                    "values": [float(v) for v in df['close'].tolist()],
+                    "changes": [float(v) for v in df['pct_change'].tolist()],
+                    "start_value": float(start_value)
+                }
+            self.cache.set(cache_key, result, 3600)
+            return result
         except Exception as e:
-            print(f"获取历史净值失败 {code}: {e}")
-            return pd.DataFrame()
-    
-    def analyze_trend(self, hist_data: pd.DataFrame, direction: str) -> tuple:
-        """分析趋势：返回(连续天数, 累计涨跌幅)"""
+            logger.error(f"获取基准指数失败 {symbol}: {e}")
+            return {"dates": [], "values": [], "changes": []}
+
+    def get_compare_data(self, codes: List[str], range_str: str = "1M", include_benchmark: bool = True) -> Dict[str, Any]:
+        result = {"funds": [], "benchmarks": [], "range": range_str}
+        for code in codes:
+            try:
+                days = settings.TIME_RANGES.get(range_str, {}).get('days', 90)
+                df = self.get_historical_nav(code, days)
+                if df.empty:
+                    result["funds"].append({"code": code, "name": self.get_fund_name(code), "dates": [], "changes": []})
+                    continue
+                start_value = df['累计净值'].iloc[0]
+                df['pct'] = ((df['累计净值'] - start_value) / start_value * 100).round(2)
+                result["funds"].append({
+                    "code": code, "name": self.get_fund_name(code),
+                    "dates": df['净值日期'].dt.strftime('%Y-%m-%d').tolist(),
+                    "changes": [float(v) if pd.notna(v) else None for v in df['pct'].tolist()]
+                })
+            except Exception as e:
+                logger.warning(f"获取对比数据失败 {code}: {e}")
+                result["funds"].append({"code": code, "name": self.get_fund_name(code), "dates": [], "changes": []})
+
+        if include_benchmark:
+            for bench in [{"name": "上证指数", "symbol": "sh000001"}, {"name": "沪深300", "symbol": "sh000300"}]:
+                try:
+                    days = settings.TIME_RANGES.get(range_str, {}).get('days', 30)
+                    bench_data = self.get_benchmark_data(bench["symbol"], days)
+                    result["benchmarks"].append({**bench, **bench_data})
+                except Exception as e:
+                    logger.warning(f"获取基准数据失败: {e}")
+        return result
+
+    def get_compare_data_multi(self, codes: List[str], ranges: List[str], include_benchmark: bool = True) -> Dict:
+        data = {}
+        for r in ranges:
+            try:
+                data[r] = self.get_compare_data(codes=codes, range_str=r, include_benchmark=include_benchmark)
+            except Exception as e:
+                data[r] = {"funds": [], "benchmarks": [], "range": r}
+        return {"ranges": data}
+
+    def analyze_trend(self, hist_data: pd.DataFrame, direction: str) -> Tuple[int, float]:
         if hist_data.empty:
-            return 0, Decimal('0')
-        
+            return 0, 0.0
         target = 1 if direction == 'up' else -1
         days = 0
         changes = []
-        
         for i in range(len(hist_data) - 1, 0, -1):
             chg = hist_data.iloc[i]['pct_change']
             if (chg > 0 and target == 1) or (chg < 0 and target == -1):
@@ -322,115 +357,116 @@ class FundDataService:
                 changes.append(chg)
             else:
                 break
-        
         if days == 0:
-            return 0, Decimal('0')
-        
+            return 0, 0.0
         total_chg = np.prod([1 + r for r in changes]) - 1
-        
-        if direction == 'down':
-            total_chg = -abs(total_chg)
-        else:
-            total_chg = abs(total_chg)
-        
-        return days, Decimal(str(total_chg))
-    
-    def screen_funds(self, codes: List[str], direction: str, 
-                     min_days: int, min_pct: Decimal) -> List[FundTrendScreenResult]:
-        """筛选符合条件的基金"""
+        return days, abs(total_chg) if direction == 'up' else -abs(total_chg)
+
+    async def screen_funds(self, codes: Optional[List[str]] = None, direction: str = 'up',
+                     min_days: int = 2, min_pct: float = 0.03,
+                     batch_size: int = 3, delay_between_batches: float = 1.0) -> List[Dict]:
+        if codes is None:
+            codes = self._fund_list
         results = []
-        
-        for code in codes:
-            hist = self.get_historical_nav(code)
-            if hist.empty:
-                continue
-            
-            days, total_chg = self.analyze_trend(hist, direction)
-            
-            if days >= min_days and abs(total_chg) >= min_pct:
-                name = self.get_fund_name(code)
-                results.append(FundTrendScreenResult(
-                    code=code,
-                    name=name,
-                    days=days,
-                    pct=round(total_chg * 100, 2)
-                ))
-        
-        return results
-    
-    def get_benchmark_data(self, symbol: str, days: int = 365) -> dict:
-        """获取基准指数数据"""
-        try:
-            df = ak.stock_zh_index_daily(symbol=symbol)
-            df['date'] = pd.to_datetime(df['date'])
-            
-            if days > 0:
-                start_date = datetime.now() - timedelta(days=days)
-                df = df[df['date'] >= start_date]
-            
-            df = df.sort_values('date')
-            
-            if df.empty:
-                return {"dates": [], "values": [], "changes": []}
-            
-            start_value = df['close'].iloc[0]
-            df['pct_change'] = ((df['close'] - start_value) / start_value * 100).round(2)
-            
-            dates = df['date'].dt.strftime('%Y-%m-%d').tolist()
-            values = [float(v) for v in df['close'].tolist()]
-            changes = [float(v) for v in df['pct_change'].tolist()]
-            
-            return {
-                "dates": dates,
-                "values": values,
-                "changes": changes,
-                "start_value": float(start_value)
-            }
-        except Exception as e:
-            logger.error(f"获取基准指数数据失败 {symbol}: {e}")
-            return {"dates": [], "values": [], "changes": []}
-    
-    def get_chart_data(self, code: str, range_str: str = "3M") -> FundChartData:
-        """获取图表数据"""
-        days = chart_config.TIME_RANGES.get(range_str, {}).get('days', 90)
-        
-        hist = self.get_historical_nav(code, days)
-        
-        if hist.empty:
-            return FundChartData(dates=[], values=[], changes=[])
-        
-        dates = hist['净值日期'].dt.strftime('%Y-%m-%d').tolist()
-        values = [Decimal(str(v)) for v in hist['累计净值'].tolist()]
-        changes = [Decimal(str(v * 100)) if pd.notna(v) else None 
-                   for v in hist['pct_change'].tolist()]
-        
-        return FundChartData(dates=dates, values=values, changes=changes)
-    
+        for i in range(0, len(codes), batch_size):
+            batch = codes[i:i + batch_size]
+            for code in batch:
+                try:
+                    hist = self.get_historical_nav(code, 365)
+                    if hist.empty:
+                        continue
+                    days, total_chg = self.analyze_trend(hist, direction)
+                    if days >= min_days and abs(total_chg) >= min_pct:
+                        results.append({'code': code, 'name': self.get_fund_name(code),
+                                       'days': days, 'pct': round(total_chg * 100, 2)})
+                except Exception:
+                    pass
+            if i + batch_size < len(codes):
+                await asyncio.sleep(delay_between_batches)
+        return sorted(results, key=lambda x: abs(x['pct']), reverse=True)
+
+    async def get_screen_result(self, direction: str = 'up', min_days: Optional[int] = None, min_pct: Optional[float] = None) -> Dict:
+        min_days = min_days or (settings.SCREEN_UP["days"] if direction == 'up' else settings.SCREEN_DOWN["days"])
+        min_pct = min_pct or (settings.SCREEN_UP["pct"] if direction == 'up' else settings.SCREEN_DOWN["pct"])
+        cache_key = f"screen:{direction}:{min_days}:{min_pct}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+        results = await self.screen_funds(direction=direction, min_days=min_days, min_pct=min_pct)
+        result = {'direction': direction, 'min_days': min_days, 'min_pct': min_pct, 'count': len(results), 'funds': results}
+        self.cache.set(cache_key, result, settings.SEARCH_CACHE_TTL)
+        return result
+
     def search_funds(self, keyword: str, limit: int = 10) -> List[Dict]:
-        """搜索基金"""
-        results = []
-        
+        cache_key = f"search:{keyword}:{limit}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+        results = self._search_from_eastmoney(keyword, limit)
+        if results:
+            self.cache.set(cache_key, results, settings.SEARCH_CACHE_TTL)
+            return results
         try:
-            # 使用akshare搜索
-            df = ak.fund_name_em()
-            
-            # 模糊匹配
-            mask = df['基金简称'].str.contains(keyword, na=False) | \
-                   df['基金代码'].str.contains(keyword, na=False)
-            matched = df[mask].head(limit)
-            
-            for _, row in matched.iterrows():
-                results.append({
-                    'code': row['基金代码'],
-                    'name': row['基金简称'],
-                    'type': row.get('基金类型', ''),
-                    'company': row.get('基金公司', '')
-                })
+            import akshare as ak
+            import sys, io
+            old_stdout = sys.stdout
+            sys.stdout = io.StringIO()
+            try:
+                df = ak.fund_name_em()
+            finally:
+                sys.stdout = old_stdout
+            if df is not None and not df.empty:
+                mask = df['基金简称'].str.contains(keyword, na=False, case=False) | df['基金代码'].str.contains(keyword, na=False)
+                matched = df[mask].head(limit)
+                results = [{'code': str(r['基金代码']), 'name': str(r['基金简称']), 'type': str(r.get('基金类型', '')), 'company': str(r.get('基金公司', ''))} for _, r in matched.iterrows()]
+                if results:
+                    self.cache.set(cache_key, results, settings.SEARCH_CACHE_TTL)
+                    return results
         except Exception as e:
-            logger.error(f"搜索基金失败: {e}")
-        
-        return results
+            logger.debug(f"AKShare搜索失败: {e}")
+        return []
+
+    def _search_from_eastmoney(self, keyword: str, limit: int) -> List[Dict]:
+        try:
+            url = "http://fund.eastmoney.com/js/fundcode_search.js"
+            resp = self.session.get(url, timeout=10)
+            if resp.status_code != 200:
+                return []
+            match = re.search(r'var\s+r\s*=\s*(\[.*?\]);', resp.text, re.DOTALL)
+            if not match:
+                return []
+            data = json.loads(match.group(1))
+            keyword_lower = keyword.lower()
+            matched = []
+            for item in data:
+                if keyword_lower in item[0].lower() or keyword_lower in item[2].lower():
+                    matched.append({'code': item[0], 'name': item[2], 'type': item[3] if len(item) > 3 else '', 'company': ''})
+                if len(matched) >= limit:
+                    break
+            return matched
+        except Exception:
+            return []
+
+    def get_service_status(self) -> Dict[str, Any]:
+        return {
+            'fund_count': len(self._fund_list),
+            'names_cache_size': len(self._fund_names_cache),
+            'cache_stats': self.cache.get_stats()
+        }
+
+    def close(self):
+        """Clean up resources on shutdown."""
+        self.session.close()
 
 
-# 单例模式
-fund_service = FundDataService()
+_fund_service: Optional[FundService] = None
+_fund_service_lock = threading.Lock()
+
+
+def get_fund_service() -> FundService:
+    global _fund_service
+    if _fund_service is None:
+        with _fund_service_lock:
+            if _fund_service is None:
+                _fund_service = FundService()
+    return _fund_service

@@ -167,7 +167,6 @@ npm run dev
 
 - 🚀 跨端支持（H5、微信小程序、Android App）
 - 💰 持仓管理（记录投资金额，实时计算盈亏）
-- 📸 OCR 识别（截图自动识别基金代码）
 - 🤖 智能分析（AI 驱动的投资建议）
 - 🔐 用户认证（JWT 令牌）
 
@@ -216,7 +215,6 @@ npm run dev
 - `ChartConfig` - 图表配置
 - `PlotConfig` - 绘图配置
 - `ServerConfig` - 服务器配置
-- `OcrConfig` - OCR 配置
 
 **使用方式**:
 ```python
