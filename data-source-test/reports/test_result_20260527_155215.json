@@ -1,0 +1,291 @@
+{
+  "run_id": "20260527_155215",
+  "timestamp": "2026-05-27T15:52:15.768343",
+  "fund_codes": [
+    "015916",
+    "513630",
+    "012349",
+    "012709",
+    "017436",
+    "017093",
+    "016531",
+    "160125",
+    "018125",
+    "015790",
+    "007722",
+    "017091",
+    "022365",
+    "012414",
+    "017437",
+    "017641",
+    "007721",
+    "501018",
+    "160723",
+    "161226",
+    "160416"
+  ],
+  "fund_count": 21,
+  "sources": {
+    "akshare": {
+      "name": "akshare",
+      "feasibility": {
+        "total": 21,
+        "success": 21,
+        "fail": 0,
+        "success_rate": 1.0,
+        "failed_funds": []
+      },
+      "stability": {
+        "rounds": 3,
+        "success_rates": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "mean_success_rate": 1.0,
+        "std_success_rate": 0.0,
+        "mean_response_ms": 5677.13
+      },
+      "accuracy": {},
+      "timeliness": {
+        "avg_lag_minutes": 2400.88,
+        "max_lag_minutes": 2400.88,
+        "min_lag_minutes": 2400.88
+      },
+      "performance": {
+        "batch_total_ms": 133016.35,
+        "single_avg_ms": 6056.75,
+        "single_max_ms": 11775.6,
+        "single_min_ms": 5125.71
+      },
+      "sample_data": [
+        {
+          "code": "015916",
+          "name": "015916",
+          "nav": 1.5432,
+          "change_pct": null,
+          "update_time": "2026-05-26",
+          "error": null,
+          "fetch_duration_ms": 5742.76
+        },
+        {
+          "code": "513630",
+          "name": "513630",
+          "nav": 1.6504,
+          "change_pct": null,
+          "update_time": "2026-05-26",
+          "error": null,
+          "fetch_duration_ms": 5193.21
+        },
+        {
+          "code": "012349",
+          "name": "012349",
+          "nav": 0.6696,
+          "change_pct": null,
+          "update_time": "2026-05-26",
+          "error": null,
+          "fetch_duration_ms": 5726.5
+        }
+      ]
+    },
+    "efinance": {
+      "name": "efinance",
+      "feasibility": {
+        "total": 21,
+        "success": 0,
+        "fail": 21,
+        "success_rate": 0.0,
+        "failed_funds": [
+          "015916",
+          "513630",
+          "012349",
+          "012709",
+          "017436",
+          "017093",
+          "016531",
+          "160125",
+          "018125",
+          "015790"
+        ]
+      },
+      "stability": {
+        "rounds": 3,
+        "success_rates": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "mean_success_rate": 0.0,
+        "std_success_rate": 0.0,
+        "mean_response_ms": 0.0
+      },
+      "accuracy": {},
+      "timeliness": {
+        "note": "无有效数据"
+      },
+      "performance": {},
+      "sample_data": [
+        {
+          "code": "015916",
+          "name": null,
+          "nav": null,
+          "change_pct": null,
+          "update_time": null,
+          "error": "module 'efinance.fund' has no attribute 'get_realtime_estimates'",
+          "fetch_duration_ms": 0.0
+        },
+        {
+          "code": "513630",
+          "name": null,
+          "nav": null,
+          "change_pct": null,
+          "update_time": null,
+          "error": "module 'efinance.fund' has no attribute 'get_realtime_estimates'",
+          "fetch_duration_ms": 0.0
+        },
+        {
+          "code": "012349",
+          "name": null,
+          "nav": null,
+          "change_pct": null,
+          "update_time": null,
+          "error": "module 'efinance.fund' has no attribute 'get_realtime_estimates'",
+          "fetch_duration_ms": 0.0
+        }
+      ]
+    },
+    "tushare_pro": {
+      "name": "tushare_pro",
+      "feasibility": {
+        "total": 21,
+        "success": 0,
+        "fail": 21,
+        "success_rate": 0.0,
+        "failed_funds": [
+          "015916",
+          "513630",
+          "012349",
+          "012709",
+          "017436",
+          "017093",
+          "016531",
+          "160125",
+          "018125",
+          "015790"
+        ]
+      },
+      "stability": {
+        "rounds": 3,
+        "success_rates": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "mean_success_rate": 0.0,
+        "std_success_rate": 0.0,
+        "mean_response_ms": 2892.15
+      },
+      "accuracy": {},
+      "timeliness": {
+        "note": "无有效数据"
+      },
+      "performance": {
+        "batch_total_ms": 58683.88,
+        "single_avg_ms": 2493.86,
+        "single_max_ms": 11812.36,
+        "single_min_ms": 696.87
+      },
+      "sample_data": [
+        {
+          "code": "015916",
+          "name": null,
+          "nav": null,
+          "change_pct": null,
+          "update_time": null,
+          "error": "空响应",
+          "fetch_duration_ms": 6116.58
+        },
+        {
+          "code": "513630",
+          "name": null,
+          "nav": null,
+          "change_pct": null,
+          "update_time": null,
+          "error": "抱歉，您访问接口(fund_nav)频率超限(1次/分钟)，具体频次详情：https://tushare.pro/document/1?doc_id=108。",
+          "fetch_duration_ms": 753.2
+        },
+        {
+          "code": "012349",
+          "name": null,
+          "nav": null,
+          "change_pct": null,
+          "update_time": null,
+          "error": "抱歉，您访问接口(fund_nav)频率超限(1次/分钟)，具体频次详情：https://tushare.pro/document/1?doc_id=108。",
+          "fetch_duration_ms": 735.21
+        }
+      ]
+    },
+    "eastmoney_direct": {
+      "name": "eastmoney_direct",
+      "feasibility": {
+        "total": 21,
+        "success": 21,
+        "fail": 0,
+        "success_rate": 1.0,
+        "failed_funds": []
+      },
+      "stability": {
+        "rounds": 3,
+        "success_rates": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "mean_success_rate": 1.0,
+        "std_success_rate": 0.0,
+        "mean_response_ms": 71.4
+      },
+      "accuracy": {},
+      "timeliness": {
+        "avg_lag_minutes": 653.81,
+        "max_lag_minutes": 2405.81,
+        "min_lag_minutes": 5.81
+      },
+      "performance": {
+        "batch_total_ms": 1811.79,
+        "single_avg_ms": 86.28,
+        "single_max_ms": 284.34,
+        "single_min_ms": 38.36
+      },
+      "sample_data": [
+        {
+          "code": "015916",
+          "name": "永赢医药创新智选混合发起C",
+          "nav": 1.5488,
+          "change_pct": 0.36,
+          "update_time": "2026-05-27 15:00",
+          "error": null,
+          "fetch_duration_ms": 95.26
+        },
+        {
+          "code": "513630",
+          "name": "摩根标普港股通低波红利ETF",
+          "nav": 1.6504,
+          "change_pct": -0.8947,
+          "update_time": "2026-05-26",
+          "error": null,
+          "fetch_duration_ms": 196.45
+        },
+        {
+          "code": "012349",
+          "name": "天弘恒生科技ETF联接C",
+          "nav": 0.6645,
+          "change_pct": -0.77,
+          "update_time": "2026-05-27 16:00",
+          "error": null,
+          "fetch_duration_ms": 38.36
+        }
+      ]
+    }
+  }
+}

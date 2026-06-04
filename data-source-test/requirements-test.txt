@@ -1,0 +1,21 @@
+# Core
+requests>=2.31.0
+pandas>=2.1.0
+numpy>=1.26.0
+
+# Current baseline (for comparison)
+akshare>=1.12.0
+
+# New data sources under test
+efinance>=0.5.0
+tushare>=1.2.89
+
+# Testing framework
+pytest>=7.4.0
+
+# Output / reporting
+rich>=13.0.0
+tabulate>=0.9.0
+
+# Utilities
+python-dotenv>=1.0.0

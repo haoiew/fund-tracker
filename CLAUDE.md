@@ -42,13 +42,17 @@ npm run electron:build:win       # Build Windows installer
 ### Testing
 ```bash
 cd fund-tracker/backend && pytest                    # Backend tests
+cd fund-tracker/backend && pytest tests/test_fund.py # Run single test file
+cd fund-tracker/backend && pytest -m "not slow"      # Skip slow tests
+cd fund-tracker/backend && pytest -k "test_name"     # Run tests matching pattern
 cd data-source-test && python run_all_tests.py       # Data source comparison
 ```
 
 ### Linting
 ```bash
-cd fund-tracker/frontend && npm run lint    # oxlint + eslint
-cd fund-tracker/frontend && npm run build   # Type check + Vite build
+cd fund-tracker/frontend && npm run lint         # Run oxlint + eslint sequentially
+cd fund-tracker/frontend && npm run type-check   # TypeScript type checking only
+cd fund-tracker/frontend && npm run build        # Type check + Vite build
 ```
 
 ## Architecture
@@ -97,5 +101,8 @@ Standalone benchmarking project for evaluating data source providers (akshare, e
 
 ## Environment Notes
 
+- Python 3.11+ required
+- Node.js ^20.19.0 || >=22.12.0 required
 - Frontend env: `.env.development` (VITE_API_BASE_URL=/api), `.env.production` (VITE_API_BASE_URL=/api/v1)
 - pytest markers: `slow`, `integration` (see backend/pytest.ini)
+- pytest config: `asyncio_mode = auto` for async test support

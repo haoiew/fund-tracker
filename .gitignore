@@ -59,3 +59,9 @@ backend/data/*.db
 
 # Source maps
 *.map
+
+# Trae IDE
+.trae/
+
+# Import data
+data/import/
