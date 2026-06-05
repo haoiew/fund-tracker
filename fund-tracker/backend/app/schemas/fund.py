@@ -88,6 +88,7 @@ class PeriodScreenRequest(BaseModel):
     direction: str = Field(default='up', description="方向: up=上涨, down=下跌")
     period_days: int = Field(default=7, ge=1, le=90, description="统计天数")
     min_pct: float = Field(default=0.03, ge=0, le=1, description="最小涨跌幅（小数形式）")
+    include_realtime: bool = Field(default=False, description="是否包含今日实时估值")
 
 
 class FundSearchRequest(BaseModel):

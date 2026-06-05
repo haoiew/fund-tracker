@@ -96,6 +96,14 @@
             <el-icon><Search /></el-icon>
             一键查询
           </el-button>
+          <el-tooltip content="开启后将今日实时估值纳入涨跌幅计算" placement="top">
+            <el-switch
+              v-model="includeRealtime"
+              active-text="含实时估值"
+              inactive-text=""
+              style="margin-left: 16px"
+            />
+          </el-tooltip>
         </div>
       </div>
 
@@ -204,6 +212,7 @@ const conditions = ref<ConditionItem[]>([
 
 const results = ref<ResultItem[]>([])
 const loading = ref(false)
+const includeRealtime = ref(false)
 const chartVisible = ref(false)
 const selectedFund = ref<FundTrendResult | null>(null)
 
@@ -261,10 +270,10 @@ async function handleScreenAll() {
       try {
         const minPct = condition.minPctDisplay / 100
         if (condition.type === 'consecutive') {
-          const result = await fundApi.screen(condition.direction, condition.minDays, minPct, codes)
+          const result = await fundApi.screen(condition.direction, condition.minDays, minPct, codes, includeRealtime.value)
           return { conditionId: condition.id, direction: condition.direction, count: result.count, funds: result.funds, loading: false }
         } else {
-          const result = await fundApi.screenPeriod(condition.direction, condition.periodDays, minPct, codes)
+          const result = await fundApi.screenPeriod(condition.direction, condition.periodDays, minPct, codes, includeRealtime.value)
           return { conditionId: condition.id, direction: condition.direction, count: result.count, funds: result.funds, loading: false }
         }
       } catch {

@@ -69,10 +69,11 @@ class FundScreenRequest(BaseModel):
     codes: Optional[List[str]] = None
     min_days: int = 2
     min_pct: float = 0.03
+    include_realtime: bool = False
 
 
 async def _screen_funds(direction: str, request: FundScreenRequest) -> ResponseModel:
-    results = await get_fund_service().screen_funds(request.codes, direction, request.min_days, request.min_pct)
+    results = await get_fund_service().screen_funds(request.codes, direction, request.min_days, request.min_pct, include_realtime=request.include_realtime)
     return ResponseModel(data={"direction": direction, "min_days": request.min_days, "min_pct": request.min_pct, "count": len(results), "funds": results})
 
 
@@ -87,11 +88,11 @@ async def screen_funds_down(request: FundScreenRequest):
 
 
 @router.get("/screen/{direction}", response_model=ResponseModel[dict])
-async def screen_funds_by_direction(direction: str, min_days: int = Query(2), min_pct: float = Query(0.03), codes: Optional[str] = Query(None)):
+async def screen_funds_by_direction(direction: str, min_days: int = Query(2), min_pct: float = Query(0.03), codes: Optional[str] = Query(None), include_realtime: bool = Query(False)):
     if direction not in ['up', 'down']:
         raise HTTPException(status_code=400, detail="direction must be 'up' or 'down'")
     code_list = codes.split(',') if codes else None
-    results = await get_fund_service().screen_funds(code_list, direction, min_days, min_pct)
+    results = await get_fund_service().screen_funds(code_list, direction, min_days, min_pct, include_realtime=include_realtime)
     return ResponseModel(data={"direction": direction, "min_days": min_days, "min_pct": min_pct, "count": len(results), "funds": results})
 
 
@@ -100,7 +101,8 @@ async def screen_funds_period(request: PeriodScreenRequest):
     if request.direction not in ['up', 'down']:
         raise HTTPException(status_code=400, detail="direction must be 'up' or 'down'")
     results = await get_fund_service().screen_period(
-        request.codes, request.direction, request.period_days, request.min_pct
+        request.codes, request.direction, request.period_days, request.min_pct,
+        include_realtime=request.include_realtime
     )
     return ResponseModel(data={
         "direction": request.direction,

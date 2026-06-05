@@ -105,7 +105,8 @@ export const fundApi = {
     direction: 'up' | 'down',
     minDays: number = 2,
     minPct: number = 0.03,
-    codes?: string[]
+    codes?: string[],
+    includeRealtime: boolean = false
   ): Promise<{
     direction: string
     min_days: number
@@ -115,7 +116,8 @@ export const fundApi = {
   }> {
     const params: Record<string, any> = {
       min_days: minDays,
-      min_pct: minPct
+      min_pct: minPct,
+      include_realtime: includeRealtime
     }
     if (codes && codes.length > 0) {
       params.codes = codes.join(',')
@@ -128,7 +130,8 @@ export const fundApi = {
     direction: 'up' | 'down',
     periodDays: number = 7,
     minPct: number = 0.03,
-    codes?: string[]
+    codes?: string[],
+    includeRealtime: boolean = false
   ): Promise<{
     direction: string
     period_days: number
@@ -140,7 +143,8 @@ export const fundApi = {
       direction,
       period_days: periodDays,
       min_pct: minPct,
-      codes: codes && codes.length > 0 ? codes : undefined
+      codes: codes && codes.length > 0 ? codes : undefined,
+      include_realtime: includeRealtime
     })
   },
 

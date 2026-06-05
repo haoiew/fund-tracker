@@ -362,8 +362,25 @@ class FundService:
         total_chg = np.prod([1 + r for r in changes]) - 1
         return days, abs(total_chg) if direction == 'up' else -abs(total_chg)
 
+    async def _append_realtime_change(self, hist: pd.DataFrame, code: str) -> pd.DataFrame:
+        """将今日实时估值涨跌幅追加到历史数据末尾"""
+        try:
+            rt = await self.get_realtime_data(code)
+            if rt.estimate_change is not None:
+                today_chg = float(rt.estimate_change) / 100
+                today_row = pd.DataFrame({
+                    '净值日期': [datetime.now()],
+                    '累计净值': [None],
+                    'pct_change': [today_chg]
+                })
+                hist = pd.concat([hist, today_row], ignore_index=True)
+        except Exception:
+            pass
+        return hist
+
     async def screen_funds(self, codes: Optional[List[str]] = None, direction: str = 'up',
                      min_days: int = 2, min_pct: float = 0.03,
+                     include_realtime: bool = False,
                      batch_size: int = 3, delay_between_batches: float = 1.0) -> List[Dict]:
         if codes is None:
             codes = self._fund_list
@@ -375,6 +392,8 @@ class FundService:
                     hist = self.get_historical_nav(code, 365)
                     if hist.empty:
                         continue
+                    if include_realtime:
+                        hist = await self._append_realtime_change(hist, code)
                     days, total_chg = self.analyze_trend(hist, direction)
                     if days >= min_days and abs(total_chg) >= min_pct:
                         results.append({'code': code, 'name': self.get_fund_name(code),
@@ -411,6 +430,7 @@ class FundService:
 
     async def screen_period(self, codes: Optional[List[str]] = None, direction: str = 'up',
                            period_days: int = 7, min_pct: float = 0.03,
+                           include_realtime: bool = False,
                            batch_size: int = 3, delay_between_batches: float = 1.0) -> List[Dict]:
         if codes is None:
             codes = self._fund_list
@@ -422,6 +442,8 @@ class FundService:
                     hist = self.get_historical_nav(code, 365)
                     if hist.empty:
                         continue
+                    if include_realtime:
+                        hist = await self._append_realtime_change(hist, code)
                     total_chg = self.calculate_period_change(hist, period_days)
                     if direction == 'up' and total_chg >= min_pct:
                         results.append({'code': code, 'name': self.get_fund_name(code),
