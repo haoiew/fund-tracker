@@ -102,7 +102,7 @@ async def screen_funds_period(request: PeriodScreenRequest):
         raise HTTPException(status_code=400, detail="direction must be 'up' or 'down'")
     results = await get_fund_service().screen_period(
         request.codes, request.direction, request.period_days, request.min_pct,
-        include_realtime=request.include_realtime
+        include_realtime=request.include_realtime, calendar_days=request.calendar_days
     )
     return ResponseModel(data={
         "direction": request.direction,

@@ -147,7 +147,7 @@
       destroy-on-close
       align-center
     >
-      <FundChart v-if="selectedFund" :code="selectedFund.code" :name="selectedFund.name" />
+      <FundChart v-if="selectedFund" :code="selectedFund.code" :name="selectedFund.name" :default-range="selectedChartRange" />
     </el-dialog>
   </div>
 </template>
@@ -215,6 +215,28 @@ const loading = ref(false)
 const includeRealtime = ref(true)
 const chartVisible = ref(false)
 const selectedFund = ref<FundTrendResult | null>(null)
+const selectedChartRange = ref('1W')
+
+// 查找基金所属的筛选条件ID
+function findConditionIdByFund(fund: FundTrendResult): string | undefined {
+  for (const result of results.value) {
+    if (result.funds.some(f => f.code === fund.code)) {
+      return result.conditionId
+    }
+  }
+  return undefined
+}
+
+// 根据筛选条件计算合适的图表时间范围
+function calcChartRange(conditionId: string): string {
+  const condition = conditions.value.find(c => c.id === conditionId)
+  if (!condition) return '1W'
+  const days = condition.type === 'consecutive' ? (condition.minDays ?? 2) : (condition.periodDays ?? 7)
+  if (days <= 7) return '1W'
+  if (days <= 30) return '1M'
+  if (days <= 90) return '3M'
+  return '6M'
+}
 
 function getConditionLabel(condition: ConditionItem): string {
   const typeLabel = condition.type === 'consecutive' ? '连续' : `${condition.periodDays}天内`
@@ -248,6 +270,17 @@ function removeCondition(id: string) {
   results.value = results.value.filter(r => r.conditionId !== id)
 }
 
+function getCalendarDaysSetting(): boolean {
+  try {
+    const saved = localStorage.getItem('fund-tracker-settings')
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      return parsed.dayCountMode === 'calendar'
+    }
+  } catch {}
+  return false
+}
+
 async function handleScreenAll() {
   if (fundStore.fundList.length === 0) {
     ElMessage.warning('基金列表为空，请先加载基金数据')
@@ -266,6 +299,7 @@ async function handleScreenAll() {
   }))
 
   try {
+    const calendarDays = getCalendarDaysSetting()
     const promises = conditions.value.map(async (condition) => {
       try {
         const minPct = condition.minPctDisplay / 100
@@ -273,7 +307,7 @@ async function handleScreenAll() {
           const result = await fundApi.screen(condition.direction, condition.minDays, minPct, codes, includeRealtime.value)
           return { conditionId: condition.id, direction: condition.direction, count: result.count, funds: result.funds, loading: false }
         } else {
-          const result = await fundApi.screenPeriod(condition.direction, condition.periodDays, minPct, codes, includeRealtime.value)
+          const result = await fundApi.screenPeriod(condition.direction, condition.periodDays, minPct, codes, includeRealtime.value, calendarDays)
           return { conditionId: condition.id, direction: condition.direction, count: result.count, funds: result.funds, loading: false }
         }
       } catch {
@@ -297,6 +331,8 @@ async function handleScreenAll() {
 
 function viewFund(fund: FundTrendResult) {
   selectedFund.value = fund
+  const conditionId = findConditionIdByFund(fund)
+  selectedChartRange.value = conditionId ? calcChartRange(conditionId) : '1W'
   chartVisible.value = true
 }
 

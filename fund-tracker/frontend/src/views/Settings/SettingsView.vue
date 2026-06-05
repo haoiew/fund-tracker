@@ -55,6 +55,14 @@
             <el-slider v-model="settings.refreshInterval" :min="10" :max="300" :step="10" show-stops />
             <span class="slider-value">{{ settings.refreshInterval }}{{ $t('common.second') }}</span>
           </el-form-item>
+
+          <el-form-item label="天数统计口径">
+            <el-radio-group v-model="settings.dayCountMode">
+              <el-radio value="trading">交易日</el-radio>
+              <el-radio value="calendar">自然日</el-radio>
+            </el-radio-group>
+            <div class="form-tip">影响"N天内累计涨跌幅"筛选的天数计算方式</div>
+          </el-form-item>
         </div>
 
         <!-- AI 模型设置 -->
@@ -129,6 +137,7 @@ const settings = reactive({
   autoRefresh: false,
   refreshInterval: 60,
   colorMode: 'red-up-green-down',
+  dayCountMode: 'trading',
   aiModel: '',
   aiBaseUrl: '',
   aiApiKey: '',
@@ -167,6 +176,7 @@ const resetSettings = () => {
   settings.autoRefresh = false
   settings.refreshInterval = 60
   settings.colorMode = 'red-up-green-down'
+  settings.dayCountMode = 'trading'
   settings.aiModel = ''
   settings.aiBaseUrl = ''
   settings.aiApiKey = ''
@@ -187,6 +197,7 @@ onMounted(() => {
     settings.autoRefresh = parsed.autoRefresh ?? false
     settings.refreshInterval = parsed.refreshInterval ?? 60
     settings.colorMode = parsed.colorMode ?? 'red-up-green-down'
+    settings.dayCountMode = parsed.dayCountMode ?? 'trading'
     settings.aiModel = parsed.aiModel ?? localStorage.getItem('ai_model') ?? ''
     settings.aiBaseUrl = parsed.aiBaseUrl ?? localStorage.getItem('ai_base_url') ?? ''
     settings.aiApiKey = parsed.aiApiKey ?? localStorage.getItem('ai_api_key') ?? ''
@@ -243,6 +254,12 @@ onMounted(() => {
   .slider-value {
     margin-left: 16px;
     color: var(--text-secondary);
+  }
+
+  .form-tip {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
   }
 
   .color-preview {

@@ -25,13 +25,16 @@ import { Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import fundApi from '@/api/fund'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   code: string
   name: string
-}>()
+  defaultRange?: string
+}>(), {
+  defaultRange: '3M'
+})
 
 const chartRef = ref<HTMLElement>()
-const timeRange = ref('3M')
+const timeRange = ref(props.defaultRange)
 const loading = ref(false)
 let chart: echarts.ECharts | null = null
 

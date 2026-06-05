@@ -131,7 +131,8 @@ export const fundApi = {
     periodDays: number = 7,
     minPct: number = 0.03,
     codes?: string[],
-    includeRealtime: boolean = false
+    includeRealtime: boolean = false,
+    calendarDays: boolean = false
   ): Promise<{
     direction: string
     period_days: number
@@ -144,7 +145,8 @@ export const fundApi = {
       period_days: periodDays,
       min_pct: minPct,
       codes: codes && codes.length > 0 ? codes : undefined,
-      include_realtime: includeRealtime
+      include_realtime: includeRealtime,
+      calendar_days: calendarDays
     })
   },
 

@@ -416,10 +416,23 @@ class FundService:
         self.cache.set(cache_key, result, settings.SEARCH_CACHE_TTL)
         return result
 
-    def calculate_period_change(self, hist_data: pd.DataFrame, period_days: int) -> float:
+    def calculate_period_change(self, hist_data: pd.DataFrame, period_days: int, calendar_days: bool = False) -> float:
         if hist_data.empty or len(hist_data) < 2:
             return 0.0
-        recent = hist_data.tail(period_days + 1)
+
+        if calendar_days:
+            # 自然日模式：从当前日期往前推 N 天，找到对应的数据
+            cutoff_date = datetime.now() - timedelta(days=period_days)
+            hist_data_copy = hist_data.copy()
+            if '净值日期' in hist_data_copy.columns:
+                hist_data_copy['净值日期'] = pd.to_datetime(hist_data_copy['净值日期'])
+                recent = hist_data_copy[hist_data_copy['净值日期'] >= cutoff_date]
+            else:
+                recent = hist_data.tail(period_days + 1)
+        else:
+            # 交易日模式：取最近 N 条记录
+            recent = hist_data.tail(period_days + 1)
+
         if len(recent) < 2:
             return 0.0
         changes = recent['pct_change'].dropna().values
@@ -430,7 +443,7 @@ class FundService:
 
     async def screen_period(self, codes: Optional[List[str]] = None, direction: str = 'up',
                            period_days: int = 7, min_pct: float = 0.03,
-                           include_realtime: bool = False,
+                           include_realtime: bool = False, calendar_days: bool = False,
                            batch_size: int = 3, delay_between_batches: float = 1.0) -> List[Dict]:
         if codes is None:
             codes = self._fund_list
@@ -444,7 +457,7 @@ class FundService:
                         continue
                     if include_realtime:
                         hist = await self._append_realtime_change(hist, code)
-                    total_chg = self.calculate_period_change(hist, period_days)
+                    total_chg = self.calculate_period_change(hist, period_days, calendar_days)
                     if direction == 'up' and total_chg >= min_pct:
                         results.append({'code': code, 'name': self.get_fund_name(code),
                                        'days': period_days, 'pct': round(total_chg * 100, 2)})
