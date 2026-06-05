@@ -4,115 +4,115 @@
       <template #header>
         <div class="card-header">
           <span class="title">{{ $t('screen.title') }}</span>
-          <el-icon v-if="loading" class="is-loading" size="16"><Loading /></el-icon>
+          <el-button type="primary" size="small" @click="showAddDialog">
+            <el-icon><Plus /></el-icon>
+            添加筛选
+          </el-button>
         </div>
       </template>
 
       <!-- 筛选条件区域 -->
-      <div class="screen-conditions">
+      <div v-if="conditions.length > 0" class="screen-conditions">
         <div class="condition-row">
-          <!-- 连续上涨筛选 -->
-          <div class="condition-box up-box">
+          <div
+            v-for="condition in conditions"
+            :key="condition.id"
+            class="condition-box"
+            :class="condition.direction === 'up' ? 'up-box' : 'down-box'"
+          >
             <div class="condition-header">
-              <el-icon class="up-icon"><ArrowUp /></el-icon>
-              <span class="condition-title">连续上涨</span>
+              <el-icon :class="condition.direction === 'up' ? 'up-icon' : 'down-icon'">
+                <component :is="condition.direction === 'up' ? ArrowUp : ArrowDown" />
+              </el-icon>
+              <span class="condition-title">{{ getConditionLabel(condition) }}</span>
+              <div class="condition-actions">
+                <el-button link size="small" @click="editCondition(condition)">
+                  <el-icon><Edit /></el-icon>
+                </el-button>
+                <el-button link size="small" type="danger" @click="removeCondition(condition.id)">
+                  <el-icon><Close /></el-icon>
+                </el-button>
+              </div>
             </div>
             <div class="condition-body">
-              <el-form :model="upForm" inline class="screen-form">
-                <el-form-item label="最少天数">
-                  <el-input-number v-model="upForm.minDays" :min="1" :max="30" size="small" />
-                </el-form-item>
-                <el-form-item label="累计涨幅(%)">
-                  <el-input-number v-model="upForm.minPct" :min="0.1" :max="50" :step="0.1" size="small" />
-                </el-form-item>
-              </el-form>
-            </div>
-          </div>
-
-          <!-- 连续下跌筛选 -->
-          <div class="condition-box down-box">
-            <div class="condition-header">
-              <el-icon class="down-icon"><ArrowDown /></el-icon>
-              <span class="condition-title">连续下跌</span>
-            </div>
-            <div class="condition-body">
-              <el-form :model="downForm" inline class="screen-form">
-                <el-form-item label="最少天数">
-                  <el-input-number v-model="downForm.minDays" :min="1" :max="30" size="small" />
-                </el-form-item>
-                <el-form-item label="累计跌幅(%)">
-                  <el-input-number v-model="downForm.minPct" :min="0.1" :max="50" :step="0.1" size="small" />
-                </el-form-item>
-              </el-form>
+              <div class="condition-params">
+                <template v-if="condition.type === 'consecutive'">
+                  <span class="param-item">
+                    <span class="param-label">最少天数:</span>
+                    <span class="param-value">{{ condition.minDays }}</span>
+                  </span>
+                  <span class="param-item">
+                    <span class="param-label">{{ condition.direction === 'up' ? '涨幅' : '跌幅' }}:</span>
+                    <span class="param-value">{{ (condition.minPct * 100).toFixed(1) }}%</span>
+                  </span>
+                </template>
+                <template v-else>
+                  <span class="param-item">
+                    <span class="param-label">统计天数:</span>
+                    <span class="param-value">{{ condition.periodDays }}</span>
+                  </span>
+                  <span class="param-item">
+                    <span class="param-label">{{ condition.direction === 'up' ? '涨幅' : '跌幅' }}:</span>
+                    <span class="param-value">{{ (condition.minPct * 100).toFixed(1) }}%</span>
+                  </span>
+                </template>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- 操作按钮 -->
         <div class="action-row">
-          <el-button type="primary" size="default" @click="handleScreenBoth" :loading="loading">
+          <el-button type="primary" size="default" @click="handleScreenAll" :loading="loading">
             <el-icon><Search /></el-icon>
-            同时查询
-          </el-button>
-          <el-button type="success" size="default" @click="handleScreenUp" :loading="loadingUp">
-            <el-icon><ArrowUp /></el-icon>
-            仅查上涨
-          </el-button>
-          <el-button type="danger" size="default" @click="handleScreenDown" :loading="loadingDown">
-            <el-icon><ArrowDown /></el-icon>
-            仅查下跌
+            一键查询所有筛选条件
           </el-button>
         </div>
       </div>
 
-      <el-divider v-if="upResults.length > 0 || downResults.length > 0" />
-
       <!-- 空状态 -->
-      <el-empty v-if="upResults.length === 0 && downResults.length === 0 && !loading && !loadingUp && !loadingDown" :description="$t('compare.emptyTip')">
-        <template #description>
-          <p>设置筛选条件后点击查询按钮</p>
-        </template>
+      <el-empty v-if="conditions.length === 0" description="暂无筛选条件">
+        <el-button type="primary" @click="showAddDialog">添加筛选条件</el-button>
       </el-empty>
 
-      <!-- 对比结果 -->
-      <div v-else class="screen-results">
-        <!-- 连续上涨结果 -->
-        <div v-if="upResults.length > 0" class="result-section">
-          <div class="result-header">
-            <div class="result-title">
-              <el-icon class="up-icon"><ArrowUp /></el-icon>
-              <span>连续上涨基金</span>
-              <el-tag type="success" size="small" effect="dark">{{ upResults.length }}</el-tag>
-            </div>
-          </div>
-          <ResultTable 
-            :data="upResults" 
-            :loading="loadingUp"
-            direction="up"
-            @view="viewFund"
-            @add="addToWatchlist"
-          />
-        </div>
+      <el-divider v-if="results.length > 0" />
 
-        <!-- 连续下跌结果 -->
-        <div v-if="downResults.length > 0" class="result-section">
+      <!-- 筛选结果 -->
+      <div v-if="results.length > 0" class="screen-results">
+        <div v-for="result in results" :key="result.conditionId" class="result-section">
           <div class="result-header">
             <div class="result-title">
-              <el-icon class="down-icon"><ArrowDown /></el-icon>
-              <span>连续下跌基金</span>
-              <el-tag type="danger" size="small" effect="dark">{{ downResults.length }}</el-tag>
+              <el-icon :class="result.direction === 'up' ? 'up-icon' : 'down-icon'">
+                <component :is="result.direction === 'up' ? ArrowUp : ArrowDown" />
+              </el-icon>
+              <span>{{ getConditionLabelById(result.conditionId) }}</span>
+              <el-tag
+                :type="result.direction === 'up' ? 'success' : 'danger'"
+                size="small"
+                effect="dark"
+              >
+                {{ result.count }}
+              </el-tag>
             </div>
           </div>
-          <ResultTable 
-            :data="downResults" 
-            :loading="loadingDown"
-            direction="down"
+          <ResultTable
+            :data="result.funds"
+            :loading="result.loading"
+            :direction="result.direction as 'up' | 'down'"
+            :screen-type="getConditionTypeById(result.conditionId)"
             @view="viewFund"
             @add="addToWatchlist"
           />
         </div>
       </div>
     </el-card>
+
+    <!-- 条件配置弹窗 -->
+    <ConditionDialog
+      v-model="dialogVisible"
+      :edit-condition="editingCondition"
+      @confirm="handleConditionConfirm"
+    />
 
     <!-- 基金图表弹窗 -->
     <el-dialog
@@ -132,153 +132,195 @@ defineOptions({
   name: 'ScreenView'
 })
 
-import { reactive, ref } from 'vue'
-import { Loading, ArrowUp, ArrowDown, Search } from '@element-plus/icons-vue'
+import { ref } from 'vue'
+import { Plus, Edit, Close, ArrowUp, ArrowDown, Search } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useFundStore } from '@/stores/fundStore'
 import FundChart from '@/components/Charts/FundChart.vue'
 import ResultTable from './components/ResultTable.vue'
-import { fundApi, type FundTrendResult } from '@/api/fund'
+import ConditionDialog from './components/ConditionDialog.vue'
+import { fundApi, type ScreenCondition, type ScreenResult, type ScreenType, type FundTrendResult } from '@/api/fund'
 
 const { t } = useI18n()
 const fundStore = useFundStore()
 
-// 上涨筛选条件
-const upForm = reactive({
-  minDays: 2,
-  minPct: 3
-})
+// 筛选条件列表
+const conditions = ref<ScreenCondition[]>([
+  {
+    id: generateId(),
+    type: 'consecutive',
+    direction: 'up',
+    minDays: 2,
+    minPct: 0.03
+  }
+])
 
-// 下跌筛选条件
-const downForm = reactive({
-  minDays: 2,
-  minPct: 3
-})
+// 筛选结果
+const results = ref<(ScreenResult & { loading: boolean })[]>([])
 
-// 结果数据
-const upResults = ref<FundTrendResult[]>([])
-const downResults = ref<FundTrendResult[]>([])
-const loadingUp = ref(false)
-const loadingDown = ref(false)
+// 加载状态
 const loading = ref(false)
+
+// 弹窗控制
+const dialogVisible = ref(false)
+const editingCondition = ref<ScreenCondition | null>(null)
 
 // 图表弹窗
 const chartVisible = ref(false)
 const selectedFund = ref<FundTrendResult | null>(null)
 
-// 查询连续上涨
-const handleScreenUp = async () => {
+// 生成唯一ID
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 9)
+}
+
+// 获取条件标签
+function getConditionLabel(condition: ScreenCondition): string {
+  const typeLabel = condition.type === 'consecutive' ? '连续' : `${condition.periodDays}天内`
+  const directionLabel = condition.direction === 'up' ? '上涨' : '下跌'
+  return `${typeLabel}${directionLabel}`
+}
+
+// 根据ID获取条件标签
+function getConditionLabelById(conditionId: string): string {
+  const condition = conditions.value.find(c => c.id === conditionId)
+  return condition ? getConditionLabel(condition) : '未知筛选'
+}
+
+// 根据ID获取筛选类型
+function getConditionTypeById(conditionId: string): ScreenType {
+  const condition = conditions.value.find(c => c.id === conditionId)
+  return condition?.type ?? 'consecutive'
+}
+
+// 显示添加弹窗
+function showAddDialog() {
+  editingCondition.value = null
+  dialogVisible.value = true
+}
+
+// 编辑条件
+function editCondition(condition: ScreenCondition) {
+  editingCondition.value = condition
+  dialogVisible.value = true
+}
+
+// 删除条件
+function removeCondition(id: string) {
+  conditions.value = conditions.value.filter(c => c.id !== id)
+  results.value = results.value.filter(r => r.conditionId !== id)
+}
+
+// 处理条件确认
+function handleConditionConfirm(conditionData: Omit<ScreenCondition, 'id'>) {
+  if (editingCondition.value) {
+    // 编辑模式
+    const index = conditions.value.findIndex(c => c.id === editingCondition.value!.id)
+    if (index !== -1) {
+      conditions.value[index] = { ...conditionData, id: editingCondition.value.id }
+    }
+  } else {
+    // 添加模式
+    conditions.value.push({ ...conditionData, id: generateId() })
+  }
+  editingCondition.value = null
+}
+
+// 一键查询所有筛选条件
+async function handleScreenAll() {
   if (fundStore.fundList.length === 0) {
     ElMessage.warning('基金列表为空，请先加载基金数据')
     return
   }
 
-  loadingUp.value = true
-  try {
-    const codes = [...fundStore.fundList]
-    const result = await fundApi.screen(
-      'up',
-      upForm.minDays,
-      upForm.minPct / 100,
-      codes
-    )
-
-    upResults.value = result.funds || []
-
-    if (upResults.value.length === 0) {
-      ElMessage.info('未找到符合条件的上涨基金')
-    } else {
-      ElMessage.success(`找到 ${upResults.value.length} 只连续上涨基金`)
-    }
-  } catch (error) {
-    console.error('筛选失败:', error)
-    ElMessage.error('筛选失败: ' + (error instanceof Error ? error.message : '未知错误'))
-  } finally {
-    loadingUp.value = false
-  }
-}
-
-// 查询连续下跌
-const handleScreenDown = async () => {
-  if (fundStore.fundList.length === 0) {
-    ElMessage.warning('基金列表为空，请先加载基金数据')
-    return
-  }
-
-  loadingDown.value = true
-  try {
-    const codes = [...fundStore.fundList]
-    const result = await fundApi.screen(
-      'down',
-      downForm.minDays,
-      downForm.minPct / 100,
-      codes
-    )
-
-    downResults.value = result.funds || []
-
-    if (downResults.value.length === 0) {
-      ElMessage.info('未找到符合条件的下跌基金')
-    } else {
-      ElMessage.success(`找到 ${downResults.value.length} 只连续下跌基金`)
-    }
-  } catch (error) {
-    console.error('筛选失败:', error)
-    ElMessage.error('筛选失败: ' + (error instanceof Error ? error.message : '未知错误'))
-  } finally {
-    loadingDown.value = false
-  }
-}
-
-// 同时查询上涨和下跌
-const handleScreenBoth = async () => {
-  if (fundStore.fundList.length === 0) {
-    ElMessage.warning('基金列表为空，请先加载基金数据')
+  if (conditions.value.length === 0) {
+    ElMessage.warning('请先添加筛选条件')
     return
   }
 
   loading.value = true
-  loadingUp.value = true
-  loadingDown.value = true
+  const codes = [...fundStore.fundList]
+
+  // 初始化结果数组
+  results.value = conditions.value.map(c => ({
+    conditionId: c.id,
+    direction: c.direction,
+    count: 0,
+    funds: [],
+    loading: true
+  }))
 
   try {
-    const codes = [...fundStore.fundList]
-    
-    // 同时发起两个请求
-    const [upResult, downResult] = await Promise.all([
-      fundApi.screen('up', upForm.minDays, upForm.minPct / 100, codes),
-      fundApi.screen('down', downForm.minDays, downForm.minPct / 100, codes)
-    ])
+    // 并发执行所有筛选
+    const promises = conditions.value.map(async (condition) => {
+      try {
+        if (condition.type === 'consecutive') {
+          const result = await fundApi.screen(
+            condition.direction,
+            condition.minDays!,
+            condition.minPct,
+            codes
+          )
+          return {
+            conditionId: condition.id,
+            direction: condition.direction,
+            count: result.count,
+            funds: result.funds,
+            loading: false
+          }
+        } else {
+          const result = await fundApi.screenPeriod(
+            condition.direction,
+            condition.periodDays!,
+            condition.minPct,
+            codes
+          )
+          return {
+            conditionId: condition.id,
+            direction: condition.direction,
+            count: result.count,
+            funds: result.funds,
+            loading: false
+          }
+        }
+      } catch (error) {
+        console.error(`筛选失败 [${getConditionLabel(condition)}]:`, error)
+        return {
+          conditionId: condition.id,
+          direction: condition.direction,
+          count: 0,
+          funds: [],
+          loading: false
+        }
+      }
+    })
 
-    upResults.value = upResult.funds || []
-    downResults.value = downResult.funds || []
+    const allResults = await Promise.all(promises)
+    results.value = allResults
 
-    const totalCount = upResults.value.length + downResults.value.length
-    
+    const totalCount = allResults.reduce((sum, r) => sum + r.count, 0)
     if (totalCount === 0) {
       ElMessage.info('未找到符合条件的基金')
     } else {
-      ElMessage.success(`查询完成：${upResults.value.length} 只上涨，${downResults.value.length} 只下跌`)
+      ElMessage.success(`查询完成，共找到 ${totalCount} 只基金`)
     }
   } catch (error) {
     console.error('筛选失败:', error)
     ElMessage.error('筛选失败: ' + (error instanceof Error ? error.message : '未知错误'))
   } finally {
     loading.value = false
-    loadingUp.value = false
-    loadingDown.value = false
   }
 }
 
 // 查看基金图表
-const viewFund = (fund: FundTrendResult) => {
+function viewFund(fund: FundTrendResult) {
   selectedFund.value = fund
   chartVisible.value = true
 }
 
 // 添加到关注列表
-const addToWatchlist = async (fund: FundTrendResult) => {
+async function addToWatchlist(fund: FundTrendResult) {
   try {
     const exists = fundStore.fundList.includes(fund.code)
     if (exists) {
@@ -299,6 +341,7 @@ const addToWatchlist = async (fund: FundTrendResult) => {
   .card-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
 
     .title {
@@ -311,11 +354,13 @@ const addToWatchlist = async (fund: FundTrendResult) => {
   .screen-conditions {
     .condition-row {
       display: flex;
+      flex-wrap: wrap;
       gap: 16px;
       margin-bottom: 16px;
 
       .condition-box {
-        flex: 1;
+        flex: 0 1 calc(50% - 8px);
+        min-width: 240px;
         border-radius: 8px;
         border: 1px solid var(--border-light);
         overflow: hidden;
@@ -353,23 +398,38 @@ const addToWatchlist = async (fund: FundTrendResult) => {
           .down-icon {
             color: var(--success-color);
           }
+
+          .condition-title {
+            flex: 1;
+          }
+
+          .condition-actions {
+            display: flex;
+            gap: 4px;
+          }
         }
 
         .condition-body {
           padding: 12px;
 
-          .screen-form {
-            :deep(.el-form-item) {
-              margin-bottom: 0;
-              margin-right: 16px;
+          .condition-params {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
 
-              &:last-child {
-                margin-right: 0;
-              }
+            .param-item {
+              display: flex;
+              align-items: center;
+              gap: 4px;
 
-              .el-form-item__label {
+              .param-label {
                 font-size: 12px;
                 color: var(--text-secondary);
+              }
+
+              .param-value {
+                font-weight: 600;
+                font-size: 14px;
               }
             }
           }
@@ -414,16 +474,6 @@ const addToWatchlist = async (fund: FundTrendResult) => {
         }
       }
     }
-  }
-
-  .text-success {
-    color: var(--success-color);
-    font-weight: 600;
-  }
-
-  .text-danger {
-    color: var(--danger-color);
-    font-weight: 600;
   }
 }
 </style>

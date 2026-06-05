@@ -82,6 +82,13 @@ class FundTrendScreenResult(BaseModel):
     days: int = Field(..., description="连续天数")
     pct: Decimal = Field(..., description="累计涨跌幅(%)")
 
+class PeriodScreenRequest(BaseModel):
+    """N天内累计涨跌幅筛选请求"""
+    codes: Optional[List[str]] = Field(None, description="基金代码列表，为空则筛选全部")
+    direction: str = Field(default='up', description="方向: up=上涨, down=下跌")
+    period_days: int = Field(default=7, ge=1, le=90, description="统计天数")
+    min_pct: float = Field(default=0.03, ge=0, le=1, description="最小涨跌幅（小数形式）")
+
 
 class FundSearchRequest(BaseModel):
     """基金搜索请求"""

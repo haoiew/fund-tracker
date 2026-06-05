@@ -29,6 +29,24 @@ export interface FundTrendResult {
   pct: number
 }
 
+export type ScreenType = 'consecutive' | 'period'
+
+export interface ScreenCondition {
+  id: string
+  type: ScreenType
+  direction: 'up' | 'down'
+  minDays?: number
+  minPct: number
+  periodDays?: number
+}
+
+export interface ScreenResult {
+  conditionId: string
+  direction: string
+  count: number
+  funds: FundTrendResult[]
+}
+
 export interface FundSearchItem {
   code: string
   name: string
@@ -103,6 +121,27 @@ export const fundApi = {
       params.codes = codes.join(',')
     }
     return request.get(`/funds/screen/${direction}`, { params })
+  },
+
+  // 筛选基金（N天内累计涨跌幅）
+  screenPeriod(
+    direction: 'up' | 'down',
+    periodDays: number = 7,
+    minPct: number = 0.03,
+    codes?: string[]
+  ): Promise<{
+    direction: string
+    period_days: number
+    min_pct: number
+    count: number
+    funds: FundTrendResult[]
+  }> {
+    return request.post('/funds/screen/period', {
+      direction,
+      period_days: periodDays,
+      min_pct: minPct,
+      codes: codes && codes.length > 0 ? codes : undefined
+    })
   },
 
   // 对比基金

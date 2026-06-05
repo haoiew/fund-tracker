@@ -397,6 +397,54 @@ class FundService:
         self.cache.set(cache_key, result, settings.SEARCH_CACHE_TTL)
         return result
 
+    def calculate_period_change(self, hist_data: pd.DataFrame, period_days: int) -> float:
+        if hist_data.empty or len(hist_data) < 2:
+            return 0.0
+        recent = hist_data.tail(period_days + 1)
+        if len(recent) < 2:
+            return 0.0
+        changes = recent['pct_change'].dropna().values
+        if len(changes) == 0:
+            return 0.0
+        total_chg = np.prod([1 + r for r in changes]) - 1
+        return total_chg
+
+    async def screen_period(self, codes: Optional[List[str]] = None, direction: str = 'up',
+                           period_days: int = 7, min_pct: float = 0.03,
+                           batch_size: int = 3, delay_between_batches: float = 1.0) -> List[Dict]:
+        if codes is None:
+            codes = self._fund_list
+        results = []
+        for i in range(0, len(codes), batch_size):
+            batch = codes[i:i + batch_size]
+            for code in batch:
+                try:
+                    hist = self.get_historical_nav(code, 365)
+                    if hist.empty:
+                        continue
+                    total_chg = self.calculate_period_change(hist, period_days)
+                    if direction == 'up' and total_chg >= min_pct:
+                        results.append({'code': code, 'name': self.get_fund_name(code),
+                                       'days': period_days, 'pct': round(total_chg * 100, 2)})
+                    elif direction == 'down' and total_chg <= -min_pct:
+                        results.append({'code': code, 'name': self.get_fund_name(code),
+                                       'days': period_days, 'pct': round(total_chg * 100, 2)})
+                except Exception:
+                    pass
+            if i + batch_size < len(codes):
+                await asyncio.sleep(delay_between_batches)
+        return sorted(results, key=lambda x: abs(x['pct']), reverse=True)
+
+    async def get_period_screen_result(self, direction: str = 'up', period_days: int = 7, min_pct: float = 0.03) -> Dict:
+        cache_key = f"period:{direction}:{period_days}:{min_pct}"
+        cached = self.cache.get(cache_key)
+        if cached:
+            return cached
+        results = await self.screen_period(direction=direction, period_days=period_days, min_pct=min_pct)
+        result = {'direction': direction, 'period_days': period_days, 'min_pct': min_pct, 'count': len(results), 'funds': results}
+        self.cache.set(cache_key, result, settings.SEARCH_CACHE_TTL)
+        return result
+
     def search_funds(self, keyword: str, limit: int = 10) -> List[Dict]:
         cache_key = f"search:{keyword}:{limit}"
         cached = self.cache.get(cache_key)

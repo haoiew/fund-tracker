@@ -65,7 +65,7 @@
       
       <el-table-column prop="code" label="基金代码" width="120" />
       <el-table-column prop="name" label="基金名称" min-width="200" show-overflow-tooltip />
-      <el-table-column prop="days" label="连续天数" width="100" sortable>
+      <el-table-column prop="days" :label="screenType === 'period' ? '统计天数' : '连续天数'" width="100" sortable>
         <template #default="{ row }">
           <el-tag :type="direction === 'up' ? 'danger' : 'success'" size="small" effect="dark">
             {{ row.days }}天
@@ -101,12 +101,13 @@ import { ref, reactive, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
-import { fundApi, type FundTrendResult } from '@/api/fund'
+import { fundApi, type FundTrendResult, type ScreenType } from '@/api/fund'
 
 interface Props {
   data: FundTrendResult[]
   loading: boolean
   direction: 'up' | 'down'
+  screenType?: ScreenType
 }
 
 const props = defineProps<Props>()

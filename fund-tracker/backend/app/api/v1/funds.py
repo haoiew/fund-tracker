@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import asyncio
 
 from app.schemas.fund import (
-    FundRealtimeData, FundSearchRequest, FundCompareRequest, FundCompareMultiRequest
+    FundRealtimeData, FundSearchRequest, FundCompareRequest, FundCompareMultiRequest, PeriodScreenRequest
 )
 from app.schemas.common import ResponseModel
 from app.schemas.portfolio import _validate_fund_code_value
@@ -93,6 +93,22 @@ async def screen_funds_by_direction(direction: str, min_days: int = Query(2), mi
     code_list = codes.split(',') if codes else None
     results = await get_fund_service().screen_funds(code_list, direction, min_days, min_pct)
     return ResponseModel(data={"direction": direction, "min_days": min_days, "min_pct": min_pct, "count": len(results), "funds": results})
+
+
+@router.post("/screen/period", response_model=ResponseModel[dict])
+async def screen_funds_period(request: PeriodScreenRequest):
+    if request.direction not in ['up', 'down']:
+        raise HTTPException(status_code=400, detail="direction must be 'up' or 'down'")
+    results = await get_fund_service().screen_period(
+        request.codes, request.direction, request.period_days, request.min_pct
+    )
+    return ResponseModel(data={
+        "direction": request.direction,
+        "period_days": request.period_days,
+        "min_pct": request.min_pct,
+        "count": len(results),
+        "funds": results
+    })
 
 
 @router.post("/compare", response_model=ResponseModel[dict])
