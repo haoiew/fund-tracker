@@ -212,7 +212,7 @@ const conditions = ref<ConditionItem[]>([
 
 const results = ref<ResultItem[]>([])
 const loading = ref(false)
-const includeRealtime = ref(false)
+const includeRealtime = ref(true)
 const chartVisible = ref(false)
 const selectedFund = ref<FundTrendResult | null>(null)
 

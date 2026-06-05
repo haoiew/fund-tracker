@@ -238,84 +238,138 @@
     <el-dialog
       v-model="showImportDialog"
       title="导入持仓数据"
-      width="700px"
+      width="750px"
       destroy-on-close
     >
-      <div class="import-dialog-content">
-        <el-upload
-          class="import-uploader"
-          drag
-          action="#"
-          :auto-upload="false"
-          :on-change="handleImportFileChange"
-          :limit="1"
-          accept=".json"
-        >
-          <el-icon class="el-icon--upload"><Upload /></el-icon>
-          <div class="el-upload__text">
-            拖拽文件到此处或 <em>点击上传</em>
+      <el-tabs v-model="importTab">
+        <el-tab-pane label="文件导入" name="file">
+          <div class="import-dialog-content">
+            <el-upload
+              class="import-uploader"
+              drag
+              action="#"
+              :auto-upload="false"
+              :on-change="handleImportFileChange"
+              :limit="1"
+              accept=".json"
+            >
+              <el-icon class="el-icon--upload"><Upload /></el-icon>
+              <div class="el-upload__text">
+                拖拽文件到此处或 <em>点击上传</em>
+              </div>
+              <template #tip>
+                <div class="el-upload__tip">
+                  支持导入 JSON 格式的持仓数据文件
+                </div>
+              </template>
+            </el-upload>
           </div>
-          <template #tip>
-            <div class="el-upload__tip">
-              支持导入 JSON 格式的持仓数据文件
+        </el-tab-pane>
+
+        <el-tab-pane label="AI识别导入" name="ai">
+          <div class="ai-import-content">
+            <el-collapse v-model="aiConfigCollapse">
+              <el-collapse-item title="AI模型配置" name="config">
+                <el-form :model="aiConfig" label-width="90px" size="small">
+                  <el-form-item label="模型">
+                    <el-select v-model="aiConfig.model" style="width: 100%">
+                      <el-option label="mimo-v2-pro" value="mimo-v2-pro" />
+                      <el-option label="mimo-v2-flash" value="mimo-v2-flash" />
+                      <el-option label="gpt-4o" value="gpt-4o" />
+                      <el-option label="gpt-4o-mini" value="gpt-4o-mini" />
+                      <el-option label="gpt-5" value="gpt-5" />
+                      <el-option label="gpt-5-mini" value="gpt-5-mini" />
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="Base URL">
+                    <el-input v-model="aiConfig.baseUrl" placeholder="https://api.example.com/v1" />
+                  </el-form-item>
+                  <el-form-item label="API Key">
+                    <el-input v-model="aiConfig.apiKey" type="password" show-password placeholder="sk-..." />
+                  </el-form-item>
+                </el-form>
+              </el-collapse-item>
+            </el-collapse>
+
+            <div class="ai-input-section">
+              <div class="ai-input-tip">
+                <el-icon><InfoFilled /></el-icon>
+                <span>粘贴持仓截图的文字描述，或直接粘贴持仓列表文本，AI将自动识别并提取基金名称和市值</span>
+              </div>
+              <el-input
+                v-model="aiInputText"
+                type="textarea"
+                :rows="8"
+                placeholder="例如：&#10;南方香港优选股票  927.11元&#10;易方达蓝筹精选  1523.45元&#10;...&#10;&#10;或粘贴截图OCR识别后的文本"
+              />
+              <el-button
+                type="primary"
+                style="margin-top: 12px; width: 100%"
+                :loading="aiRecognizing"
+                :disabled="!aiInputText.trim() || !aiConfig.baseUrl || !aiConfig.apiKey"
+                @click="handleAiRecognize"
+              >
+                <el-icon><MagicStick /></el-icon>
+                AI识别
+              </el-button>
             </div>
-          </template>
-        </el-upload>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
 
-        <div v-if="importStats.total_value > 0" class="import-stats">
-          <el-descriptions :column="3" border size="small">
-            <el-descriptions-item label="总金额">¥{{ importStats.total_value?.toFixed(2) }}</el-descriptions-item>
-            <el-descriptions-item label="总收益">
-              <span :class="importStats.total_holding_return >= 0 ? 'text-success' : 'text-danger'">
-                {{ importStats.total_holding_return >= 0 ? '+' : '' }}¥{{ importStats.total_holding_return?.toFixed(2) }}
+      <div v-if="importStats.total_value > 0" class="import-stats">
+        <el-descriptions :column="3" border size="small">
+          <el-descriptions-item label="总金额">¥{{ importStats.total_value?.toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="总收益">
+            <span :class="importStats.total_holding_return >= 0 ? 'text-success' : 'text-danger'">
+              {{ importStats.total_holding_return >= 0 ? '+' : '' }}¥{{ importStats.total_holding_return?.toFixed(2) }}
+            </span>
+          </el-descriptions-item>
+          <el-descriptions-item label="基金数量">{{ importStats.holdings_count }} 只</el-descriptions-item>
+        </el-descriptions>
+      </div>
+
+      <div v-if="importLoading" class="import-progress-section">
+        <div class="progress-header">
+          <span>导入进度</span>
+          <span class="progress-text">{{ importProgress.current }}/{{ importProgress.total }} ({{ importProgress.percentage }}%)</span>
+        </div>
+        <el-progress :percentage="importProgress.percentage" :show-text="false" status="success" />
+        <div class="progress-status">
+          <span v-if="importProgress.percentage < 30">正在查询基金代码...</span>
+          <span v-else-if="importProgress.percentage < 100">正在添加持仓...</span>
+          <span v-else>导入完成！</span>
+        </div>
+      </div>
+
+      <div v-if="importPreview.length > 0 && !importLoading" class="import-preview">
+        <div class="preview-header">
+          <span>预览数据 ({{ importPreview.length }} 条)</span>
+          <el-tag type="success">待导入</el-tag>
+        </div>
+        <el-table :data="importPreview" size="small" border height="300">
+          <el-table-column type="index" label="序号" width="60" />
+          <el-table-column prop="fund_name" label="基金名称" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="market_value" label="市值" width="110" align="right">
+            <template #default="{ row }">
+              ¥{{ row.market_value?.toFixed(2) || '--' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="holding_return" label="持有收益" width="110" align="right">
+            <template #default="{ row }">
+              <span :class="row.holding_return >= 0 ? 'text-success' : 'text-danger'">
+                {{ row.holding_return >= 0 ? '+' : '' }}¥{{ row.holding_return?.toFixed(2) || '--' }}
               </span>
-            </el-descriptions-item>
-            <el-descriptions-item label="基金数量">{{ importStats.holdings_count }} 只</el-descriptions-item>
-          </el-descriptions>
-        </div>
-
-        <div v-if="importLoading" class="import-progress-section">
-          <div class="progress-header">
-            <span>导入进度</span>
-            <span class="progress-text">{{ importProgress.current }}/{{ importProgress.total }} ({{ importProgress.percentage }}%)</span>
-          </div>
-          <el-progress :percentage="importProgress.percentage" :show-text="false" status="success" />
-          <div class="progress-status">
-            <span v-if="importProgress.percentage < 30">正在查询基金代码...</span>
-            <span v-else-if="importProgress.percentage < 100">正在添加持仓...</span>
-            <span v-else>导入完成！</span>
-          </div>
-        </div>
-
-        <div v-if="importPreview.length > 0 && !importLoading" class="import-preview">
-          <div class="preview-header">
-            <span>预览数据 ({{ importPreview.length }} 条)</span>
-            <el-tag type="success">待导入</el-tag>
-          </div>
-          <el-table :data="importPreview" size="small" border height="300">
-            <el-table-column type="index" label="序号" width="60" />
-            <el-table-column prop="fund_name" label="基金名称" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="market_value" label="市值" width="110" align="right">
-              <template #default="{ row }">
-                ¥{{ row.market_value?.toFixed(2) || '--' }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="holding_return" label="持有收益" width="110" align="right">
-              <template #default="{ row }">
-                <span :class="row.holding_return >= 0 ? 'text-success' : 'text-danger'">
-                  {{ row.holding_return >= 0 ? '+' : '' }}¥{{ row.holding_return?.toFixed(2) || '--' }}
-                </span>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
 
       <template #footer>
         <el-button @click="showImportDialog = false" :disabled="importLoading">取消</el-button>
-        <el-button 
-          type="primary" 
-          :disabled="importPreview.length === 0 || importLoading" 
+        <el-button
+          type="primary"
+          :disabled="importPreview.length === 0 || importLoading"
           :loading="importLoading"
           @click="confirmImport"
         >
@@ -332,7 +386,7 @@ defineOptions({
 })
 
 import { ref, reactive, onMounted } from 'vue'
-import { Plus, Refresh, Wallet, TrendCharts, TrendCharts as Percentage, Delete, Upload, Loading } from '@element-plus/icons-vue'
+import { Plus, Refresh, Wallet, TrendCharts, TrendCharts as Percentage, Delete, Upload, Loading, InfoFilled, MagicStick } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePortfolioStore } from '@/stores/portfolioStore'
 import { useFundStore } from '@/stores/fundStore'
@@ -358,6 +412,7 @@ const selectedFund = ref<FundSearchItem | null>(null)
 const selectedItems = ref<PortfolioItem[]>([])
 
 const showImportDialog = ref(false)
+const importTab = ref('ai')
 const importPreview = ref<any[]>([])
 const importFile = ref<File | null>(null)
 const importStats = ref({
@@ -365,6 +420,16 @@ const importStats = ref({
   total_holding_return: 0,
   holdings_count: 0
 })
+
+// AI识别相关
+const aiConfigCollapse = ref<string[]>([])
+const aiConfig = reactive({
+  model: 'mimo-v2-pro',
+  baseUrl: localStorage.getItem('ai_base_url') || '',
+  apiKey: localStorage.getItem('ai_api_key') || ''
+})
+const aiInputText = ref('')
+const aiRecognizing = ref(false)
 
 const form = reactive({
   fund_code: '',
@@ -598,6 +663,80 @@ const resetForm = () => {
 onMounted(() => {
   console.log('[PortfolioView] 页面已挂载，数据由 DataManager 统一管理')
 })
+
+const handleAiRecognize = async () => {
+  if (!aiInputText.value.trim()) {
+    ElMessage.warning('请输入或粘贴持仓文本')
+    return
+  }
+  if (!aiConfig.baseUrl || !aiConfig.apiKey) {
+    ElMessage.warning('请先配置 AI 模型的 Base URL 和 API Key')
+    return
+  }
+
+  // 保存配置到 localStorage
+  localStorage.setItem('ai_base_url', aiConfig.baseUrl)
+  localStorage.setItem('ai_api_key', aiConfig.apiKey)
+
+  aiRecognizing.value = true
+  try {
+    const prompt = `请从以下文本中提取基金持仓信息，返回严格的JSON格式，不要包含任何其他文字。
+JSON结构要求：
+{
+  "holdings": [
+    {"fund_name": "基金名称", "market_value": 市值数字, "holding_return": 收益数字}
+  ]
+}
+如果某个字段无法识别，holding_return 设为 0。
+
+文本内容：
+${aiInputText.value}`
+
+    const response = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${aiConfig.apiKey}`
+      },
+      body: JSON.stringify({
+        model: aiConfig.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`API请求失败: ${response.status}`)
+    }
+
+    const result = await response.json()
+    const content = result.choices?.[0]?.message?.content || ''
+
+    // 提取JSON部分
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      throw new Error('AI返回内容中未找到有效的JSON')
+    }
+
+    const data = JSON.parse(jsonMatch[0])
+    if (data.holdings && Array.isArray(data.holdings)) {
+      importPreview.value = data.holdings
+      importStats.value = {
+        total_value: data.holdings.reduce((sum: number, h: any) => sum + (h.market_value || 0), 0),
+        total_holding_return: data.holdings.reduce((sum: number, h: any) => sum + (h.holding_return || 0), 0),
+        holdings_count: data.holdings.length
+      }
+      ElMessage.success(`AI识别出 ${data.holdings.length} 条持仓数据`)
+    } else {
+      throw new Error('AI返回的JSON格式不正确，缺少 holdings 数组')
+    }
+  } catch (error: any) {
+    console.error('AI识别失败:', error)
+    ElMessage.error('AI识别失败: ' + (error.message || '未知错误'))
+  } finally {
+    aiRecognizing.value = false
+  }
+}
 
 const handleImportFileChange = (uploadFile: UploadFile) => {
   const file = uploadFile.raw
@@ -936,6 +1075,31 @@ const completeAllPending = async () => {
     }
   }
 
+  .ai-import-content {
+    .ai-input-section {
+      margin-top: 16px;
+
+      .ai-input-tip {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 12px;
+        padding: 10px 12px;
+        background: rgba(64, 158, 255, 0.06);
+        border-radius: 6px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+
+        .el-icon {
+          color: var(--primary-color);
+          margin-top: 2px;
+          flex-shrink: 0;
+        }
+      }
+    }
+  }
+
   .import-dialog-content {
     .import-uploader {
       margin-bottom: 20px;
@@ -949,53 +1113,54 @@ const completeAllPending = async () => {
         height: 180px;
       }
     }
+  }
 
-    .import-stats {
-      margin-bottom: 20px;
-      padding: 16px;
-      background: var(--bg-page);
-      border-radius: var(--radius-base);
+  .import-stats {
+    margin-top: 16px;
+    margin-bottom: 16px;
+    padding: 16px;
+    background: var(--bg-page);
+    border-radius: var(--radius-base);
 
-      :deep(.el-descriptions__label) {
-        font-weight: 500;
+    :deep(.el-descriptions__label) {
+      font-weight: 500;
+    }
+  }
+
+  .import-preview {
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+  }
+
+  .import-progress-section {
+    margin: 16px 0;
+    padding: 20px;
+    background: var(--bg-page);
+    border-radius: var(--radius-base);
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      font-weight: 500;
+
+      .progress-text {
+        color: var(--primary-color);
+        font-weight: 600;
       }
     }
 
-    .import-preview {
-      .preview-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-        font-weight: 500;
-      }
-    }
-
-    .import-progress-section {
-      margin: 20px 0;
-      padding: 20px;
-      background: var(--bg-page);
-      border-radius: var(--radius-base);
-
-      .progress-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-        font-weight: 500;
-
-        .progress-text {
-          color: var(--primary-color);
-          font-weight: 600;
-        }
-      }
-
-      .progress-status {
-        margin-top: 12px;
-        text-align: center;
-        color: var(--text-secondary);
-        font-size: 14px;
-      }
+    .progress-status {
+      margin-top: 12px;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 14px;
     }
   }
 }
