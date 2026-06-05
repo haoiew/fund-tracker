@@ -42,7 +42,7 @@
         <!-- 数据设置 -->
         <div class="settings-section">
           <h3 class="section-title">{{ $t('settings.data') }}</h3>
-          
+
           <el-form-item :label="$t('settings.apiUrl')">
             <el-input v-model="settings.apiUrl" placeholder="http://localhost:8001/api/v1" />
           </el-form-item>
@@ -54,6 +54,32 @@
           <el-form-item :label="$t('settings.refreshInterval')" v-if="settings.autoRefresh">
             <el-slider v-model="settings.refreshInterval" :min="10" :max="300" :step="10" show-stops />
             <span class="slider-value">{{ settings.refreshInterval }}{{ $t('common.second') }}</span>
+          </el-form-item>
+        </div>
+
+        <!-- AI 模型设置 -->
+        <div class="settings-section">
+          <h3 class="section-title">AI 模型配置</h3>
+
+          <el-form-item label="模型名称">
+            <el-input v-model="settings.aiModel" placeholder="例如 gpt-4o、mimo-v2-pro" />
+          </el-form-item>
+
+          <el-form-item label="Base URL">
+            <el-input v-model="settings.aiBaseUrl" placeholder="https://api.example.com/v1" />
+          </el-form-item>
+
+          <el-form-item label="API Key">
+            <el-input v-model="settings.aiApiKey" type="password" show-password placeholder="sk-..." />
+          </el-form-item>
+
+          <el-form-item label="识别提示词">
+            <el-input
+              v-model="settings.aiPrompt"
+              type="textarea"
+              :rows="6"
+              placeholder="用于识别持仓截图的提示词"
+            />
           </el-form-item>
         </div>
 
@@ -88,12 +114,25 @@ import { useThemeStore, type ThemeType } from '@/stores/themeStore'
 const { locale, t } = useI18n()
 const themeStore = useThemeStore()
 
+const DEFAULT_AI_PROMPT = `请从这张持仓截图中提取基金持仓信息，返回严格的JSON格式，不要包含任何其他文字。
+JSON结构要求：
+{
+  "holdings": [
+    {"fund_name": "基金名称", "market_value": 市值数字, "holding_return": 收益数字}
+  ]
+}
+如果某个字段无法识别，holding_return 设为 0。market_value 是市值或持有金额。`
+
 const settings = reactive({
   language: 'zh-CN',
   apiUrl: 'http://localhost:8001/api/v1',
   autoRefresh: false,
   refreshInterval: 60,
-  colorMode: 'red-up-green-down'
+  colorMode: 'red-up-green-down',
+  aiModel: '',
+  aiBaseUrl: '',
+  aiApiKey: '',
+  aiPrompt: DEFAULT_AI_PROMPT
 })
 
 const changeLanguage = (lang: string) => {
@@ -114,6 +153,11 @@ const handleColorModeChange = (colorMode: string) => {
 
 const saveSettings = () => {
   localStorage.setItem('fund-tracker-settings', JSON.stringify(settings))
+  // 兼容旧的独立键
+  localStorage.setItem('ai_model', settings.aiModel)
+  localStorage.setItem('ai_base_url', settings.aiBaseUrl)
+  localStorage.setItem('ai_api_key', settings.aiApiKey)
+  localStorage.setItem('ai_prompt', settings.aiPrompt)
   ElMessage.success(t('settings.saved'))
 }
 
@@ -123,6 +167,10 @@ const resetSettings = () => {
   settings.autoRefresh = false
   settings.refreshInterval = 60
   settings.colorMode = 'red-up-green-down'
+  settings.aiModel = ''
+  settings.aiBaseUrl = ''
+  settings.aiApiKey = ''
+  settings.aiPrompt = DEFAULT_AI_PROMPT
   themeStore.setTheme('light')
   changeLanguage('zh-CN')
   localStorage.setItem('fund-tracker-color-mode', 'red-up-green-down')
@@ -139,6 +187,16 @@ onMounted(() => {
     settings.autoRefresh = parsed.autoRefresh ?? false
     settings.refreshInterval = parsed.refreshInterval ?? 60
     settings.colorMode = parsed.colorMode ?? 'red-up-green-down'
+    settings.aiModel = parsed.aiModel ?? localStorage.getItem('ai_model') ?? ''
+    settings.aiBaseUrl = parsed.aiBaseUrl ?? localStorage.getItem('ai_base_url') ?? ''
+    settings.aiApiKey = parsed.aiApiKey ?? localStorage.getItem('ai_api_key') ?? ''
+    settings.aiPrompt = parsed.aiPrompt ?? localStorage.getItem('ai_prompt') ?? DEFAULT_AI_PROMPT
+  } else {
+    // 兼容旧的独立键
+    settings.aiModel = localStorage.getItem('ai_model') ?? ''
+    settings.aiBaseUrl = localStorage.getItem('ai_base_url') ?? ''
+    settings.aiApiKey = localStorage.getItem('ai_api_key') ?? ''
+    settings.aiPrompt = localStorage.getItem('ai_prompt') ?? DEFAULT_AI_PROMPT
   }
 
   // 加载语言设置

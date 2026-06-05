@@ -268,21 +268,13 @@
 
         <el-tab-pane label="AI识别导入" name="ai">
           <div class="ai-import-content">
-            <el-collapse v-model="aiConfigCollapse">
-              <el-collapse-item title="AI模型配置" name="config">
-                <el-form :model="aiConfig" label-width="90px" size="small">
-                  <el-form-item label="模型名称">
-                    <el-input v-model="aiConfig.model" placeholder="例如 gpt-4o、mimo-v2-pro" />
-                  </el-form-item>
-                  <el-form-item label="Base URL">
-                    <el-input v-model="aiConfig.baseUrl" placeholder="https://api.example.com/v1" />
-                  </el-form-item>
-                  <el-form-item label="API Key">
-                    <el-input v-model="aiConfig.apiKey" type="password" show-password placeholder="sk-..." />
-                  </el-form-item>
-                </el-form>
-              </el-collapse-item>
-            </el-collapse>
+            <div v-if="!aiConfigReady" class="ai-config-tip">
+              <el-alert type="warning" :closable="false" show-icon>
+                <template #title>
+                  请先在 <router-link to="/settings">设置页面</router-link> 配置 AI 模型信息
+                </template>
+              </el-alert>
+            </div>
 
             <div class="ai-input-section">
               <div class="ai-input-tip">
@@ -314,7 +306,7 @@
                 type="primary"
                 style="margin-top: 12px; width: 100%"
                 :loading="aiRecognizing"
-                :disabled="!aiImageBase64 || !aiConfig.baseUrl || !aiConfig.apiKey"
+                :disabled="!aiImageBase64 || !aiConfigReady"
                 @click="handleAiRecognize"
               >
                 <el-icon><MagicStick /></el-icon>
@@ -393,7 +385,7 @@ defineOptions({
   name: 'PortfolioView'
 })
 
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { Plus, Refresh, Wallet, TrendCharts, TrendCharts as Percentage, Delete, Upload, Loading, InfoFilled, MagicStick } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePortfolioStore } from '@/stores/portfolioStore'
@@ -430,15 +422,33 @@ const importStats = ref({
 })
 
 // AI识别相关
-const aiConfigCollapse = ref<string[]>([])
-const aiConfig = reactive({
-  model: localStorage.getItem('ai_model') || '',
-  baseUrl: localStorage.getItem('ai_base_url') || '',
-  apiKey: localStorage.getItem('ai_api_key') || ''
-})
 const aiImageBase64 = ref('')
 const aiImagePreview = ref('')
 const aiRecognizing = ref(false)
+
+const loadAiConfig = () => {
+  const saved = localStorage.getItem('fund-tracker-settings')
+  if (saved) {
+    const parsed = JSON.parse(saved)
+    return {
+      model: parsed.aiModel || localStorage.getItem('ai_model') || '',
+      baseUrl: parsed.aiBaseUrl || localStorage.getItem('ai_base_url') || '',
+      apiKey: parsed.aiApiKey || localStorage.getItem('ai_api_key') || '',
+      prompt: parsed.aiPrompt || localStorage.getItem('ai_prompt') || ''
+    }
+  }
+  return {
+    model: localStorage.getItem('ai_model') || '',
+    baseUrl: localStorage.getItem('ai_base_url') || '',
+    apiKey: localStorage.getItem('ai_api_key') || '',
+    prompt: localStorage.getItem('ai_prompt') || ''
+  }
+}
+
+const aiConfigReady = computed(() => {
+  const config = loadAiConfig()
+  return !!(config.model && config.baseUrl && config.apiKey)
+})
 
 const form = reactive({
   fund_code: '',
@@ -696,39 +706,25 @@ const handleAiRecognize = async () => {
     ElMessage.warning('请先上传持仓截图')
     return
   }
-  if (!aiConfig.baseUrl || !aiConfig.apiKey) {
-    ElMessage.warning('请先配置 AI 模型的 Base URL 和 API Key')
-    return
-  }
-  if (!aiConfig.model) {
-    ElMessage.warning('请先填写模型名称')
-    return
-  }
 
-  // 保存配置到 localStorage
-  localStorage.setItem('ai_model', aiConfig.model)
-  localStorage.setItem('ai_base_url', aiConfig.baseUrl)
-  localStorage.setItem('ai_api_key', aiConfig.apiKey)
+  const config = loadAiConfig()
+  if (!config.model || !config.baseUrl || !config.apiKey) {
+    ElMessage.warning('请先在设置页面配置 AI 模型信息')
+    return
+  }
 
   aiRecognizing.value = true
   try {
-    const prompt = `请从这张持仓截图中提取基金持仓信息，返回严格的JSON格式，不要包含任何其他文字。
-JSON结构要求：
-{
-  "holdings": [
-    {"fund_name": "基金名称", "market_value": 市值数字, "holding_return": 收益数字}
-  ]
-}
-如果某个字段无法识别，holding_return 设为 0。market_value 是市值或持有金额。`
+    const prompt = config.prompt || '请从这张持仓截图中提取基金持仓信息，返回严格的JSON格式，不要包含任何其他文字。JSON结构要求：{"holdings": [{"fund_name": "基金名称", "market_value": 市值数字, "holding_return": 收益数字}]}。如果某个字段无法识别，holding_return 设为 0。market_value 是市值或持有金额。'
 
-    const response = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${aiConfig.apiKey}`
+        'Authorization': `Bearer ${config.apiKey}`
       },
       body: JSON.stringify({
-        model: aiConfig.model,
+        model: config.model,
         messages: [{
           role: 'user',
           content: [
@@ -1111,9 +1107,16 @@ const completeAllPending = async () => {
   }
 
   .ai-import-content {
-    .ai-input-section {
-      margin-top: 16px;
+    .ai-config-tip {
+      margin-bottom: 16px;
 
+      a {
+        color: var(--primary-color);
+        text-decoration: underline;
+      }
+    }
+
+    .ai-input-section {
       .ai-input-tip {
         display: flex;
         align-items: flex-start;
