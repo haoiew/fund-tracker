@@ -258,10 +258,10 @@ const renderChart = (code: string) => {
 const loadHistoryData = async (code: string, days: number = 7) => {
   // 设置该基金的加载状态
   loadingHistoryMap[code] = true
-  
+
   try {
-    // 获取3个月历史数据
-    const result = await fundApi.getHistory(code, '3M')
+    const range = days <= 7 ? '1W' : days <= 30 ? '1M' : '3M'
+    const result = await fundApi.getHistory(code, range)
     console.log(`[ResultTable] 基金 ${code} 历史数据API返回:`, result)
     
     // 处理API返回的数据结构: { data: { dates, values, changes }, source, updating }

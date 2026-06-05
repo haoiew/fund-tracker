@@ -271,15 +271,8 @@
             <el-collapse v-model="aiConfigCollapse">
               <el-collapse-item title="AI模型配置" name="config">
                 <el-form :model="aiConfig" label-width="90px" size="small">
-                  <el-form-item label="模型">
-                    <el-select v-model="aiConfig.model" style="width: 100%">
-                      <el-option label="mimo-v2-pro" value="mimo-v2-pro" />
-                      <el-option label="mimo-v2-flash" value="mimo-v2-flash" />
-                      <el-option label="gpt-4o" value="gpt-4o" />
-                      <el-option label="gpt-4o-mini" value="gpt-4o-mini" />
-                      <el-option label="gpt-5" value="gpt-5" />
-                      <el-option label="gpt-5-mini" value="gpt-5-mini" />
-                    </el-select>
+                  <el-form-item label="模型名称">
+                    <el-input v-model="aiConfig.model" placeholder="例如 gpt-4o、mimo-v2-pro" />
                   </el-form-item>
                   <el-form-item label="Base URL">
                     <el-input v-model="aiConfig.baseUrl" placeholder="https://api.example.com/v1" />
@@ -294,19 +287,34 @@
             <div class="ai-input-section">
               <div class="ai-input-tip">
                 <el-icon><InfoFilled /></el-icon>
-                <span>粘贴持仓截图的文字描述，或直接粘贴持仓列表文本，AI将自动识别并提取基金名称和市值</span>
+                <span>上传持仓截图，AI将自动识别并提取基金名称和市值</span>
               </div>
-              <el-input
-                v-model="aiInputText"
-                type="textarea"
-                :rows="8"
-                placeholder="例如：&#10;南方香港优选股票  927.11元&#10;易方达蓝筹精选  1523.45元&#10;...&#10;&#10;或粘贴截图OCR识别后的文本"
-              />
+              <el-upload
+                class="ai-image-uploader"
+                drag
+                action="#"
+                :auto-upload="false"
+                :on-change="handleAiImageChange"
+                :limit="1"
+                accept="image/*"
+              >
+                <el-icon class="el-icon--upload"><Upload /></el-icon>
+                <div class="el-upload__text">
+                  拖拽图片到此处或 <em>点击上传</em>
+                </div>
+                <template #tip>
+                  <div class="el-upload__tip">支持 PNG、JPG 等图片格式</div>
+                </template>
+              </el-upload>
+              <div v-if="aiImagePreview" class="ai-image-preview">
+                <img :src="aiImagePreview" alt="预览" />
+                <el-button link type="danger" size="small" @click="clearAiImage">移除图片</el-button>
+              </div>
               <el-button
                 type="primary"
                 style="margin-top: 12px; width: 100%"
                 :loading="aiRecognizing"
-                :disabled="!aiInputText.trim() || !aiConfig.baseUrl || !aiConfig.apiKey"
+                :disabled="!aiImageBase64 || !aiConfig.baseUrl || !aiConfig.apiKey"
                 @click="handleAiRecognize"
               >
                 <el-icon><MagicStick /></el-icon>
@@ -424,11 +432,12 @@ const importStats = ref({
 // AI识别相关
 const aiConfigCollapse = ref<string[]>([])
 const aiConfig = reactive({
-  model: 'mimo-v2-pro',
+  model: localStorage.getItem('ai_model') || '',
   baseUrl: localStorage.getItem('ai_base_url') || '',
   apiKey: localStorage.getItem('ai_api_key') || ''
 })
-const aiInputText = ref('')
+const aiImageBase64 = ref('')
+const aiImagePreview = ref('')
 const aiRecognizing = ref(false)
 
 const form = reactive({
@@ -664,33 +673,53 @@ onMounted(() => {
   console.log('[PortfolioView] 页面已挂载，数据由 DataManager 统一管理')
 })
 
+const handleAiImageChange = (uploadFile: UploadFile) => {
+  const file = uploadFile.raw
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const result = e.target?.result as string
+    aiImageBase64.value = result
+    aiImagePreview.value = result
+  }
+  reader.readAsDataURL(file)
+}
+
+const clearAiImage = () => {
+  aiImageBase64.value = ''
+  aiImagePreview.value = ''
+}
+
 const handleAiRecognize = async () => {
-  if (!aiInputText.value.trim()) {
-    ElMessage.warning('请输入或粘贴持仓文本')
+  if (!aiImageBase64.value) {
+    ElMessage.warning('请先上传持仓截图')
     return
   }
   if (!aiConfig.baseUrl || !aiConfig.apiKey) {
     ElMessage.warning('请先配置 AI 模型的 Base URL 和 API Key')
     return
   }
+  if (!aiConfig.model) {
+    ElMessage.warning('请先填写模型名称')
+    return
+  }
 
   // 保存配置到 localStorage
+  localStorage.setItem('ai_model', aiConfig.model)
   localStorage.setItem('ai_base_url', aiConfig.baseUrl)
   localStorage.setItem('ai_api_key', aiConfig.apiKey)
 
   aiRecognizing.value = true
   try {
-    const prompt = `请从以下文本中提取基金持仓信息，返回严格的JSON格式，不要包含任何其他文字。
+    const prompt = `请从这张持仓截图中提取基金持仓信息，返回严格的JSON格式，不要包含任何其他文字。
 JSON结构要求：
 {
   "holdings": [
     {"fund_name": "基金名称", "market_value": 市值数字, "holding_return": 收益数字}
   ]
 }
-如果某个字段无法识别，holding_return 设为 0。
-
-文本内容：
-${aiInputText.value}`
+如果某个字段无法识别，holding_return 设为 0。market_value 是市值或持有金额。`
 
     const response = await fetch(`${aiConfig.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -700,7 +729,13 @@ ${aiInputText.value}`
       },
       body: JSON.stringify({
         model: aiConfig.model,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: aiImageBase64.value } }
+          ]
+        }],
         temperature: 0.1
       })
     })
@@ -1095,6 +1130,28 @@ const completeAllPending = async () => {
           color: var(--primary-color);
           margin-top: 2px;
           flex-shrink: 0;
+        }
+      }
+
+      .ai-image-uploader {
+        :deep(.el-upload) {
+          width: 100%;
+        }
+        :deep(.el-upload-dragger) {
+          width: 100%;
+          height: 140px;
+        }
+      }
+
+      .ai-image-preview {
+        margin-top: 12px;
+        text-align: center;
+
+        img {
+          max-width: 100%;
+          max-height: 200px;
+          border-radius: 6px;
+          border: 1px solid var(--border-light);
         }
       }
     }
