@@ -1,54 +1,57 @@
-// 明亮年轻风格配色 - 低饱和度
 :root {
-  // 主色调 - 柔和蓝
-  --primary-color: #3b82f6;
-  --primary-light: #60a5fa;
-  --primary-lighter: #93c5fd;
-  --primary-dark: #2563eb;
+  --primary-color: #2563eb;
+  --primary-light: #4f83ff;
+  --primary-lighter: #c7d7ff;
+  --primary-dark: #1d4ed8;
 
-  // 功能色 - 低饱和度
-  --success-color: #10b981;
-  --success-light: #d1fae5;
-  --warning-color: #f59e0b;
-  --warning-light: #fef3c7;
-  --danger-color: #ef4444;
-  --danger-light: #fee2e2;
-  --info-color: #64748b;
-  --info-light: #f1f5f9;
+  --success-color: #16a34a;
+  --success-light: rgba(22, 163, 74, 0.12);
+  --warning-color: #d97706;
+  --warning-light: rgba(217, 119, 6, 0.12);
+  --danger-color: #dc2626;
+  --danger-light: rgba(220, 38, 38, 0.12);
+  --info-color: #475569;
+  --info-light: rgba(71, 85, 105, 0.1);
 
-  // 文字颜色
-  --text-primary: #1e293b;
-  --text-regular: #475569;
+  --status-ready-color: #16a34a;
+  --status-ready-light: rgba(22, 163, 74, 0.12);
+  --status-warning-color: #d97706;
+  --status-warning-light: rgba(217, 119, 6, 0.12);
+  --status-error-color: #dc2626;
+  --status-error-light: rgba(220, 38, 38, 0.12);
+
+  --text-primary: #0f172a;
+  --text-regular: #334155;
   --text-secondary: #64748b;
   --text-placeholder: #94a3b8;
 
-  // 边框颜色
-  --border-base: #e2e8f0;
-  --border-light: #f1f5f9;
-  --border-lighter: #f8fafc;
+  --border-base: #d7dee8;
+  --border-light: #e8edf3;
+  --border-lighter: #f3f6fa;
 
-  // 背景色
-  --bg-page: #f8fafc;
+  --bg-page: #eef3f8;
   --bg-base: #ffffff;
-  --bg-sidebar: linear-gradient(180deg, #f0f9ff 0%, #f8fafc 100%);
   --bg-card: #ffffff;
-  --bg-hover: #f1f5f9;
+  --bg-hover: #f4f7fb;
+  --bg-sidebar: linear-gradient(180deg, #f9fbff 0%, #edf3fa 100%);
+  --bg-sidebar-active: rgba(37, 99, 235, 0.08);
+  --bg-app-shell: linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 18%), var(--bg-page);
+  --icon-surface: rgba(37, 99, 235, 0.08);
+  --icon-surface-primary: rgba(37, 99, 235, 0.1);
+  --icon-border-primary: rgba(37, 99, 235, 0.14);
 
-  // 阴影 - 柔和
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --shadow-light: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-base: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 10px 24px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 18px 36px rgba(15, 23, 42, 0.12);
+  --shadow-xl: 0 32px 64px rgba(15, 23, 42, 0.16);
 
-  // 圆角
   --radius-sm: 6px;
-  --radius-base: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-base: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
   --radius-full: 9999px;
 
-  // 间距
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
@@ -56,8 +59,8 @@
   --space-xl: 32px;
   --space-2xl: 48px;
 
-  // 字体
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-family: 'Aptos', 'Segoe UI Variable', 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'Cascadia Mono', 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-base: 14px;
@@ -66,79 +69,112 @@
   --font-size-xl: 20px;
   --font-size-2xl: 24px;
 
-  // 过渡
-  --transition-fast: 150ms ease;
-  --transition-base: 250ms ease;
-  --transition-slow: 350ms ease;
+  --transition-fast: 140ms ease;
+  --transition-base: 220ms ease;
+  --transition-slow: 320ms ease;
 }
 
-// 深色模式
 [data-theme='dark'] {
-  // 主色调 - 调整为更低饱和度的柔和蓝，减少突兀感
-  --primary-color: #5a7a96;
-  --primary-light: #6a8aa6;
-  --primary-lighter: #8aaac6;
-  --primary-dark: #4a6a86;
+  --primary-color: #7aa7ff;
+  --primary-light: #9ebeff;
+  --primary-lighter: #cedbff;
+  --primary-dark: #5f8df0;
 
-  // 功能色 - 调整为适合深色的低饱和度，避免蓝绿色
-  --success-color: #5a9a7a;
-  --success-light: rgba(90, 154, 122, 0.15);
-  --warning-color: #c9a45c;
-  --warning-light: rgba(201, 164, 92, 0.15);
-  --danger-color: #b86a6a;
-  --danger-light: rgba(184, 106, 106, 0.15);
-  --info-color: #7a9ab6;
-  --info-light: rgba(122, 154, 182, 0.15);
+  --success-color: #4ade80;
+  --success-light: rgba(74, 222, 128, 0.14);
+  --warning-color: #fbbf24;
+  --warning-light: rgba(251, 191, 36, 0.14);
+  --danger-color: #fb7185;
+  --danger-light: rgba(251, 113, 133, 0.14);
+  --info-color: #94a3b8;
+  --info-light: rgba(148, 163, 184, 0.14);
 
-  // 文字颜色 - 反转
-  --text-primary: #f1f5f9;
-  --text-regular: #cbd5e1;
+  --status-ready-color: #4ade80;
+  --status-ready-light: rgba(74, 222, 128, 0.14);
+  --status-warning-color: #fbbf24;
+  --status-warning-light: rgba(251, 191, 36, 0.14);
+  --status-error-color: #fb7185;
+  --status-error-light: rgba(251, 113, 133, 0.14);
+
+  --text-primary: #f8fafc;
+  --text-regular: #d7deea;
   --text-secondary: #94a3b8;
   --text-placeholder: #64748b;
 
-  // 边框颜色 - 深色系
-  --border-base: #334155;
-  --border-light: #475569;
-  --border-lighter: #64748b;
+  --border-base: #233047;
+  --border-light: #1a2436;
+  --border-lighter: #111827;
 
-  // 背景色 - 深色系
-  --bg-page: #0f172a;
-  --bg-base: #1e293b;
-  --bg-sidebar: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-  --bg-card: #1e293b;
-  --bg-hover: #334155;
+  --bg-page: #07111f;
+  --bg-base: #0f1728;
+  --bg-card: #101c30;
+  --bg-hover: #17233a;
+  --bg-sidebar: linear-gradient(180deg, #0e1727 0%, #09111d 100%);
+  --bg-sidebar-active: rgba(122, 167, 255, 0.12);
+  --bg-app-shell: var(--bg-page);
+  --icon-surface: rgba(122, 167, 255, 0.12);
+  --icon-surface-primary: rgba(122, 167, 255, 0.14);
+  --icon-border-primary: rgba(122, 167, 255, 0.22);
 
-  // 阴影 - 更深的阴影
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  --shadow-light: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-base: 0 2px 10px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 12px 28px rgba(0, 0, 0, 0.34);
+  --shadow-lg: 0 20px 44px rgba(0, 0, 0, 0.38);
+  --shadow-xl: 0 34px 72px rgba(0, 0, 0, 0.44);
 }
 
-// 动画关键帧
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-20px); }
-  to { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.72;
+  }
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-4px);
+  }
 }
 
-// 骨架屏动画
 @keyframes skeleton-loading {
-  0% { background-position: 100% 50%; }
-  100% { background-position: 0 50%; }
+  0% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0 50%;
+  }
 }

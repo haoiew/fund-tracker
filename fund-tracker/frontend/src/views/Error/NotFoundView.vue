@@ -1,33 +1,33 @@
 <template>
   <div class="not-found-view">
-    <div class="error-content">
-      <div class="error-illustration">
-        <div class="number">4</div>
-        <div class="planet">
-          <div class="planet-ring"></div>
-          <div class="planet-body"></div>
-        </div>
-        <div class="number">4</div>
+    <section class="error-panel surface-panel">
+      <div class="error-code">404</div>
+      <div class="error-copy">
+        <span class="workbench-eyebrow">Route unavailable</span>
+        <h1 class="error-title">{{ $t('error.notFound') }}</h1>
+        <p class="error-description">{{ $t('error.notFoundDesc') }}</p>
       </div>
-      <h1 class="error-title">{{ $t('error.notFound') }}</h1>
-      <p class="error-description">{{ $t('error.notFoundDesc') }}</p>
       <div class="error-actions">
-        <el-button type="primary" size="large" @click="goHome">
-          <el-icon><HomeFilled /></el-icon>
+        <el-button type="primary" @click="goHome">
+          <el-icon><House /></el-icon>
           {{ $t('error.backHome') }}
         </el-button>
-        <el-button size="large" @click="goBack">
+        <el-button @click="goBack">
           <el-icon><ArrowLeft /></el-icon>
           {{ $t('error.goBack') }}
         </el-button>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
+defineOptions({
+  name: 'NotFoundView'
+})
+
 import { useRouter } from 'vue-router'
-import { HomeFilled, ArrowLeft } from '@element-plus/icons-vue'
+import { House, ArrowLeft } from '@element-plus/icons-vue'
 
 const router = useRouter()
 
@@ -46,102 +46,78 @@ const goBack = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
+  padding: 40px 24px;
   background: var(--bg-page);
+}
 
-  .error-content {
-    text-align: center;
-    max-width: 600px;
+.error-panel {
+  width: min(720px, 100%);
+  padding: 34px;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 28px;
+  align-items: center;
+}
 
-    .error-illustration {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 20px;
-      margin-bottom: 40px;
+.error-code {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-base);
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(20, 184, 166, 0.08)),
+    var(--bg-base);
+  border: 1px solid var(--border-light);
+  color: var(--primary-color);
+  font-family: var(--font-mono);
+  font-size: 42px;
+  font-weight: 800;
+}
 
-      .number {
-        font-size: 120px;
-        font-weight: 700;
-        color: var(--primary-color);
-        line-height: 1;
-        animation: float 3s ease-in-out infinite;
+.error-copy {
+  min-width: 0;
+}
 
-        &:first-child {
-          animation-delay: 0s;
-        }
+.error-title {
+  margin-top: 12px;
+  color: var(--text-primary);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.15;
+}
 
-        &:last-child {
-          animation-delay: 0.5s;
-        }
-      }
+.error-description {
+  margin-top: 10px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+}
 
-      .planet {
-        position: relative;
-        width: 100px;
-        height: 100px;
-        animation: float 3s ease-in-out infinite;
-        animation-delay: 0.25s;
+.error-actions {
+  grid-column: 2;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 
-        .planet-body {
-          width: 80px;
-          height: 80px;
-          background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%);
-          border-radius: 50%;
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          box-shadow: 0 0 40px rgba(59, 130, 246, 0.3);
-        }
-
-        .planet-ring {
-          width: 120px;
-          height: 30px;
-          border: 3px solid var(--primary-lighter);
-          border-radius: 50%;
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%) rotate(-20deg);
-        }
-      }
-    }
-
-    .error-title {
-      font-size: 32px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: 16px;
-    }
-
-    .error-description {
-      font-size: 16px;
-      color: var(--text-secondary);
-      margin-bottom: 32px;
-      line-height: 1.6;
-    }
-
-    .error-actions {
-      display: flex;
-      gap: 16px;
-      justify-content: center;
-
-      .el-button {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-    }
+  .el-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 }
 
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0);
+@media (max-width: 720px) {
+  .error-panel {
+    grid-template-columns: 1fr;
+    padding: 24px;
   }
-  50% {
-    transform: translateY(-15px);
+
+  .error-actions {
+    grid-column: auto;
+  }
+
+  .error-code {
+    min-height: 110px;
   }
 }
 </style>

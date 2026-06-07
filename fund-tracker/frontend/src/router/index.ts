@@ -12,7 +12,7 @@ const routes: RouteRecordRaw[] = [
         path: 'home',
         name: 'Home',
         component: () => import('@/views/Home/HomeView.vue'),
-        meta: { title: '首页', icon: 'HomeFilled' }
+        meta: { title: '首页', icon: 'House' }
       },
       {
         path: 'screen',
@@ -30,7 +30,7 @@ const routes: RouteRecordRaw[] = [
         path: 'portfolio',
         name: 'Portfolio',
         component: () => import('@/views/Portfolio/PortfolioView.vue'),
-        meta: { title: '持仓管理', icon: 'WalletFilled' }
+        meta: { title: '持仓管理', icon: 'Wallet' }
       },
       {
         path: 'settings',
@@ -42,7 +42,7 @@ const routes: RouteRecordRaw[] = [
         path: 'about',
         name: 'About',
         component: () => import('@/views/About/AboutView.vue'),
-        meta: { title: '关于', icon: 'InfoFilled' }
+        meta: { title: '关于', icon: 'DataAnalysis' }
       }
     ]
   },

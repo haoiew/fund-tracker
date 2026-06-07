@@ -1,143 +1,159 @@
 <template>
-  <div class="screen-view">
-    <el-card shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span class="title">{{ $t('screen.title') }}</span>
-          <el-button type="primary" size="small" @click="addCondition">
-            <el-icon><Plus /></el-icon>
-            添加筛选
-          </el-button>
+  <div class="screen-view workbench-page">
+    <section class="page-toolbar">
+      <div class="page-toolbar__main">
+        <span class="page-toolbar__icon">
+          <el-icon><Filter /></el-icon>
+        </span>
+        <div class="page-toolbar__copy">
+          <h2 class="page-toolbar__title">条件筛选工作台</h2>
+          <p class="page-toolbar__meta">{{ conditions.length }} 组条件 · {{ includeRealtime ? '纳入实时估值' : '仅历史净值' }} · 并行查询</p>
         </div>
-      </template>
+      </div>
+      <div class="page-toolbar__actions">
+        <el-button type="primary" :icon="Plus" @click="addCondition">添加筛选</el-button>
+        <el-button :icon="Search" @click="handleScreenAll" :loading="loading">一键查询</el-button>
+      </div>
+    </section>
 
-      <!-- 筛选条件区域 -->
+    <section class="screen-builder workbench-panel surface-panel">
+      <div class="screen-builder-header">
+        <div>
+          <div class="workbench-panel__title">筛选条件</div>
+          <div class="workbench-panel__meta">用统一字段构建连续涨跌或区间累计条件</div>
+        </div>
+        <div class="screen-mode">
+          <span class="screen-mode__label">实时估值</span>
+          <el-tooltip content="开启后将今日实时估值纳入涨跌幅计算" placement="top">
+            <el-switch v-model="includeRealtime" active-text="纳入" inactive-text="关闭" />
+          </el-tooltip>
+        </div>
+      </div>
+
       <div class="screen-conditions">
-        <div class="condition-row">
+        <div class="condition-rule-list">
           <div
-            v-for="(condition, index) in conditions"
+            v-for="condition in conditions"
             :key="condition.id"
-            class="condition-box"
-            :class="condition.direction === 'up' ? 'up-box' : 'down-box'"
+            class="condition-rule"
+            :class="condition.direction === 'up' ? 'is-up' : 'is-down'"
           >
             <div class="condition-header">
-              <el-icon :class="condition.direction === 'up' ? 'up-icon' : 'down-icon'">
-                <component :is="condition.direction === 'up' ? ArrowUp : ArrowDown" />
-              </el-icon>
-              <span class="condition-title">{{ getConditionLabel(condition) }}</span>
+              <div class="condition-title">
+                <span class="direction-mark">
+                  <el-icon>
+                    <component :is="condition.direction === 'up' ? ArrowUp : ArrowDown" />
+                  </el-icon>
+                </span>
+                <div>
+                  <span>{{ getConditionLabel(condition) }}</span>
+                  <small>{{ condition.type === 'consecutive' ? `${condition.minDays} 天连续` : `${condition.periodDays} 天区间` }} · {{ condition.minPctDisplay }}%</small>
+                </div>
+              </div>
               <el-button
                 v-if="conditions.length > 1"
-                link
+                circle
                 size="small"
-                type="danger"
+                text
+                class="condition-remove"
                 @click="removeCondition(condition.id)"
               >
                 <el-icon><Close /></el-icon>
               </el-button>
             </div>
-            <div class="condition-body">
-              <el-form inline class="condition-form">
-                <el-form-item label="类型">
-                  <el-select v-model="condition.type" size="small" style="width: 110px">
-                    <el-option label="连续涨跌" value="consecutive" />
-                    <el-option label="N天内累计" value="period" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="方向">
-                  <el-radio-group v-model="condition.direction" size="small">
-                    <el-radio-button value="up">涨</el-radio-button>
-                    <el-radio-button value="down">跌</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
-                <template v-if="condition.type === 'consecutive'">
-                  <el-form-item label="最少天数">
-                    <el-input-number
-                      v-model="condition.minDays"
-                      :min="1"
-                      :max="30"
-                      size="small"
-                      controls-position="right"
-                      style="width: 80px"
-                    />
-                  </el-form-item>
-                </template>
-                <template v-else>
-                  <el-form-item label="统计天数">
-                    <el-input-number
-                      v-model="condition.periodDays"
-                      :min="1"
-                      :max="90"
-                      size="small"
-                      controls-position="right"
-                      style="width: 80px"
-                    />
-                  </el-form-item>
-                </template>
-                <el-form-item label="涨跌幅(%)">
-                  <el-input-number
-                    v-model="condition.minPctDisplay"
-                    :min="0.1"
-                    :max="50"
-                    :step="0.5"
-                    :precision="1"
-                    size="small"
-                    controls-position="right"
-                    style="width: 80px"
-                  />
-                </el-form-item>
-              </el-form>
+
+            <div class="condition-controls">
+              <label class="control-field">
+                <span class="control-label">类型</span>
+                <el-select v-model="condition.type" class="full-width-control">
+                  <el-option label="连续涨跌" value="consecutive" />
+                  <el-option label="N天内累计" value="period" />
+                </el-select>
+              </label>
+
+              <label class="control-field">
+                <span class="control-label">方向</span>
+                <el-radio-group v-model="condition.direction" class="direction-segment">
+                  <el-radio-button value="up">上涨</el-radio-button>
+                  <el-radio-button value="down">下跌</el-radio-button>
+                </el-radio-group>
+              </label>
+
+              <label class="control-field" v-if="condition.type === 'consecutive'">
+                <span class="control-label">最少天数</span>
+                <el-input-number
+                  v-model="condition.minDays"
+                  :min="1"
+                  :max="30"
+                  controls-position="right"
+                  class="full-width-control"
+                />
+              </label>
+
+              <label class="control-field" v-else>
+                <span class="control-label">统计天数</span>
+                <el-input-number
+                  v-model="condition.periodDays"
+                  :min="1"
+                  :max="90"
+                  controls-position="right"
+                  class="full-width-control"
+                />
+              </label>
+
+              <label class="control-field">
+                <span class="control-label">涨跌幅阈值</span>
+                <el-input-number
+                  v-model="condition.minPctDisplay"
+                  :min="0.1"
+                  :max="50"
+                  :step="0.5"
+                  :precision="1"
+                  controls-position="right"
+                  class="full-width-control"
+                />
+              </label>
             </div>
           </div>
         </div>
+      </div>
+    </section>
 
-        <!-- 操作按钮 -->
-        <div class="action-row">
-          <el-button type="primary" size="default" @click="handleScreenAll" :loading="loading">
-            <el-icon><Search /></el-icon>
-            一键查询
-          </el-button>
-          <el-tooltip content="开启后将今日实时估值纳入涨跌幅计算" placement="top">
-            <el-switch
-              v-model="includeRealtime"
-              active-text="含实时估值"
-              inactive-text=""
-              style="margin-left: 16px"
-            />
-          </el-tooltip>
+    <!-- 筛选结果 -->
+    <section v-if="results.length > 0" class="screen-results workbench-panel surface-panel">
+      <div class="workbench-panel__header">
+        <div>
+          <div class="workbench-panel__title">筛选结果</div>
+          <div class="workbench-panel__meta">共 {{ results.reduce((sum, item) => sum + item.count, 0) }} 只基金命中</div>
         </div>
       </div>
 
-      <el-divider v-if="results.length > 0" />
-
-      <!-- 筛选结果 -->
-      <div v-if="results.length > 0" class="screen-results">
-        <div v-for="result in results" :key="result.conditionId" class="result-section">
-          <div class="result-header">
-            <div class="result-title">
-              <el-icon :class="result.direction === 'up' ? 'up-icon' : 'down-icon'">
-                <component :is="result.direction === 'up' ? ArrowUp : ArrowDown" />
-              </el-icon>
-              <span>{{ getConditionLabelById(result.conditionId) }}</span>
-              <el-tag
-                :type="result.direction === 'up' ? 'success' : 'danger'"
-                size="small"
-                effect="dark"
-              >
-                {{ result.count }}
-              </el-tag>
-            </div>
+      <div v-for="result in results" :key="result.conditionId" class="result-section">
+        <div class="result-header">
+          <div class="result-title">
+            <el-icon :class="result.direction === 'up' ? 'up-icon' : 'down-icon'">
+              <component :is="result.direction === 'up' ? ArrowUp : ArrowDown" />
+            </el-icon>
+            <span>{{ getConditionLabelById(result.conditionId) }}</span>
+            <el-tag
+              :type="result.direction === 'up' ? 'success' : 'danger'"
+              size="small"
+              effect="dark"
+            >
+              {{ result.count }}
+            </el-tag>
           </div>
-          <ResultTable
-            :data="result.funds"
-            :loading="result.loading"
-            :direction="result.direction as 'up' | 'down'"
-            :screen-type="getConditionTypeById(result.conditionId)"
-            @view="viewFund"
-            @add="addToWatchlist"
-          />
         </div>
+        <ResultTable
+          :data="result.funds"
+          :loading="result.loading"
+          :direction="result.direction"
+          :screen-type="getConditionTypeById(result.conditionId)"
+          @view="viewFund"
+          @add="addToWatchlist"
+        />
       </div>
-    </el-card>
+    </section>
 
     <!-- 基金图表弹窗 -->
     <el-dialog
@@ -165,6 +181,7 @@ import { useFundStore } from '@/stores/fundStore'
 import FundChart from '@/components/Charts/FundChart.vue'
 import ResultTable from './components/ResultTable.vue'
 import { fundApi, type ScreenType, type FundTrendResult } from '@/api/fund'
+import { loadAppSettings } from '@/platform/appSettings'
 
 const { t } = useI18n()
 const fundStore = useFundStore()
@@ -180,7 +197,7 @@ interface ConditionItem {
 
 interface ResultItem {
   conditionId: string
-  direction: string
+  direction: 'up' | 'down'
   count: number
   funds: FundTrendResult[]
   loading: boolean
@@ -271,14 +288,7 @@ function removeCondition(id: string) {
 }
 
 function getCalendarDaysSetting(): boolean {
-  try {
-    const saved = localStorage.getItem('fund-tracker-settings')
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      return parsed.dayCountMode === 'calendar'
-    }
-  } catch {}
-  return false
+  return loadAppSettings().dayCountMode === 'calendar'
 }
 
 async function handleScreenAll() {
@@ -322,7 +332,7 @@ async function handleScreenAll() {
     } else {
       ElMessage.success(`查询完成，共找到 ${totalCount} 只基金`)
     }
-  } catch (error) {
+  } catch {
     ElMessage.error('筛选失败')
   } finally {
     loading.value = false
@@ -348,90 +358,227 @@ async function addToWatchlist(fund: FundTrendResult) {
 
 <style scoped lang="scss">
 .screen-view {
-  .card-header {
+  .screen-conditions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .screen-builder-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-light);
+  }
 
-    .title {
-      font-size: 16px;
+  .screen-mode {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-base);
+  }
+
+  .screen-mode__label {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .condition-rule-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .condition-rule {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(190px, 0.28fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 14px;
+    min-width: 0;
+    padding: 12px 14px 12px 16px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background:
+      linear-gradient(90deg, rgba(37, 99, 235, 0.026), rgba(37, 99, 235, 0)),
+      var(--bg-card);
+    box-shadow: var(--shadow-light);
+    overflow: hidden;
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: var(--primary-color);
+    }
+
+    &.is-up::before {
+      background: var(--success-color);
+    }
+
+    &.is-down::before {
+      background: var(--danger-color);
+    }
+  }
+
+  .condition-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .condition-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text-primary);
+
+    small {
+      display: block;
+      margin-top: 2px;
+      color: var(--text-secondary);
+      font-size: 12px;
       font-weight: 600;
     }
   }
 
-  .screen-conditions {
-    .condition-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-      margin-bottom: 16px;
+  .direction-mark {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-base);
+    background: var(--bg-hover);
+    color: var(--primary-color);
+  }
 
-      .condition-box {
-        flex: 1 1 calc(50% - 8px);
-        min-width: 360px;
-        border-radius: 8px;
-        border: 1px solid var(--border-light);
-        overflow: hidden;
+  .condition-rule.is-up .direction-mark {
+    color: var(--success-color);
+    background: var(--success-light);
+  }
 
-        &.up-box {
-          border-color: rgba(239, 68, 68, 0.3);
-          background: rgba(239, 68, 68, 0.05);
-          .condition-header { background: rgba(239, 68, 68, 0.1); }
-        }
+  .condition-rule.is-down .direction-mark {
+    color: var(--danger-color);
+    background: var(--danger-light);
+  }
 
-        &.down-box {
-          border-color: rgba(16, 185, 129, 0.3);
-          background: rgba(16, 185, 129, 0.05);
-          .condition-header { background: rgba(16, 185, 129, 0.1); }
-        }
+  .condition-remove {
+    color: var(--text-secondary);
+  }
 
-        .condition-header {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          font-weight: 600;
-          font-size: 14px;
+  .condition-controls {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) minmax(148px, 0.9fr) minmax(118px, 0.72fr) minmax(128px, 0.78fr);
+    gap: 10px;
+    min-width: 0;
+    align-items: end;
+    padding: 8px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-base);
+  }
 
-          .up-icon { color: var(--danger-color); }
-          .down-icon { color: var(--success-color); }
-          .condition-title { flex: 1; }
-        }
+  .control-field {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 0;
+  }
 
-        .condition-body {
-          padding: 12px;
+  .control-label {
+    margin-bottom: 5px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 850;
+  }
 
-          .condition-form {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0;
+  :deep(.el-select__wrapper),
+  :deep(.el-input__wrapper) {
+    min-height: 34px;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 1px var(--border-light) inset;
+    transition: box-shadow var(--transition-fast), background-color var(--transition-fast);
 
-            :deep(.el-form-item) {
-              margin-bottom: 8px;
-              margin-right: 12px;
-              &:last-child { margin-right: 0; }
-              .el-form-item__label {
-                font-size: 12px;
-                color: var(--text-secondary);
-                padding-right: 4px;
-              }
-            }
-          }
-        }
-      }
+    &:hover {
+      box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.24) inset;
     }
 
-    .action-row {
-      display: flex;
-      justify-content: center;
-      padding-top: 4px;
+    &.is-focus {
+      box-shadow: 0 0 0 1px var(--primary-color) inset, 0 0 0 3px var(--primary-light) !important;
     }
   }
 
+  :deep(.el-input-number .el-input__wrapper) {
+    padding-left: 10px;
+    padding-right: 32px;
+  }
+
+  :deep(.el-input-number__decrease),
+  :deep(.el-input-number__increase) {
+    width: 24px;
+    border-radius: 0;
+    background: var(--bg-hover);
+  }
+
+  .direction-segment {
+    width: 100%;
+
+    :deep(.el-radio-button) {
+      width: 50%;
+    }
+
+    :deep(.el-radio-button__inner) {
+      width: 100%;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm) !important;
+      background: var(--bg-card);
+      border-color: var(--border-light);
+      box-shadow: none;
+      font-size: 12px;
+      font-weight: 800;
+      transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+    }
+
+    :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+      color: white;
+      background: var(--primary-color);
+      border-color: var(--primary-color);
+      box-shadow: none;
+    }
+  }
+
+  :deep(.el-input-number) {
+    width: 100%;
+  }
+
   .screen-results {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+
     .result-section {
-      margin-bottom: 24px;
-      &:last-child { margin-bottom: 0; }
+      padding: 14px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-base);
+      background: var(--bg-card);
 
       .result-header {
         margin-bottom: 12px;
@@ -440,11 +587,28 @@ async function addToWatchlist(fund: FundTrendResult) {
           align-items: center;
           gap: 8px;
           font-size: 15px;
-          font-weight: 600;
-          .up-icon { color: var(--danger-color); }
-          .down-icon { color: var(--success-color); }
+          font-weight: 800;
+          .up-icon { color: var(--success-color); }
+          .down-icon { color: var(--danger-color); }
         }
       }
+    }
+  }
+
+  @media (max-width: 1180px) {
+    .condition-rule {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .screen-builder-header {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .condition-controls {
+      grid-template-columns: 1fr;
     }
   }
 }

@@ -1,61 +1,76 @@
 <template>
-  <div class="about-view">
-    <!-- 简介区域 -->
-    <div class="about-intro">
-      <h2 class="intro-title">基金跟踪器</h2>
-      <p class="intro-desc">
-        一款专业的基金投资管理工具，帮助您实时追踪基金动态、管理投资组合、分析收益表现。
-        支持基金筛选、对比分析、持仓管理等功能，让投资更简单、更高效。
-      </p>
-    </div>
+  <div class="about-view workbench-page">
+    <section class="page-toolbar">
+      <div class="page-toolbar__main">
+        <span class="page-toolbar__icon">
+          <el-icon><DataAnalysis /></el-icon>
+        </span>
+        <div class="page-toolbar__copy">
+          <h2 class="page-toolbar__title">基金跟踪器</h2>
+          <p class="page-toolbar__meta">轻量跨端金融工作台 · 实时估值 · 筛选对比 · 持仓收益管理</p>
+        </div>
+      </div>
+    </section>
 
-    <!-- 功能特性 - 简洁列表 -->
-    <div class="features-section">
-      <h3 class="section-title">功能特性</h3>
+    <section class="architecture-panel surface-panel">
+      <div class="architecture-copy">
+        <span class="architecture-kicker">Architecture</span>
+        <h3>轻量跨端壳，本地优先的数据链路</h3>
+        <p>前端保持纯 Web 能力与低耦合运行时，后端负责数据源编排、缓存与持仓计算，为 Tauri 桌面和未来 Android 容器保留迁移空间。</p>
+      </div>
+
+      <div class="architecture-flow" aria-label="技术架构">
+        <div
+          v-for="(node, index) in architectureNodes"
+          :key="node.title"
+          class="architecture-node"
+        >
+          <span class="architecture-icon">
+            <el-icon><component :is="node.icon" /></el-icon>
+          </span>
+          <div>
+            <strong>{{ node.title }}</strong>
+            <small>{{ node.description }}</small>
+          </div>
+          <span v-if="index < architectureNodes.length - 1" class="architecture-connector"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="about-panel workbench-panel surface-panel">
+      <div class="workbench-panel__header">
+        <div>
+          <div class="workbench-panel__title">核心能力</div>
+          <div class="workbench-panel__meta">围绕基金跟踪的一体化工作流</div>
+        </div>
+      </div>
       <div class="features-list">
-        <div class="feature-item">
-          <el-icon class="feature-icon" :size="20" color="#3b82f6"><DataLine /></el-icon>
-          <span>实时估值追踪</span>
-        </div>
-        <div class="feature-item">
-          <el-icon class="feature-icon" :size="20" color="#10b981"><Wallet /></el-icon>
-          <span>持仓收益管理</span>
-        </div>
-        <div class="feature-item">
-          <el-icon class="feature-icon" :size="20" color="#f59e0b"><Filter /></el-icon>
-          <span>智能基金筛选</span>
-        </div>
-        <div class="feature-item">
-          <el-icon class="feature-icon" :size="20" color="#8b5cf6"><TrendCharts /></el-icon>
-          <span>多基金对比</span>
-        </div>
-        <div class="feature-item">
-          <el-icon class="feature-icon" :size="20" color="#ec4899"><Download /></el-icon>
-          <span>数据导出</span>
-        </div>
-        <div class="feature-item">
-          <el-icon class="feature-icon" :size="20" color="#06b6d4"><Moon /></el-icon>
-          <span>深色模式</span>
+        <div v-for="feature in features" :key="feature.title" class="feature-item">
+          <span class="feature-icon">
+            <el-icon :size="20"><component :is="feature.icon" /></el-icon>
+          </span>
+          <div>
+            <span>{{ feature.title }}</span>
+            <small>{{ feature.description }}</small>
+          </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- 技术栈 - 简化展示 -->
-    <div class="tech-section">
-      <h3 class="section-title">技术栈</h3>
-      <div class="tech-list">
-        <span class="tech-item">Vue 3</span>
-        <span class="tech-item">TypeScript</span>
-        <span class="tech-item">FastAPI</span>
-        <span class="tech-item">Python</span>
-        <span class="tech-item">SQLite</span>
+    <section class="about-panel workbench-panel surface-panel">
+      <div class="workbench-panel__header">
+        <div>
+          <div class="workbench-panel__title">技术栈</div>
+          <div class="workbench-panel__meta">Web 优先，Tauri-ready，保留安卓跨端潜力</div>
+        </div>
       </div>
-    </div>
-
-    <!-- 版权信息 -->
-    <div class="copyright">
-      <p>© 2024 Fund Tracker · 智能基金投资助手</p>
-    </div>
+      <div class="tech-grid">
+        <div v-for="item in techStack" :key="item.name" class="tech-item">
+          <strong>{{ item.name }}</strong>
+          <span>{{ item.role }}</span>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -65,113 +80,275 @@ defineOptions({
 })
 
 import {
+  Connection,
+  Cpu,
+  DataAnalysis,
   DataLine,
-  Wallet,
-  Filter,
-  TrendCharts,
   Download,
-  Moon
+  Files,
+  Filter,
+  Monitor,
+  Moon,
+  TrendCharts,
+  Wallet
 } from '@element-plus/icons-vue'
+
+const architectureNodes = [
+  {
+    title: 'Vue Web UI',
+    description: '高密度工作台与纯 Web 交互',
+    icon: Monitor
+  },
+  {
+    title: 'API Client',
+    description: '统一请求、错误和响应解包',
+    icon: Connection
+  },
+  {
+    title: 'FastAPI Service',
+    description: '筛选、对比、持仓业务层',
+    icon: Cpu
+  },
+  {
+    title: 'Data Sources',
+    description: '多源行情与自动 fallback',
+    icon: DataLine
+  },
+  {
+    title: 'SQLite / Cache',
+    description: '本地持久化与内存缓存',
+    icon: Files
+  }
+]
+
+const features = [
+  { title: '实时估值追踪', description: '关注列表、状态与数据源可见', icon: DataLine },
+  { title: '持仓收益管理', description: '成本、份额、市值和收益集中维护', icon: Wallet },
+  { title: '基金筛选', description: '连续涨跌与区间累计组合查询', icon: Filter },
+  { title: '多基金对比', description: '走势、基准和多周期收益矩阵', icon: TrendCharts },
+  { title: '数据导出', description: '关注数据可快速落地 CSV', icon: Download },
+  { title: '主题系统', description: '浅色、深色和系统自动模式', icon: Moon }
+]
+
+const techStack = [
+  { name: 'Vue 3 + TypeScript', role: '前端交互与类型约束' },
+  { name: 'Element Plus', role: '表单、表格和桌面控件' },
+  { name: 'ECharts', role: '基金走势与收益可视化' },
+  { name: 'FastAPI + SQLAlchemy', role: '后端 API 与业务模型' },
+  { name: 'SQLite + LRU Cache', role: '本地数据和轻量缓存' },
+  { name: 'Tauri-ready Shell', role: '轻量桌面与安卓跨端潜力' }
+]
 </script>
 
 <style scoped lang="scss">
 .about-view {
-  padding: 40px 32px;
-  max-width: 800px;
-  margin: 0 auto;
+  max-width: 1180px;
+  width: 100%;
+  margin-inline: auto;
 }
 
-.about-intro {
-  text-align: center;
-  margin-bottom: 48px;
+.about-panel {
+  padding: 16px;
+}
 
-  .intro-title {
-    font-size: 28px;
-    font-weight: 600;
+.architecture-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.42fr) minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px;
+}
+
+.architecture-copy {
+  padding: 8px 6px;
+
+  h3 {
+    margin: 8px 0 0;
     color: var(--text-primary);
-    margin-bottom: 16px;
+    font-size: 22px;
+    font-weight: 850;
+    line-height: 1.2;
   }
 
-  .intro-desc {
-    font-size: 15px;
+  p {
+    margin-top: 10px;
     color: var(--text-secondary);
+    font-size: 13px;
     line-height: 1.8;
-    max-width: 600px;
-    margin: 0 auto;
   }
 }
 
-.section-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 20px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-light);
+.architecture-kicker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-full);
+  background: var(--icon-surface);
+  color: var(--primary-color);
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.features-section {
-  margin-bottom: 40px;
+.architecture-flow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(168px, 1fr));
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.architecture-node {
+  position: relative;
+  min-width: 168px;
+  padding: 14px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-base);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-light);
+
+  strong {
+    display: block;
+    margin-top: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 850;
+    line-height: 1.25;
+  }
+
+  small {
+    display: block;
+    margin-top: 6px;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    white-space: normal;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.architecture-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-base);
+  background: var(--icon-surface);
+  color: var(--primary-color);
+}
+
+.architecture-connector {
+  position: absolute;
+  top: 32px;
+  right: -11px;
+  z-index: 1;
+  width: 12px;
+  height: 1px;
+  background: var(--border-base);
 }
 
 .features-list {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-
-  @media (max-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .feature-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
-  padding: 16px;
-  background: var(--bg-base);
-  border-radius: var(--radius-base);
+  min-height: 82px;
+  padding: 14px;
+  background: var(--bg-card);
   border: 1px solid var(--border-light);
-  transition: all 0.2s ease;
+  border-radius: var(--radius-base);
+  transition: transform var(--transition-fast), border-color var(--transition-fast), background-color var(--transition-fast);
 
   &:hover {
-    border-color: var(--primary-color);
+    transform: translateY(-1px);
+    border-color: rgba(37, 99, 235, 0.24);
     background: var(--bg-hover);
   }
 
   span {
-    font-size: 14px;
+    white-space: nowrap;
+    word-break: keep-all;
     color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  small {
+    display: block;
+    margin-top: 4px;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
   }
 }
 
-.tech-section {
-  margin-bottom: 48px;
+.feature-icon {
+  margin-top: 1px;
 }
 
-.tech-list {
-  display: flex;
-  flex-wrap: wrap;
+.tech-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .tech-item {
-  padding: 8px 16px;
-  background: var(--bg-page);
+  padding: 14px;
+  background: var(--bg-hover);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-base);
-  font-size: 13px;
-  color: var(--text-secondary);
+
+  strong {
+    display: block;
+    white-space: nowrap;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 850;
+  }
+
+  span {
+    display: block;
+    margin-top: 6px;
+    word-break: keep-all;
+    overflow-wrap: normal;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
 }
 
-.copyright {
-  text-align: center;
-  padding-top: 32px;
-  border-top: 1px solid var(--border-light);
+@media (max-width: 1080px) {
+  .architecture-panel {
+    grid-template-columns: 1fr;
+  }
 
-  p {
-    font-size: 13px;
-    color: var(--text-placeholder);
+  .architecture-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .architecture-connector {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .architecture-flow,
+  .features-list,
+  .tech-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

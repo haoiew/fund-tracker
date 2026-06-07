@@ -15,7 +15,7 @@
 | 前端 | Vue 3 + Vite + TypeScript | 3.5+ / 7.3+ |
 | UI库 | Element Plus | 2.13+ |
 | 图表 | ECharts | 5.4+ |
-| 桌面 | Electron（可选Tauri） | 28+ |
+| 运行壳 | Web 优先 / Tauri-ready / Electron兼容 | Vite shell mode |
 
 ## 功能需求
 
@@ -71,5 +71,5 @@
 
 ### 未来扩展
 - 后端可打包为exe（PyInstaller/Nuitka）
-- 前端兼容Tauri（已是Vite项目）
+- 前端保持纯 Web 能力，运行时通过 Adapter 适配 Tauri 桌面和未来 Android 容器
 - API契约保持稳定（REST，ResponseModel包装）

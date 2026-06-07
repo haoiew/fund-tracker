@@ -6,6 +6,7 @@ import electron from 'vite-plugin-electron'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const isElectron = mode === 'electron'
+  const isNativeShell = mode === 'electron' || mode === 'tauri'
 
   return {
     plugins: [
@@ -67,6 +68,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
+      target: isNativeShell ? 'es2021' : 'baseline-widely-available',
       sourcemap: 'hidden',
       rollupOptions: {
         output: {

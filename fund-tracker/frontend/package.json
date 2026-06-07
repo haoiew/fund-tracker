@@ -16,6 +16,8 @@
     "lint:eslint": "eslint . --fix --cache",
     "electron:dev": "vite --mode electron",
     "electron:dev:web": "set VITE_ELECTRON_STARTUP=0&& vite --mode electron",
+    "tauri:dev:web": "vite --mode tauri",
+    "tauri:build:web": "vite build --mode tauri",
     "electron:build": "vite build && electron-builder",
     "electron:build:win": "vite build && electron-builder --win",
     "electron:build:mac": "vite build && electron-builder --mac",

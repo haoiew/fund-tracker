@@ -81,10 +81,10 @@
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click.stop="$emit('view', row)">
+          <el-button link type="primary" size="small" @click.stop="emit('view', row)">
             图表
           </el-button>
-          <el-button link type="success" size="small" @click.stop="$emit('add', row)">
+          <el-button link type="success" size="small" @click.stop="emit('add', row)">
             关注
           </el-button>
         </template>
@@ -110,6 +110,17 @@ interface Props {
   screenType?: ScreenType
 }
 
+interface HistoryRow {
+  date: string
+  nav: number
+  change: number
+  change_pct: number
+}
+
+interface TooltipPoint {
+  dataIndex?: number
+}
+
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
@@ -121,7 +132,7 @@ const emit = defineEmits<{
 const expandedRows = ref<string[]>([])
 
 // 历史数据 - 每个基金独立存储
-const historyData = reactive<Record<string, any[]>>({})
+const historyData = reactive<Record<string, HistoryRow[]>>({})
 const getHistoryRows = (code: string) => historyData[code] ?? []
 
 // 每个基金的加载状态
@@ -131,7 +142,7 @@ const loadingHistoryMap = reactive<Record<string, boolean>>({})
 const chartInstances = reactive<Record<string, echarts.ECharts | null>>({})
 
 // 处理展开/收起
-const handleExpandChange = async (row: FundTrendResult, expandedRowsList: any[]) => {
+const handleExpandChange = async (row: FundTrendResult, expandedRowsList: FundTrendResult[]) => {
   const isExpanded = expandedRowsList.includes(row)
   
   if (isExpanded) {
@@ -226,11 +237,13 @@ const renderChart = (code: string) => {
     },
     tooltip: {
       trigger: 'axis',
-      formatter: (params: any) => {
-        const p = params[0]
-        const dataIndex = p.dataIndex
+      formatter: (params: unknown) => {
+        const points = Array.isArray(params) ? params as TooltipPoint[] : []
+        const dataIndex = points[0]?.dataIndex
+        if (dataIndex === undefined) return ''
+
         const item = chartData[dataIndex]
-        return `${item.date}<br/>净值: ${item.nav?.toFixed(4)}`
+        return item ? `${item.date}<br/>净值: ${item.nav.toFixed(4)}` : ''
       }
     },
     series: [{
@@ -280,18 +293,21 @@ const loadHistoryData = async (code: string, days: number = 7) => {
       })
       
       // 取最近N天的数据
-      const recentData = []
+      const recentData: HistoryRow[] = []
       const count = Math.min(days, dates.length)
       
       for (let i = dates.length - count; i < dates.length; i++) {
         if (i >= 0) {
+          const date = dates[i]
+          if (!date) continue
+
           const currentNav = Number(values[i])
           const prevNav = i > 0 ? Number(values[i - 1]) : currentNav
           const change = currentNav - prevNav
           const changePct = prevNav > 0 ? (change / prevNav) * 100 : 0
           
           recentData.push({
-            date: dates[i],
+            date,
             nav: currentNav,
             change: change,
             change_pct: changes[i] !== undefined ? Number(changes[i]) : changePct

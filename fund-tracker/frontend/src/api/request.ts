@@ -1,8 +1,5 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse, AxiosError } from 'axios'
-
-// API 基础配置 - 从环境变量读取
-// 开发环境使用相对路径，让 Vite 代理处理请求转发，避免 CORS 问题
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+import { resolveApiBaseUrl } from '@/platform/apiConfig'
 
 // 重试配置
 const RETRY_CONFIG = {
@@ -14,11 +11,18 @@ const RETRY_CONFIG = {
 }
 
 // 请求队列（用于去重）
-const pendingRequests = new Map<string, Promise<any>>()
+const pendingRequests = new Map<string, Promise<unknown>>()
+
+interface EnhancedApiError extends Error {
+  code: string
+  originalError: AxiosError
+  isRetryable: boolean
+  retryCount: number
+}
 
 // 创建 axios 实例
 const service: AxiosInstance = axios.create({
-  baseURL: BASE_URL,
+  baseURL: resolveApiBaseUrl(),
   timeout: 60000,
   headers: {
     'Content-Type': 'application/json'
@@ -107,6 +111,9 @@ async function requestWithRetry<T>(
 // 请求拦截器
 service.interceptors.request.use(
   (config) => {
+    // 让设置页保存的 API 地址在下一次请求即时生效；Web 开发仍默认走 Vite 代理。
+    config.baseURL = resolveApiBaseUrl()
+
     // 只在开发环境打印日志
     if (import.meta.env.DEV) {
       console.log('[API Request]', config.method?.toUpperCase(), config.url, config.data)
@@ -230,11 +237,12 @@ service.interceptors.response.use(
     }
     
     // 创建增强的错误对象
-    const enhancedError = new Error(message) as any
-    enhancedError.code = errorCode
-    enhancedError.originalError = error
-    enhancedError.isRetryable = isRetryableError(error)
-    enhancedError.retryCount = RETRY_CONFIG.maxRetries
+    const enhancedError: EnhancedApiError = Object.assign(new Error(message), {
+      code: errorCode,
+      originalError: error,
+      isRetryable: isRetryableError(error),
+      retryCount: RETRY_CONFIG.maxRetries
+    })
     
     return Promise.reject(enhancedError)
   }

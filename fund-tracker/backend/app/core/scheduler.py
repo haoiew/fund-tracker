@@ -7,9 +7,17 @@ import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+try:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.triggers.interval import IntervalTrigger
+    from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+    APSCHEDULER_AVAILABLE = True
+except ImportError:
+    AsyncIOScheduler = None
+    IntervalTrigger = None
+    EVENT_JOB_EXECUTED = 0
+    EVENT_JOB_ERROR = 0
+    APSCHEDULER_AVAILABLE = False
 
 from app.logger import get_logger
 
@@ -18,10 +26,13 @@ logger = get_logger("scheduler")
 
 class SchedulerService:
     def __init__(self):
-        self.scheduler: Optional[AsyncIOScheduler] = None
+        self.scheduler: Optional[Any] = None
         self._running = False
 
     def start(self, refresh_interval_minutes: int = 10):
+        if not APSCHEDULER_AVAILABLE:
+            logger.warning("apscheduler未安装，后台定时任务已禁用")
+            return
         if self._running:
             logger.warning("调度器已在运行")
             return

@@ -1,12 +1,32 @@
 <template>
-  <div class="compare-view">
-    <el-card shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span class="title">{{ $t('compare.title') }}</span>
-          <el-icon v-if="loading" class="is-loading" size="16"><Loading /></el-icon>
+  <div class="compare-view workbench-page">
+    <section class="page-toolbar">
+      <div class="page-toolbar__main">
+        <span class="page-toolbar__icon">
+          <el-icon><TrendCharts /></el-icon>
+        </span>
+        <div class="page-toolbar__copy">
+          <h2 class="page-toolbar__title">基金对比实验台</h2>
+          <p class="page-toolbar__meta">已选 {{ form.codes.length }} 只 · 区间 {{ form.range }} · {{ form.includeBenchmark ? '显示基准' : '不显示基准' }}</p>
         </div>
-      </template>
+      </div>
+      <div class="page-toolbar__actions">
+        <el-button type="primary" :loading="loading" @click="handleCompare">
+          {{ $t('compare.startCompare') }}
+        </el-button>
+      </div>
+    </section>
+
+    <section class="compare-controls workbench-panel surface-panel">
+      <div class="workbench-panel__header">
+        <div>
+          <div class="workbench-panel__title">
+            <span>{{ $t('compare.title') }}</span>
+            <el-icon v-if="loading" class="is-loading" size="16"><Loading /></el-icon>
+          </div>
+          <div class="workbench-panel__meta">至少选择 2 只基金后开始对比</div>
+        </div>
+      </div>
 
       <el-form :model="form" inline class="compare-form">
         <el-form-item :label="$t('compare.selectFunds')">
@@ -41,24 +61,26 @@
           <el-checkbox v-model="form.includeBenchmark" :label="$t('compare.showBenchmark')" />
         </el-form-item>
 
-        <el-form-item>
-          <el-button type="primary" @click="handleCompare" :loading="loading" size="small">
-            {{ $t('compare.startCompare') }}
-          </el-button>
-        </el-form-item>
       </el-form>
+    </section>
 
-      <el-divider v-if="compareData.length > 0" />
-
-      <!-- 空状态 -->
-      <el-empty v-if="compareData.length === 0 && !loading" :description="$t('compare.emptyTip')">
+    <section v-if="compareData.length === 0 && !loading" class="compare-empty workbench-panel surface-panel">
+      <el-empty :description="$t('compare.emptyTip')">
         <template #description>
           <p>{{ $t('compare.emptyTip') }}</p>
         </template>
       </el-empty>
+    </section>
 
-      <!-- 对比结果 -->
-      <div v-else-if="compareData.length > 0" class="compare-result">
+    <!-- 对比结果 -->
+    <section v-else-if="compareData.length > 0" class="compare-result workbench-panel surface-panel">
+      <div class="workbench-panel__header">
+        <div>
+          <div class="workbench-panel__title">走势与收益矩阵</div>
+          <div class="workbench-panel__meta">已载入 {{ compareData.length }} 只基金{{ benchmarkData.length > 0 ? `，${benchmarkData.length} 个基准` : '' }}</div>
+        </div>
+      </div>
+
         <div ref="chartRef" class="chart-container"></div>
 
         <!-- 多周期涨跌幅对比表格 -->
@@ -243,8 +265,7 @@
             </el-table-column>
           </el-table>
         </div>
-      </div>
-    </el-card>
+    </section>
   </div>
 </template>
 
@@ -306,6 +327,13 @@ interface BenchmarkData {
     y3?: number
     y5?: number
   }
+}
+
+interface ChartTooltipPoint {
+  axisValue?: string
+  value?: number | string | null
+  color?: string
+  seriesName?: string
 }
 
 const benchmarkData = ref<BenchmarkData[]>([])
@@ -516,16 +544,22 @@ const updateChart = (
         fontSize: 13
       },
       extraCssText: 'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); border-radius: 8px;',
-      formatter: (params: any) => {
-        if (!params.length) return ''
-        let result = `<div style="font-weight:600;margin-bottom:8px;color:${isDark ? '#f8fafc' : '#1e293b'}">${params[0].axisValue}</div>`
-        params.forEach((p: any) => {
-          const value = p.value !== null && p.value !== undefined ? `${p.value.toFixed(2)}%` : '--'
-          const color = p.value > 0 ? '#dc2626' : p.value < 0 ? '#16a34a' : '#64748b'
+      formatter: (params: unknown) => {
+        const points = Array.isArray(params) ? params as ChartTooltipPoint[] : []
+        if (!points.length) return ''
+        let result = `<div style="font-weight:600;margin-bottom:8px;color:${isDark ? '#f8fafc' : '#1e293b'}">${points[0]?.axisValue ?? ''}</div>`
+        points.forEach((p) => {
+          const numericValue = typeof p.value === 'number'
+            ? p.value
+            : typeof p.value === 'string'
+              ? Number.parseFloat(p.value)
+              : null
+          const value = numericValue !== null && Number.isFinite(numericValue) ? `${numericValue.toFixed(2)}%` : '--'
+          const color = numericValue !== null && numericValue > 0 ? '#dc2626' : numericValue !== null && numericValue < 0 ? '#16a34a' : '#64748b'
           result += `<div style="display:flex;justify-content:space-between;gap:16px;margin:4px 0">
             <span style="display:flex;align-items:center;gap:8px">
-              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${p.color}"></span>
-              <span style="color:${isDark ? '#cbd5e1' : '#475569'}">${p.seriesName}</span>
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${p.color ?? '#64748b'}"></span>
+              <span style="color:${isDark ? '#cbd5e1' : '#475569'}">${p.seriesName ?? ''}</span>
             </span>
             <span style="color:${color};font-weight:600;font-family:'Roboto Mono',monospace">${value}</span>
           </div>`
@@ -604,29 +638,32 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .compare-view {
-  .card-header {
+  .compare-form {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px 14px;
+    flex-wrap: wrap;
 
-    .title {
-      font-size: 16px;
-      font-weight: 600;
-    }
-  }
-
-  .compare-form {
     :deep(.el-form-item) {
       margin-bottom: 0;
     }
   }
 
+  .compare-empty {
+    min-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .compare-result {
     .chart-container {
-      height: 350px;
+      height: 360px;
       margin-bottom: 24px;
       background: var(--bg-base);
-      border-radius: 8px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-base);
+      box-shadow: var(--shadow-light);
     }
 
     .multi-period-section {
@@ -637,7 +674,7 @@ onUnmounted(() => {
         align-items: center;
         gap: 8px;
         font-size: 15px;
-        font-weight: 600;
+        font-weight: 800;
         color: var(--text-primary);
         margin-bottom: 16px;
 
@@ -648,10 +685,13 @@ onUnmounted(() => {
     }
 
     .compare-table {
+      border-radius: var(--radius-base);
+      overflow: hidden;
+
       :deep(.el-table__header) {
         th {
-          background: var(--bg-page);
-          font-weight: 600;
+          background: var(--bg-hover);
+          font-weight: 700;
         }
       }
 
@@ -663,7 +703,7 @@ onUnmounted(() => {
 
   .benchmark-section {
     margin-top: 24px;
-    padding-top: 16px;
+    padding-top: 18px;
     border-top: 1px dashed var(--border-base);
 
     .section-title {
@@ -671,7 +711,7 @@ onUnmounted(() => {
       align-items: center;
       gap: 8px;
       font-size: 15px;
-      font-weight: 600;
+      font-weight: 800;
       color: var(--text-secondary);
       margin-bottom: 12px;
 

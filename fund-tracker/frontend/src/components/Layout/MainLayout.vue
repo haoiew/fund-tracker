@@ -1,85 +1,83 @@
 <template>
-  <div class="app-container">
-    <!-- 侧边栏 -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">
-          <div class="logo-icon">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" class="logo-svg">
-              <defs>
-                <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" style="stop-color:#6366f1"/>
-                  <stop offset="50%" style="stop-color:#8b5cf6"/>
-                  <stop offset="100%" style="stop-color:#a855f7"/>
-                </linearGradient>
-              </defs>
-              <rect x="4" y="8" width="40" height="32" rx="6" fill="url(#logoGradient)"/>
-              <path d="M14 28L20 22L26 26L34 18" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="34" cy="18" r="2" fill="white"/>
-              <path d="M12 14H18" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
-            </svg>
-          </div>
-          <div class="logo-text-container">
-            <span class="logo-text">基金跟踪器</span>
-            <span class="logo-subtitle">Fund Tracker</span>
-          </div>
+  <div class="app-shell">
+    <aside class="app-sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-mark" aria-hidden="true">
+          <el-icon size="26"><TrendCharts /></el-icon>
+        </div>
+        <div class="brand-copy">
+          <span class="brand-name">{{ appName }}</span>
+          <span class="brand-subtitle">{{ appSubtitle }}</span>
         </div>
       </div>
 
-      <nav class="sidebar-nav">
+      <nav class="sidebar-nav" aria-label="主导航">
         <router-link
-          v-for="route in menuRoutes"
-          :key="route.path"
-          :to="`/${route.path}`"
+          v-for="item in menuRoutes"
+          :key="item.path"
+          :to="`/${item.path}`"
           class="nav-item"
-          :class="{ active: isActiveRoute(route.path) }"
-          @click="handleNavClick(route.path)"
+          :class="{ active: isActiveRoute(item.path) }"
         >
-          <div class="nav-icon">
+          <span class="nav-icon">
             <el-icon size="18">
-              <component :is="route.meta?.icon" />
+              <component :is="item.meta?.icon" />
             </el-icon>
-          </div>
-          <span class="nav-text">{{ route.meta?.title }}</span>
+          </span>
+          <span class="nav-copy">
+            <span class="nav-title">{{ item.meta?.title }}</span>
+            <span class="nav-subtitle">{{ getRouteSubtitle(item.path) }}</span>
+          </span>
         </router-link>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="refresh-btn" @click="refreshAll">
-          <el-icon size="16" :class="{ spinning: isRefreshing }"><Refresh /></el-icon>
-          <span>刷新数据</span>
+        <div class="sidebar-actions">
+          <el-tooltip content="刷新全部数据" placement="right">
+            <button class="icon-button" type="button" aria-label="刷新全部数据" :disabled="isRefreshing" @click="refreshAll">
+              <el-icon size="16" :class="{ spinning: isRefreshing }"><Refresh /></el-icon>
+            </button>
+          </el-tooltip>
+          <el-tooltip :content="$t('settings.theme')" placement="right">
+            <button class="icon-button" type="button" aria-label="切换主题" @click="toggleTheme">
+              <el-icon size="16"><Sunny v-if="themeStore.isDark" /><Moon v-else /></el-icon>
+            </button>
+          </el-tooltip>
         </div>
-        <div class="version">v2.0.0</div>
+
+        <div class="version-line">{{ appVersion }}</div>
       </div>
     </aside>
 
-    <!-- 主内容区 -->
-    <main class="main-content">
-      <!-- 顶部栏 -->
-      <header class="top-header">
-        <div class="header-left">
-          <h1 class="page-title">{{ pageTitle }}</h1>
-          <p class="page-subtitle">{{ pageSubtitle }}</p>
+    <main class="app-main">
+      <header class="topbar">
+        <div class="topbar-context">
+          <span class="topbar-product">本地数据工作台</span>
+          <span class="topbar-separator"></span>
+          <span class="topbar-subtitle">多源行情 · 本地缓存 · 轻量桌面</span>
         </div>
-        <div class="header-right">
-          <div class="header-actions">
-            <el-tooltip content="通知" placement="bottom">
-              <div class="action-btn">
-                <el-icon size="18"><Bell /></el-icon>
-                <span class="badge" v-if="notificationCount > 0">{{ notificationCount }}</span>
-              </div>
-            </el-tooltip>
-            <el-tooltip :content="$t('settings.theme')" placement="bottom">
-              <div class="action-btn" @click="toggleTheme">
-                <el-icon size="18"><Sunny v-if="themeStore.isDark" /><Moon v-else /></el-icon>
-              </div>
-            </el-tooltip>
+
+        <div class="topbar-actions">
+          <div class="status-chip" :class="syncStatus.className">
+            <span class="status-dot" :class="syncStatus.className"></span>
+            <span class="status-label">{{ syncStatus.label }}</span>
           </div>
+
+          <el-tooltip content="刷新全部数据" placement="bottom">
+            <button class="icon-button" type="button" aria-label="刷新全部数据" :disabled="isRefreshing" @click="refreshAll">
+              <el-icon size="18" :class="{ spinning: isRefreshing }"><Refresh /></el-icon>
+            </button>
+          </el-tooltip>
+
+          <el-tooltip :content="$t('settings.theme')" placement="bottom">
+            <button class="icon-button" type="button" aria-label="切换主题" @click="toggleTheme">
+              <el-icon size="18"><Sunny v-if="themeStore.isDark" /><Moon v-else /></el-icon>
+            </button>
+          </el-tooltip>
         </div>
       </header>
 
-      <!-- 页面内容 -->
-      <div class="page-wrapper">
+      <section class="content-shell">
         <router-view v-slot="{ Component, route }">
           <transition name="page" mode="out-in">
             <keep-alive :include="cachedViews">
@@ -87,15 +85,19 @@
             </keep-alive>
           </transition>
         </router-view>
-      </div>
+      </section>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
+defineOptions({
+  name: 'MainLayout'
+})
+
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Refresh, Bell, Moon, Sunny } from '@element-plus/icons-vue'
+import { Moon, Refresh, Sunny, TrendCharts } from '@element-plus/icons-vue'
 import { useThemeStore } from '@/stores/themeStore'
 import { dataManager } from '@/stores/dataManager'
 import { ElMessage } from 'element-plus'
@@ -103,12 +105,10 @@ import { ElMessage } from 'element-plus'
 const route = useRoute()
 const router = useRouter()
 const themeStore = useThemeStore()
+const managerState = dataManager.getState()
 
 const isRefreshing = ref(false)
-const notificationCount = ref(0)
-const activeRoutePath = ref(route.path)
 
-// 需要缓存的页面组件名称列表
 const cachedViews = ref([
   'HomeView',
   'ScreenView',
@@ -118,346 +118,471 @@ const cachedViews = ref([
   'AboutView'
 ])
 
-// 监听路由变化
-watch(() => route.path, (newPath) => {
-  activeRoutePath.value = newPath
-}, { immediate: true })
-
-// 菜单路由
 const menuRoutes = computed(() => {
-  const layoutRoute = router.getRoutes().find(r => r.name === 'Layout')
-  const children = layoutRoute?.children || []
-  return children
+  const layoutRoute = router.getRoutes().find((item) => item.name === 'Layout')
+  return layoutRoute?.children || []
 })
 
-// 判断路由是否激活
-const isActiveRoute = (path: string) => {
-  const fullPath = `/${path}`
-  return activeRoutePath.value === fullPath
+const appName = '基金跟踪器'
+const appSubtitle = 'Fund Tracker'
+const appVersion = 'v2.0.0'
+
+const routeSubtitleMap: Record<string, string> = {
+  home: '实时追踪与概览',
+  screen: '筛选连续涨跌基金',
+  compare: '多基金表现对照',
+  portfolio: '持仓与收益管理',
+  settings: '界面与数据配置',
+  about: '版本与项目说明'
 }
 
-// 处理导航点击
-const handleNavClick = (path: string) => {
-  const targetPath = `/${path}`
-  if (route.path !== targetPath) {
-    router.push(targetPath)
-  }
-}
+const getRouteSubtitle = (path: string) => routeSubtitleMap[path] || ''
 
-// 页面标题
-const pageTitle = computed(() => {
-  const currentRoute = menuRoutes.value.find(r => `/${r.path}` === route.path)
-  return currentRoute?.meta?.title || '首页'
+const isActiveRoute = (path: string) => route.path === `/${path}`
+
+const syncStatus = computed(() => {
+  const hasError = Boolean(managerState.fundListError || managerState.realtimeError || managerState.portfolioError)
+  const isLoading = isRefreshing.value || managerState.fundListLoading || managerState.realtimeLoading || managerState.portfolioLoading
+
+  if (hasError) {
+    return {
+      label: '数据异常',
+      className: 'is-error'
+    }
+  }
+
+  if (isLoading) {
+    return {
+      label: '同步中',
+      className: 'is-loading'
+    }
+  }
+
+  return {
+    label: '数据就绪',
+    className: 'is-ready'
+  }
 })
 
-const pageSubtitle = computed(() => {
-  const subtitles: Record<string, string> = {
-    'home': '实时追踪您的基金动态',
-    'screen': '筛选连续涨跌的基金',
-    'compare': '对比多只基金表现',
-    'portfolio': '管理您的投资组合',
-    'settings': '个性化您的应用',
-    'about': '了解基金跟踪器更多信息'
-  }
-  const currentRoute = menuRoutes.value.find(r => `/${r.path}` === route.path)
-  return subtitles[currentRoute?.path as string] || ''
-})
-
-// 刷新所有数据 - 使用 DataManager 统一刷新
 const refreshAll = async () => {
   if (isRefreshing.value) return
 
   isRefreshing.value = true
   try {
-    // 使用 DataManager 统一刷新所有数据
     await dataManager.refreshAll()
     ElMessage.success({
       message: '数据已更新',
-      duration: 2000,
+      duration: 1800,
       plain: true
     })
   } catch {
     ElMessage.error('刷新失败')
   } finally {
-    setTimeout(() => {
-      isRefreshing.value = false
-    }, 500)
+    isRefreshing.value = false
   }
 }
 
-// 切换主题
 const toggleTheme = () => {
   themeStore.toggleTheme()
 }
 
+watch(
+  () => route.path,
+  () => {},
+  { immediate: true }
+)
+
 onMounted(() => {
-  // 初始化主题
   themeStore.init()
-  // 使用 DataManager 统一初始化所有数据
   dataManager.initialize()
 })
 </script>
 
 <style scoped lang="scss">
-.app-container {
-  display: flex;
+.app-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
   height: 100vh;
-  background: var(--bg-page);
-  font-family: var(--font-family);
-}
-
-// 侧边栏
-.sidebar {
-  width: 220px;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border-base);
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  z-index: 100;
-}
-
-.sidebar-header {
-  padding: 20px 16px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.logo-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+  min-height: 100vh;
   overflow: hidden;
-  
-  .logo-svg {
-    width: 100%;
-    height: 100%;
-  }
+  background: var(--bg-app-shell);
+  color: var(--text-primary);
 }
 
-.logo-text-container {
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  padding: 20px 18px 18px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-light);
+  backdrop-filter: blur(18px);
 }
 
-.logo-text {
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 10px 18px;
+}
+
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-base);
+  background: var(--icon-surface-primary);
+  border: 1px solid var(--icon-border-primary);
+  color: var(--primary-color);
+  box-shadow: var(--shadow-light);
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.brand-name {
   font-size: 16px;
   font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
-  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
-.logo-subtitle {
-  font-size: 10px;
+.brand-subtitle {
+  font-size: 12px;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-top: 2px;
+  letter-spacing: 0;
 }
 
-// 导航菜单
 .sidebar-nav {
-  flex: 1;
-  padding: 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  padding: 6px 0;
+  flex: 1;
 }
 
 .nav-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  min-height: 58px;
   padding: 10px 12px;
   border-radius: var(--radius-base);
   color: var(--text-secondary);
-  text-decoration: none;
-  transition: all var(--transition-base);
-  position: relative;
+  border: 1px solid transparent;
+  transition: background-color var(--transition-base), border-color var(--transition-base), color var(--transition-base), transform var(--transition-base);
+}
 
-  &:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
+.nav-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-light);
+  color: var(--text-primary);
+  transform: translateX(2px);
+}
 
-  &.active {
-    background: var(--primary-color);
-    color: white;
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
-  }
+.nav-item.active {
+  background: var(--bg-sidebar-active);
+  border-color: rgba(37, 99, 235, 0.18);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-light);
 }
 
 .nav-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.nav-text {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-// 侧边栏底部
-.sidebar-footer {
-  padding: 12px;
-  border-top: 1px solid var(--border-light);
-}
-
-.refresh-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px;
-  background: var(--bg-base);
-  border: 1px solid var(--border-base);
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
   border-radius: var(--radius-base);
-  color: var(--text-regular);
+  background: var(--bg-base);
+  color: var(--primary-color);
+}
+
+.nav-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nav-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.nav-subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 10px 4px;
+}
+
+.sidebar-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.icon-button {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-base);
+  background: var(--bg-base);
+  color: var(--text-primary);
   cursor: pointer;
-  transition: all var(--transition-base);
-  margin-bottom: 8px;
-  font-size: 13px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast), background-color var(--transition-fast);
+}
 
-  &:hover {
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-  }
+.icon-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.28);
+  box-shadow: var(--shadow-light);
+}
 
-  .el-icon {
-    transition: transform 0.5s ease;
+.icon-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
-    &.spinning {
-      animation: spin 1s linear infinite;
-    }
-  }
+.spinning {
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.version {
-  text-align: center;
-  font-size: 11px;
+.version-line {
+  font-size: 12px;
   color: var(--text-placeholder);
+  text-align: center;
 }
 
-// 主内容区
-.main-content {
-  flex: 1;
+.app-main {
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding: 14px 18px 18px 0;
 }
 
-// 顶部栏
-.top-header {
+.topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
-  background: var(--bg-base);
-  border-bottom: 1px solid var(--border-light);
+  gap: 16px;
+  min-height: 48px;
+  padding: 0 18px 12px 22px;
 }
 
-.header-left {
-  .page-title {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin: 0 0 2px 0;
-  }
-
-  .page-subtitle {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin: 0;
-  }
-}
-
-.header-right {
+.topbar-context {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 
-.header-actions {
-  display: flex;
-  gap: 8px;
+.topbar-product {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
-.action-btn {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-page);
-  border-radius: var(--radius-base);
+.topbar-product {
   color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-base);
-
-  &:hover {
-    background: var(--primary-light);
-    color: var(--primary-color);
-  }
-
-  .badge {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 16px;
-    height: 16px;
-    background: var(--danger-color);
-    color: white;
-    font-size: 10px;
-    font-weight: 600;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
 }
 
-// 页面内容
-.page-wrapper {
+.topbar-separator {
+  width: 1px;
+  height: 14px;
+  background: var(--border-base);
+}
+
+.topbar-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: var(--radius-base);
+  background: var(--bg-base);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-light);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--status-ready-color);
+  box-shadow: 0 0 0 4px var(--status-ready-light);
+}
+
+.status-dot.is-loading {
+  background: var(--status-warning-color);
+  box-shadow: 0 0 0 4px var(--status-warning-light);
+}
+
+.status-dot.is-error {
+  background: var(--status-error-color);
+  box-shadow: 0 0 0 4px var(--status-error-light);
+}
+
+.status-chip.is-error {
+  border-color: var(--status-error-light);
+}
+
+.status-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.content-shell {
+  min-width: 0;
+  min-height: 0;
   flex: 1;
-  padding: 16px 20px;
-  overflow-y: auto;
-  background: var(--bg-page);
+  padding: 0 22px 22px;
+  overflow: auto;
 }
 
-// 页面过渡动画
 .page-enter-active,
 .page-leave-active {
-  transition: all 0.2s ease;
+  transition: opacity var(--transition-base), transform var(--transition-base);
 }
 
 .page-enter-from {
   opacity: 0;
-  transform: translateX(10px);
+  transform: translateY(8px);
 }
 
 .page-leave-to {
   opacity: 0;
-  transform: translateX(-10px);
+  transform: translateY(-6px);
+}
+
+@media (max-width: 1280px) {
+  .app-shell {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    padding-inline: 12px;
+  }
+
+  .brand-copy,
+  .nav-copy,
+  .version-line {
+    display: none;
+  }
+
+  .sidebar-brand,
+  .sidebar-footer {
+    justify-content: center;
+  }
+
+  .nav-item {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 10px 8px;
+  }
+
+  .nav-icon {
+    margin: 0;
+  }
+
+  .app-main {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 960px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    position: relative;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+  }
+
+  .sidebar-brand {
+    padding: 0;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0;
+    gap: 8px;
+  }
+
+  .nav-item {
+    min-width: 168px;
+    flex: 0 0 auto;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
+
+  .app-main {
+    padding: 0 12px 12px;
+  }
+
+  .topbar {
+    padding-inline: 6px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .content-shell {
+    padding: 0 6px 12px;
+  }
 }
 </style>

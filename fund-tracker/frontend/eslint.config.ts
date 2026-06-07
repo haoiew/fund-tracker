@@ -23,7 +23,7 @@ export default defineConfigWithVueTs(
     }
   },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**', 'electron/**/*']),
+  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/dist-electron/**', '**/coverage/**', 'electron/**/*']),
 
   ...pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,

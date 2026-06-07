@@ -56,12 +56,16 @@ def app_and_engine(tmp_path_factory):
             status="ok",
         )
 
+    async def fake_get_realtime_batch(codes: list[str]) -> list[FundRealtimeData]:
+        return [await fake_get_realtime_data(code) for code in codes]
+
     _original_get_fund_service = fund_service_module.get_fund_service
 
     def _patched_get_fund_service():
         svc = _original_get_fund_service()
         svc.get_fund_name = fake_get_fund_name
         svc.get_realtime_data = fake_get_realtime_data
+        svc.get_realtime_batch = fake_get_realtime_batch
         return svc
 
     fund_service_module.get_fund_service = _patched_get_fund_service

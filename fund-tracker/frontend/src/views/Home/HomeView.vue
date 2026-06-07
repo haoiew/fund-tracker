@@ -1,9 +1,38 @@
 <template>
-  <div class="home-view">
-    <!-- 统计卡片 - 新布局 -->
-    <el-row :gutter="12" class="stats-row" v-if="fundStore.hasData">
+  <div class="home-view page-shell">
+    <section class="page-toolbar">
+      <div class="page-toolbar__main">
+        <span class="page-toolbar__icon">
+          <el-icon><DataLine /></el-icon>
+        </span>
+        <div class="page-toolbar__copy">
+          <h2 class="page-toolbar__title">基金实时总览</h2>
+          <p class="page-toolbar__meta">关注 {{ fundStore.realtimeData.length }} 只 · 持仓 {{ portfolioStore.itemCount }} 条 · 今日 {{ formatChange(dailyChangePct) }}</p>
+        </div>
+      </div>
+      <div class="page-toolbar__actions">
+        <el-button :icon="Refresh" @click="refreshData" :loading="isRefreshing">
+          {{ $t('home.refresh') }}
+        </el-button>
+        <el-button :icon="Download" @click="exportData">
+          {{ $t('home.export') }}
+        </el-button>
+        <el-button
+          v-if="!fundStore.hasData"
+          type="primary"
+          :icon="Wallet"
+          @click="loadDefaultData"
+          :loading="isLoadingDefault"
+        >
+          {{ $t('home.loadDefault') }}
+        </el-button>
+      </div>
+    </section>
+
+    <!-- 统计卡片 -->
+    <el-row :gutter="16" class="stats-row" v-if="fundStore.hasData">
       <!-- 第一个卡片：上涨/下跌数量 -->
-      <el-col :xs="6" :sm="6" :lg="6">
+      <el-col :xs="24" :sm="12" :lg="6">
         <div class="stat-card up-down">
           <div class="stat-icon" :class="upCount >= downCount ? 'up' : 'down'">
             <el-icon size="20"><TrendChartsIcon /></el-icon>
@@ -20,7 +49,7 @@
       </el-col>
 
       <!-- 第二个卡片：持仓总金额 -->
-      <el-col :xs="6" :sm="6" :lg="6">
+      <el-col :xs="24" :sm="12" :lg="6">
         <div class="stat-card portfolio-total">
           <div class="stat-icon primary">
             <el-icon size="20"><Wallet /></el-icon>
@@ -33,7 +62,7 @@
       </el-col>
 
       <!-- 第三个卡片：单日实时总持仓涨跌幅 -->
-      <el-col :xs="6" :sm="6" :lg="6">
+      <el-col :xs="24" :sm="12" :lg="6">
         <div class="stat-card daily-change">
           <div class="stat-icon" :class="dailyChangePct >= 0 ? 'up' : 'down'">
             <el-icon size="20"><DataLine /></el-icon>
@@ -48,7 +77,7 @@
       </el-col>
 
       <!-- 第四个卡片：单日实时涨跌金额 -->
-      <el-col :xs="6" :sm="6" :lg="6">
+      <el-col :xs="24" :sm="12" :lg="6">
         <div class="stat-card daily-amount">
           <div class="stat-icon" :class="dailyChangeAmount >= 0 ? 'up' : 'down'">
             <el-icon size="20"><Coin /></el-icon>
@@ -64,8 +93,8 @@
     </el-row>
 
     <!-- 搜索和操作栏 -->
-    <el-card class="search-card" shadow="never">
-      <div class="search-bar">
+    <section class="search-card surface-panel">
+      <div class="toolbar-row search-toolbar">
         <div class="search-box">
           <el-input
             v-model="searchInputValue"
@@ -77,7 +106,6 @@
             @focus="onSearchFocus"
             @keydown.esc="closeSearchResults"
           />
-          <!-- 搜索结果下拉面板 -->
           <div v-if="showSearchResults" class="search-results-dropdown" v-click-outside="onClickOutsideSearch">
             <div v-if="searchLoading" class="search-loading">
               <el-icon class="is-loading" size="16"><Loading /></el-icon>
@@ -104,29 +132,34 @@
             </div>
           </div>
         </div>
-        <el-button :icon="Refresh" @click="refreshData" :loading="isRefreshing">{{ $t('home.refresh') }}</el-button>
-        <el-button :icon="Download" @click="exportData">{{ $t('home.export') }}</el-button>
       </div>
-    </el-card>
+    </section>
 
     <!-- 基金列表 -->
-    <el-card class="fund-list-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <div class="header-left">
-            <span class="title">基金实时估值</span>
-            <el-icon v-if="fundStore.loading" class="is-loading header-loading" size="16"><Loading /></el-icon>
-            <el-tag v-if="fundStore.error && !fundStore.loading" type="danger" size="small" effect="light">
-              {{ fundStore.error }}
+    <section class="fund-list-card surface-panel">
+      <div class="card-header">
+        <div class="header-left">
+          <span class="title">基金实时估值</span>
+          <el-icon v-if="fundStore.loading" class="is-loading header-loading" size="16"><Loading /></el-icon>
+          <el-tag v-if="fundStore.error && !fundStore.loading" type="danger" size="small" effect="light">
+            {{ fundStore.error }}
+          </el-tag>
+          <template v-if="selectedFunds.length > 0">
+            <el-tag type="primary" size="small" effect="dark">
+              已选 {{ selectedFunds.length }} 只
             </el-tag>
-          </div>
-          <el-radio-group v-model="filterType" size="small">
-              <el-radio-button value="all">全部</el-radio-button>
-              <el-radio-button value="up">上涨</el-radio-button>
-              <el-radio-button value="down">下跌</el-radio-button>
-            </el-radio-group>
+            <el-button type="danger" size="small" :icon="Delete" @click="batchRemoveFromWatchlist">
+              批量移除
+            </el-button>
+            <el-button size="small" @click="clearSelection">取消选择</el-button>
+          </template>
         </div>
-      </template>
+        <el-radio-group v-model="filterType" size="small">
+          <el-radio-button value="all">全部</el-radio-button>
+          <el-radio-button value="up">上涨</el-radio-button>
+          <el-radio-button value="down">下跌</el-radio-button>
+        </el-radio-group>
+      </div>
 
       <!-- 空状态 -->
       <el-empty v-if="!fundStore.hasData && !fundStore.loading" description="暂无数据">
@@ -142,32 +175,113 @@
       <!-- 数据表格 -->
       <el-table
         v-else
+        ref="tableRef"
         :data="filteredData"
-        stripe
+        row-key="code"
+        class="fund-table"
         style="width: 100%"
-        height="calc(100vh - 320px)"
+        :expand-row-keys="expandedRowKeys"
         :default-sort="{ prop: 'estimate_change', order: 'descending' }"
+        :row-class-name="getTableRowClassName"
+        @selection-change="handleSelectionChange"
+        @expand-change="handleExpandChange"
       >
-        <el-table-column prop="code" label="基金代码" width="90" sortable />
-        <el-table-column prop="name" label="基金名称" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="estimate_nav" label="估算净值" width="100" align="right">
+        <el-table-column type="selection" width="40" />
+        <el-table-column type="expand" width="36">
           <template #default="{ row }">
-            <span :class="getChangeClass(row.estimate_change)">
-              {{ formatNav(row.estimate_nav) }}
-            </span>
+            <div class="fund-expanded-panel">
+              <div class="fund-expanded-summary">
+                <div class="expanded-title-row">
+                  <div>
+                    <span class="expanded-kicker">FUND DETAIL</span>
+                    <h3>{{ row.name }}</h3>
+                  </div>
+                  <el-button text size="small" @click="collapseFundDetail">收起</el-button>
+                </div>
+
+                <div class="expanded-metrics">
+                  <div class="expanded-metric">
+                    <span>估算净值</span>
+                    <strong :class="getChangeClass(row.estimate_change)">{{ formatNav(row.estimate_nav) }}</strong>
+                  </div>
+                  <div class="expanded-metric">
+                    <span>实时涨跌</span>
+                    <strong :class="getChangeClass(row.estimate_change)">{{ formatChange(row.estimate_change) }}</strong>
+                  </div>
+                  <div class="expanded-metric">
+                    <span>上一净值</span>
+                    <strong>{{ formatNav(row.previous_nav ?? null) }}</strong>
+                  </div>
+                  <div class="expanded-metric">
+                    <span>累计净值</span>
+                    <strong>{{ formatNav(row.accumulated_nav ?? null) }}</strong>
+                  </div>
+                </div>
+
+                <div class="expanded-meta-grid">
+                  <div>
+                    <span>基金代码</span>
+                    <strong>{{ row.code }}</strong>
+                  </div>
+                  <div>
+                    <span>数据来源</span>
+                    <strong>{{ row.data_source || '自动选择' }}</strong>
+                  </div>
+                  <div>
+                    <span>更新时间</span>
+                    <strong>{{ row.data_timestamp ? formatDateTime(row.data_timestamp) : row.update_time || '--' }}</strong>
+                  </div>
+                  <div>
+                    <span>状态</span>
+                    <strong>{{ row.status || '--' }}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div class="fund-expanded-chart">
+                <FundChart :code="row.code" :name="row.name" default-range="1M" embedded :height="292" />
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="estimate_change" label="涨跌幅" width="95" align="right" sortable>
+
+        <el-table-column prop="code" label="基金" min-width="240" sortable>
           <template #default="{ row }">
-            <div class="change-cell" :class="getChangeClass(row.estimate_change)">
+            <div class="fund-identity">
+              <span class="fund-code-pill">{{ row.code }}</span>
+              <span class="fund-name-text">{{ row.name }}</span>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="estimate_nav" label="估算净值" width="116" align="right">
+          <template #default="{ row }">
+            <div class="nav-cell" :class="getChangeClass(row.estimate_change)">
+              {{ formatNav(row.estimate_nav) }}
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="estimate_change" label="涨跌幅" width="112" align="right" sortable>
+          <template #default="{ row }">
+            <div class="change-pill" :class="getChangeTone(row.estimate_change)">
               <el-icon v-if="row.estimate_change > 0" size="12"><ArrowUp /></el-icon>
               <el-icon v-else-if="row.estimate_change < 0" size="12"><ArrowDown /></el-icon>
               <span>{{ formatChange(row.estimate_change) }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="update_time" label="更新时间" width="140" />
-        <el-table-column prop="status" label="状态" width="90" align="center">
+
+        <el-table-column prop="update_time" label="更新时间" width="154">
+          <template #default="{ row }">
+            <div class="time-cell">
+              <span>{{ row.update_time || '--' }}</span>
+              <small>{{ row.data_source || 'auto' }}</small>
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="status" label="状态" width="104" align="center">
           <template #default="{ row }">
             <el-tooltip placement="top">
               <template #content>
@@ -184,26 +298,28 @@
                 class="status-tag"
                 @click.stop="showDataSourceMenu(row)"
               >
+                <span class="status-dot-inline"></span>
                 {{ row.status }}
               </el-tag>
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right" align="center">
+
+        <el-table-column label="操作" width="110" fixed="right" align="center">
           <template #default="{ row }">
             <div class="action-icons">
-              <el-tooltip content="查看详情" placement="top">
-                <el-button circle type="primary" size="small" @click="viewDetail(row)">
+              <el-tooltip :content="isFundExpanded(row) ? '收起详情' : '展开详情'" placement="top">
+                <el-button circle :type="isFundExpanded(row) ? 'primary' : 'default'" size="small" @click="toggleFundDetail(row)">
                   <el-icon><View /></el-icon>
                 </el-button>
               </el-tooltip>
-              
-              <el-tooltip 
-                :content="isInPortfolio(row.code) ? '已在持仓中' : '加入持仓'" 
+
+              <el-tooltip
+                :content="isInPortfolio(row.code) ? '已在持仓中' : '加入持仓'"
                 placement="top"
               >
-                <el-button 
-                  circle 
+                <el-button
+                  circle
                   :type="isInPortfolio(row.code) ? 'info' : 'success'"
                   size="small"
                   :disabled="isInPortfolio(row.code)"
@@ -212,20 +328,11 @@
                   <el-icon><Plus v-if="!isInPortfolio(row.code)" /><Check v-else /></el-icon>
                 </el-button>
               </el-tooltip>
-              
-              <el-tooltip content="取消关注" placement="top">
-                <el-button circle type="danger" size="small" @click="removeFromWatchlist(row)">
-                  <el-icon><Close /></el-icon>
-                </el-button>
-              </el-tooltip>
             </div>
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
-
-    <!-- 基金详情弹窗 -->
-    <FundDetailDialog v-model="detailVisible" :fund="selectedFund" />
+    </section>
 
     <!-- 搜索结果对话框 -->
     <el-dialog
@@ -379,14 +486,15 @@ defineOptions({
 })
 
 import { ref, computed, onMounted, reactive } from 'vue'
-import { ArrowUp, ArrowDown, Search, Refresh, Wallet, TrendCharts, Loading, Download, Money, View, Plus, Check, Close, DataLine, Coin, TrendCharts as TrendChartsIcon, ArrowDown as ArrowDownIcon, InfoFilled } from '@element-plus/icons-vue'
+import { ArrowUp, ArrowDown, Search, Refresh, Wallet, Loading, Download, View, Plus, Check, DataLine, Coin, TrendCharts as TrendChartsIcon, InfoFilled, Delete } from '@element-plus/icons-vue'
 import { ClickOutside as vClickOutside } from 'element-plus'
+import type { TableInstance } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useFundStore } from '@/stores/fundStore'
 import { usePortfolioStore } from '@/stores/portfolioStore'
 import { dataManager } from '@/stores/dataManager'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import FundDetailDialog from '@/components/FundDetail/FundDetailDialog.vue'
+import FundChart from '@/components/Charts/FundChart.vue'
 import { exportFundsToCSV } from '@/utils/export'
 import fundApi, { type FundRealtimeData, type FundSearchItem } from '@/api/fund'
 
@@ -395,12 +503,13 @@ const fundStore = useFundStore()
 const portfolioStore = usePortfolioStore()
 const isRefreshing = ref(false)
 const isLoadingDefault = ref(false)
+const selectedFunds = ref<FundRealtimeData[]>([])
+const tableRef = ref<TableInstance>()
+const expandedRowKeys = ref<string[]>([])
 
 // 搜索和筛选
 const searchKeyword = ref('')
 const filterType = ref<'all' | 'up' | 'down'>('all')
-const detailVisible = ref(false)
-const selectedFund = ref<FundRealtimeData | null>(null)
 
 // 搜索相关
 const searchInputValue = ref('')
@@ -429,10 +538,22 @@ const searchResultFund = ref<FundRealtimeData | null>(null)
 // 数据源对比弹窗
 const dataSourceDialogVisible = ref(false)
 const dataSourceLoading = ref(false)
+
+interface DataSourceComparisonItem {
+  source: string
+  priority: number
+  estimate_nav: number | null
+  estimate_change_pct: number | null
+  last_nav: number | null
+  last_change_pct: number | null
+  update_time: string
+  is_fresh: boolean
+}
+
 const dataSourceData = ref<{
   code: string
   name: string
-  sources: any[]
+  sources: DataSourceComparisonItem[]
   best_source: string | null
   total_sources: number
 } | null>(null)
@@ -537,6 +658,13 @@ const getChangeClass = (val: number | null) => {
   return ''
 }
 
+const getChangeTone = (val: number | string | null) => {
+  if (val === null || val === undefined) return 'is-flat'
+  const num = typeof val === 'string' ? parseFloat(val) : val
+  if (isNaN(num) || num === 0) return 'is-flat'
+  return num > 0 ? 'is-up' : 'is-down'
+}
+
 // 获取状态标签类型
 const getStatusType = (status: string): 'success' | 'info' | 'warning' | 'danger' => {
   if (status === '正常') return 'success'
@@ -639,25 +767,6 @@ const onClickOutsideSearch = () => {
   }
 }
 
-// 搜索基金（兼容旧接口）
-const handleSearch = async (query: string) => {
-  if (!query || query.length < 2) {
-    searchResults.value = []
-    return
-  }
-
-  searchLoading.value = true
-  try {
-    const results = await fundApi.search(query, 20)
-    searchResults.value = results
-  } catch (e) {
-    console.error('搜索基金失败:', e)
-    searchResults.value = []
-  } finally {
-    searchLoading.value = false
-  }
-}
-
 // 选择搜索结果
 const onSearchFundSelect = async (fund: FundSearchItem) => {
   if (!fund) return
@@ -729,8 +838,14 @@ const addSearchFundToPortfolio = async () => {
 // 刷新数据
 const refreshData = async () => {
   isRefreshing.value = true
-  await dataManager.refreshAll()
-  isRefreshing.value = false
+  try {
+    await dataManager.refreshAll()
+    ElMessage.success('数据已更新')
+  } catch {
+    ElMessage.error('刷新失败，请检查后端服务是否运行')
+  } finally {
+    isRefreshing.value = false
+  }
 }
 
 // 加载默认数据
@@ -748,10 +863,23 @@ const loadDefaultData = async () => {
   }
 }
 
-// 查看基金详情
-const viewDetail = (fund: FundRealtimeData) => {
-  selectedFund.value = fund
-  detailVisible.value = true
+const isFundExpanded = (fund: FundRealtimeData) => expandedRowKeys.value.includes(fund.code)
+
+const toggleFundDetail = (fund: FundRealtimeData) => {
+  expandedRowKeys.value = isFundExpanded(fund) ? [] : [fund.code]
+}
+
+const collapseFundDetail = () => {
+  expandedRowKeys.value = []
+}
+
+const handleExpandChange = (row: FundRealtimeData, expandedRows: FundRealtimeData[]) => {
+  const isExpanded = expandedRows.some(item => item.code === row.code)
+  expandedRowKeys.value = isExpanded ? [row.code] : []
+}
+
+const getTableRowClassName = ({ row }: { row: FundRealtimeData }) => {
+  return isFundExpanded(row) ? 'is-expanded-row' : ''
 }
 
 // 导出数据
@@ -770,12 +898,18 @@ const isInPortfolio = (code: string): boolean => {
   return portfolioStore.items.some(item => item.fund_code === code)
 }
 
-// 从关注列表移除基金
-const removeFromWatchlist = async (fund: FundRealtimeData) => {
+// 批量删除选中基金
+const batchRemoveFromWatchlist = async () => {
+  if (selectedFunds.value.length === 0) {
+    ElMessage.warning('请先选择要移除的基金')
+    return
+  }
+
+  const names = selectedFunds.value.map(f => `${f.name}(${f.code})`).join('、')
   try {
     await ElMessageBox.confirm(
-      `确定要从关注列表移除 ${fund.name} (${fund.code}) 吗？`,
-      '确认移除',
+      `确定要从关注列表移除以下 ${selectedFunds.value.length} 只基金吗？\n${names}`,
+      '批量移除',
       {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
@@ -783,11 +917,24 @@ const removeFromWatchlist = async (fund: FundRealtimeData) => {
       }
     )
 
-    fundStore.removeFund(fund.code)
-    ElMessage.success(`已移除 ${fund.name}`)
+    const codes = selectedFunds.value.map(f => f.code)
+    dataManager.removeFunds(codes)
+    selectedFunds.value = []
+    ElMessage.success(`已批量移除 ${codes.length} 只基金`)
   } catch {
     // 用户取消
   }
+}
+
+// 处理选择变化
+const handleSelectionChange = (selection: FundRealtimeData[]) => {
+  selectedFunds.value = selection
+}
+
+// 清空选择
+const clearSelection = () => {
+  selectedFunds.value = []
+  tableRef.value?.clearSelection()
 }
 
 // 打开添加持仓对话框
@@ -844,35 +991,6 @@ const confirmAddToPortfolio = async () => {
   }
 }
 
-// 处理数据源切换
-const handleDataSourceChange = async (fund: FundRealtimeData, command: string) => {
-  if (command === 'compare') {
-    // 打开数据源对比弹窗
-    currentDataSourceFund.value = fund
-    dataSourceDialogVisible.value = true
-    dataSourceLoading.value = true
-    
-    try {
-      const result = await fundApi.getDataSources(fund.code, fund.name)
-      dataSourceData.value = result
-    } catch (error) {
-      ElMessage.error('获取数据源对比失败')
-      console.error('获取数据源对比失败:', error)
-    } finally {
-      dataSourceLoading.value = false
-    }
-  } else if (command === 'auto') {
-    // 自动选择数据源
-    ElMessage.success(`已切换到自动选择模式`)
-    // 刷新数据
-    await refreshData()
-  } else {
-    // 切换到指定数据源
-    ElMessage.info(`已切换到 ${command} 数据源`)
-    // TODO: 实现指定数据源的切换逻辑
-  }
-}
-
 // 选择数据源
 const selectDataSource = async (source: string) => {
   if (!currentDataSourceFund.value) return
@@ -915,89 +1033,94 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .home-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+
   .stats-row {
-    margin-bottom: 12px;
+    margin-bottom: 0;
   }
-  
+
   .stat-card {
+    min-height: 88px;
     background: var(--bg-card);
     border-radius: var(--radius-base);
-    padding: 12px 8px;
+    padding: 14px 16px;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
-    box-shadow: var(--shadow-base);
+    gap: 12px;
+    box-shadow: var(--shadow-light);
     border: 1px solid var(--border-light);
-    transition: all var(--transition-base);
-    
+    transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+
     &:hover {
       transform: translateY(-1px);
-      box-shadow: var(--shadow-md);
+      box-shadow: var(--shadow-base);
+      border-color: rgba(37, 99, 235, 0.18);
     }
-    
+
     .stat-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-base);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 20px;
-      background: var(--info-light);
+      background: rgba(37, 99, 235, 0.08);
       color: var(--primary-color);
-      transition: all 0.3s ease;
+      transition: all var(--transition-base);
 
       &.up {
-        background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+        background: linear-gradient(135deg, rgba(20, 184, 166, 0.96) 0%, rgba(16, 185, 129, 0.96) 100%);
         color: white;
-        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+        box-shadow: 0 8px 18px rgba(20, 184, 166, 0.18);
       }
 
       &.down {
-        background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.96) 0%, rgba(248, 113, 113, 0.96) 100%);
         color: white;
-        box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+        box-shadow: 0 8px 18px rgba(239, 68, 68, 0.18);
       }
 
       &.primary {
-        background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.96) 0%, rgba(79, 131, 255, 0.96) 100%);
         color: white;
-        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+        box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
       }
     }
 
     &.up-down .stat-icon {
-      background: linear-gradient(135deg, #10b981 0%, #3b82f6 50%, #ef4444 100%);
+      background: linear-gradient(135deg, rgba(20, 184, 166, 0.96) 0%, rgba(37, 99, 235, 0.96) 50%, rgba(239, 68, 68, 0.96) 100%);
       color: white;
-      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
     }
 
     &.portfolio-total .stat-icon {
-      background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.96) 0%, rgba(79, 131, 255, 0.96) 100%);
       color: white;
-      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
     }
 
     &.daily-change .stat-icon {
-      background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.96) 0%, rgba(251, 191, 36, 0.96) 100%);
       color: white;
-      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
     }
 
     &.daily-amount .stat-icon {
-      background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.96) 0%, rgba(124, 58, 237, 0.96) 100%);
       color: white;
-      box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
     }
-    
+
     .stat-info {
-      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      text-align: left;
+      min-width: 0;
 
       .stat-value {
-        font-size: 18px;
-        font-weight: 700;
-        line-height: 1.2;
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1.15;
 
         &.up-down-value {
           display: flex;
@@ -1006,7 +1129,7 @@ onMounted(() => {
 
           .separator {
             color: var(--text-secondary);
-            font-weight: 400;
+            font-weight: 500;
           }
         }
       }
@@ -1014,177 +1137,448 @@ onMounted(() => {
       .stat-label {
         font-size: 12px;
         color: var(--text-secondary);
-        margin-top: 2px;
       }
     }
   }
-  
+
   .search-card {
-    margin-bottom: 12px;
-    border-radius: var(--radius-lg);
-
-    :deep(.el-card__body) {
-      padding: 12px 16px;
-    }
-
-    .search-bar {
-      display: flex;
-      gap: 8px;
-
-      .search-box {
-        position: relative;
-        flex: 1;
-        max-width: 400px;
-
-        .search-input {
-          width: 100%;
-        }
-
-        .search-results-dropdown {
-          position: absolute;
-          top: 100%;
-          left: 0;
-          right: 0;
-          margin-top: 4px;
-          background: var(--bg-card);
-          border: 1px solid var(--border-light);
-          border-radius: var(--radius-base);
-          box-shadow: var(--shadow-md);
-          z-index: 100;
-          max-height: 300px;
-          overflow-y: auto;
-
-          .search-loading,
-          .search-empty,
-          .search-hint {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 16px;
-            color: var(--text-secondary);
-            font-size: 14px;
-          }
-
-          .search-results-list {
-            padding: 4px 0;
-
-            .search-result-item {
-              display: flex;
-              align-items: center;
-              gap: 12px;
-              padding: 10px 16px;
-              cursor: pointer;
-              transition: background-color 0.2s;
-
-              &:hover {
-                background-color: var(--bg-hover);
-              }
-
-              .fund-code {
-                font-family: monospace;
-                font-size: 13px;
-                color: var(--primary-color);
-                font-weight: 500;
-                min-width: 70px;
-              }
-
-              .fund-name {
-                font-size: 14px;
-                color: var(--text-primary);
-                flex: 1;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-              }
-            }
-          }
-        }
-      }
-    }
+    padding: 14px 16px;
   }
-  
-  .fund-list-card {
-    border-radius: var(--radius-lg);
-    
-    :deep(.el-card__header) {
-      padding: 12px 16px;
+
+  .search-toolbar {
+    gap: 12px;
+  }
+
+  .search-box {
+    position: relative;
+    flex: 1;
+    min-width: 280px;
+    max-width: 560px;
+
+    .search-input {
+      width: 100%;
     }
-    
-    :deep(.el-card__body) {
-      padding: 0;
-    }
-    
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      
-      .header-left {
+
+    .search-results-dropdown {
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      z-index: 100;
+      max-height: 320px;
+      overflow-y: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-base);
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(14px);
+
+      .search-loading,
+      .search-empty,
+      .search-hint {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 8px;
-        
-        .title {
-          font-size: var(--font-size-md);
-          font-weight: 600;
-        }
-        
-        .header-loading {
-          color: var(--primary-color);
+        padding: 16px;
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+
+      .search-results-list {
+        padding: 6px 0;
+
+        .search-result-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 11px 16px;
+          cursor: pointer;
+          transition: background-color var(--transition-fast);
+
+          &:hover {
+            background: var(--bg-hover);
+          }
+
+          .fund-code {
+            min-width: 72px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--primary-color);
+            font-weight: 700;
+          }
+
+          .fund-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 14px;
+            color: var(--text-primary);
+          }
         }
       }
     }
-    
-    .change-cell {
+  }
+
+  .toolbar-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .fund-list-card {
+    padding: 14px 16px 16px;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-light);
+
+    .header-left {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
-      gap: 2px;
-      font-weight: 600;
-      font-size: 13px;
-    }
-    
-    .action-icons {
-      display: flex;
-      justify-content: center;
-      gap: 4px;
-      
-      .el-button {
-        padding: 4px;
-        
-        .el-icon {
-          font-size: 14px;
-        }
+      gap: 8px;
+      flex-wrap: wrap;
+
+      .title {
+        font-size: 16px;
+        font-weight: 800;
+        color: var(--text-primary);
+      }
+
+      .header-loading {
+        color: var(--primary-color);
       }
     }
-    
-    .empty-description {
-      text-align: center;
-      
-      p {
-        margin: 0;
-        color: var(--text-regular);
-        
-        &.sub-text {
-          font-size: var(--font-size-sm);
-          color: var(--text-secondary);
-          margin-top: 8px;
-        }
+  }
+
+  .fund-identity {
+    display: grid;
+    grid-template-columns: 78px minmax(0, 1fr);
+    align-items: center;
+    gap: 11px;
+    min-width: 0;
+  }
+
+  .fund-code-pill {
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-hover);
+    color: var(--primary-color);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 850;
+  }
+
+  .fund-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 760;
+  }
+
+  .nav-cell {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 850;
+  }
+
+  .change-pill {
+    height: 28px;
+    min-width: 76px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-light);
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 850;
+
+    &.is-up {
+      border-color: color-mix(in srgb, var(--success-color) 18%, transparent);
+      background: var(--success-light);
+      color: var(--success-color);
+    }
+
+    &.is-down {
+      border-color: color-mix(in srgb, var(--danger-color) 18%, transparent);
+      background: var(--danger-light);
+      color: var(--danger-color);
+    }
+  }
+
+  .time-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+
+    span {
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    small {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+  }
+
+  .action-icons {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+
+    .el-button {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border-color: var(--border-light);
+
+      .el-icon {
+        font-size: 14px;
       }
     }
-    
-    :deep(.el-table) {
-      .el-table__cell {
-        padding: 8px 0;
+  }
+
+  .empty-description {
+    text-align: center;
+
+    p {
+      margin: 0;
+      color: var(--text-regular);
+
+      &.sub-text {
+        margin-top: 8px;
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
       }
-      
-      .el-tag {
-        padding: 0 6px;
-        height: 20px;
-        line-height: 18px;
-        font-size: 11px;
+    }
+  }
+
+  .status-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-weight: 800;
+
+    &:hover {
+      opacity: 0.84;
+    }
+  }
+
+  .status-dot-inline {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: currentColor;
+  }
+
+  .fund-expanded-panel {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.4fr) minmax(440px, 1fr);
+    gap: 16px;
+    padding: 16px;
+    background:
+      linear-gradient(180deg, rgba(37, 99, 235, 0.035), rgba(37, 99, 235, 0)),
+      var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    box-shadow: inset 0 1px 0 rgba(37, 99, 235, 0.06);
+  }
+
+  .fund-expanded-summary,
+  .fund-expanded-chart {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-base);
+    box-shadow: var(--shadow-light);
+  }
+
+  .expanded-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+
+    h3 {
+      margin: 3px 0 0;
+      color: var(--text-primary);
+      font-size: 17px;
+      font-weight: 850;
+      line-height: 1.25;
+    }
+  }
+
+  .expanded-kicker {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .expanded-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .expanded-metric {
+    padding: 12px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-hover);
+    transition: border-color var(--transition-fast), background-color var(--transition-fast);
+
+    &:hover {
+      border-color: rgba(37, 99, 235, 0.2);
+      background: var(--bg-card);
+    }
+
+    span {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    strong {
+      display: block;
+      margin-top: 4px;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 850;
+    }
+  }
+
+  .expanded-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+
+    div {
+      min-width: 0;
+      padding: 10px 0;
+      border-top: 1px solid var(--border-light);
+    }
+
+    span,
+    strong {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    span {
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    strong {
+      margin-top: 3px;
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 800;
+    }
+  }
+
+  :deep(.fund-table) {
+    border-radius: var(--radius-base);
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+
+    &::before {
+      display: none;
+    }
+
+    .el-table__header-wrapper th {
+      height: 44px;
+      background: var(--bg-hover) !important;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .el-table__row {
+      background: var(--bg-card);
+      transition: background-color var(--transition-fast);
+
+      &:hover > td.el-table__cell {
+        background: rgba(37, 99, 235, 0.035) !important;
       }
+    }
+
+    .el-table__cell {
+      padding: 10px 0;
+      border-bottom-color: var(--border-light);
+    }
+
+    .el-table__expanded-cell {
+      padding: 0 12px 14px;
+      background: var(--bg-card);
+      box-shadow: inset 0 1px 0 var(--border-light);
+    }
+
+    .is-expanded-row > td {
+      background: rgba(37, 99, 235, 0.035) !important;
+    }
+
+    .el-table__expand-icon {
+      color: var(--text-secondary);
+    }
+
+    .el-table__expand-icon--expanded {
+      color: var(--primary-color);
+    }
+
+    .el-tag {
+      padding: 0 8px;
+      height: 22px;
+      line-height: 20px;
+      font-size: 11px;
+    }
+  }
+
+  @media (max-width: 1180px) {
+    .fund-expanded-panel {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .fund-identity,
+    .expanded-metrics,
+    .expanded-meta-grid {
+      grid-template-columns: 1fr;
     }
   }
 }
@@ -1278,12 +1672,4 @@ onMounted(() => {
   }
 }
 
-// 状态标签样式
-.status-tag {
-  cursor: pointer;
-  
-  &:hover {
-    opacity: 0.8;
-  }
-}
 </style>

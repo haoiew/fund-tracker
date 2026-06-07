@@ -13,14 +13,14 @@
 - **基金筛选**: 连续涨跌趋势筛选
 - **基金对比**: 多基金多周期对比，含基准指数
 - **可视化图表**: ECharts 丰富的图表展示历史走势
-- **桌面应用**: Electron 桌面端，开箱即用
+- **轻量跨端**: Web 优先，保留 Tauri 桌面与 Android 容器潜力，Electron 仅作为历史兼容壳
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
 | 前端 | Vue 3 + TypeScript + Element Plus + ECharts |
-| 桌面端 | Electron |
+| 运行壳 | Web 优先 / Tauri-ready / Electron 兼容 |
 | 后端 | FastAPI + SQLAlchemy |
 | 数据库 | SQLite（零外部依赖） |
 | 数据源 | efinance + eastmoney API + AKShare |
@@ -55,10 +55,12 @@ npm run dev
 # 访问: http://localhost:5173
 ```
 
-### Electron 桌面端
+### 跨端运行壳
 
 ```bash
 cd frontend
+npm run tauri:dev:web      # Tauri 预适配 Web 调试，不依赖 Tauri CLI
+npm run tauri:build:web    # Tauri 预适配 Web 构建产物
 npm run electron:dev        # 开发模式
 npm run electron:build:win  # 构建 Windows 安装包
 ```
@@ -75,8 +77,8 @@ fund-tracker/
 │   │   ├── schemas/   # Pydantic 数据模型
 │   │   └── services/  # 业务逻辑层
 │   └── tests/         # pytest 测试
-├── frontend/          # Vue 3 + Electron 前端
-│   ├── electron/      # Electron 主进程
+├── frontend/          # Vue 3 Web 前端，运行壳保持可替换
+│   ├── electron/      # Electron 兼容壳
 │   └── src/           # Vue 应用源码
 └── scripts/           # 启动脚本
 ```

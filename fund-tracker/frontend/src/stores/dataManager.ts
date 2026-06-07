@@ -31,6 +31,7 @@ interface DataManagerState {
 // localStorage Key 常量
 const STORAGE_KEYS = {
   FUND_LIST: 'fund_tracker_fund_list',
+  FUND_LIST_DIRTY: 'fund_tracker_fund_list_dirty',  // 标记用户是否手动修改过列表
   REALTIME_DATA: 'fund_tracker_realtime_data',
   REALTIME_FETCH_TIME: 'fund_tracker_realtime_fetch_time',
   PORTFOLIO_ITEMS: 'fund_tracker_portfolio_items',
@@ -65,8 +66,18 @@ const state = reactive<DataManagerState>({
   portfolioError: null
 })
 
+type PortfolioLoadResult = { items: PortfolioItem[], stats: PortfolioStats }
+
 // 正在进行的请求跟踪
-const pendingRequests = new Map<string, Promise<any>>()
+const pendingRequests = new Map<string, Promise<unknown>>()
+
+function getPendingRequest<T>(key: string): Promise<T> | undefined {
+  return pendingRequests.get(key) as Promise<T> | undefined
+}
+
+function setPendingRequest<T>(key: string, request: Promise<T>): void {
+  pendingRequests.set(key, request)
+}
 
 // 缓存统计
 const cacheStats = {
@@ -175,7 +186,7 @@ class DataManager {
     const startTime = Date.now()
 
     // 并行刷新所有数据
-    const promises: Promise<any>[] = [
+    const promises: Promise<unknown>[] = [
       this.loadFundList().catch(e => {
         console.warn('[DataManager] 刷新基金列表失败:', e)
       }),
@@ -206,20 +217,23 @@ class DataManager {
    * 加载基金列表
    */
   async loadFundList(forceRefresh = false): Promise<string[]> {
-    // 检查是否已加载且不需要强制刷新
-    if (state.fundListLoaded && !forceRefresh && state.fundList.length > 0) {
+    // 用户手动修改过列表（包括清空），信任本地数据，不从API覆盖
+    const isDirty = localStorage.getItem(STORAGE_KEYS.FUND_LIST_DIRTY) === 'true'
+
+    if (state.fundListLoaded && !forceRefresh && (state.fundList.length > 0 || isDirty)) {
       console.log('[DataManager] 使用已加载的基金列表:', state.fundList.length)
       return state.fundList
     }
 
     const requestKey = 'fundList'
-    if (pendingRequests.has(requestKey)) {
-      return pendingRequests.get(requestKey)!
+    const pendingRequest = getPendingRequest<string[]>(requestKey)
+    if (pendingRequest) {
+      return pendingRequest
     }
 
     state.fundListLoading = true
     const request = this.fetchFundListFromAPI()
-    pendingRequests.set(requestKey, request)
+    setPendingRequest(requestKey, request)
 
     try {
       const result = await request
@@ -234,11 +248,14 @@ class DataManager {
    * 从本地存储恢复基金列表
    */
   private loadFundListFromStorage(): boolean {
+    // 如果用户手动修改过列表（添加/删除），则信任本地数据（包括空数组）
+    const isDirty = localStorage.getItem(STORAGE_KEYS.FUND_LIST_DIRTY) === 'true'
     const stored = localStorage.getItem(STORAGE_KEYS.FUND_LIST)
-    if (stored) {
+
+    if (stored !== null) {
       try {
         const parsed = JSON.parse(stored)
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed) && (parsed.length > 0 || isDirty)) {
           state.fundList = parsed
           state.fundListLoaded = true
           console.log('[DataManager] 从本地存储恢复基金列表:', parsed.length)
@@ -278,6 +295,7 @@ class DataManager {
     if (!state.fundList.includes(code)) {
       state.fundList.push(code)
       localStorage.setItem(STORAGE_KEYS.FUND_LIST, JSON.stringify(state.fundList))
+      localStorage.setItem(STORAGE_KEYS.FUND_LIST_DIRTY, 'true')
       console.log('[DataManager] 添加基金:', code)
     }
   }
@@ -285,19 +303,32 @@ class DataManager {
   removeFund(code: string) {
     const index = state.fundList.indexOf(code)
     if (index > -1) {
-      // 从基金列表中移除
       state.fundList.splice(index, 1)
       localStorage.setItem(STORAGE_KEYS.FUND_LIST, JSON.stringify(state.fundList))
-      
-      // 从实时数据中移除（立即响应）
+      localStorage.setItem(STORAGE_KEYS.FUND_LIST_DIRTY, 'true')
+
       state.realtimeData.delete(code)
-      
-      // 更新本地存储的实时数据
       const realtimeArray = Array.from(state.realtimeData.values())
       localStorage.setItem(STORAGE_KEYS.REALTIME_DATA, JSON.stringify(realtimeArray))
-      
+
       console.log('[DataManager] 移除基金:', code)
     }
+  }
+
+  removeFunds(codes: string[]) {
+    const codeSet = new Set(codes)
+    state.fundList = state.fundList.filter(c => !codeSet.has(c))
+    localStorage.setItem(STORAGE_KEYS.FUND_LIST, JSON.stringify(state.fundList))
+    localStorage.setItem(STORAGE_KEYS.FUND_LIST_DIRTY, 'true')
+
+    for (const code of codes) {
+      state.realtimeData.delete(code)
+    }
+
+    const realtimeArray = Array.from(state.realtimeData.values())
+    localStorage.setItem(STORAGE_KEYS.REALTIME_DATA, JSON.stringify(realtimeArray))
+
+    console.log('[DataManager] 批量移除基金:', codes)
   }
 
   /**
@@ -307,8 +338,9 @@ class DataManager {
   async resetFundList(): Promise<string[]> {
     console.log('[DataManager] 重置基金列表为默认列表...')
 
-    // 清除本地存储的基金列表
+    // 清除本地存储的基金列表和dirty标记
     localStorage.removeItem(STORAGE_KEYS.FUND_LIST)
+    localStorage.removeItem(STORAGE_KEYS.FUND_LIST_DIRTY)
 
     // 重置状态
     state.fundList = []
@@ -364,13 +396,14 @@ class DataManager {
     cacheStats.misses += uniqueCodes.length
 
     const requestKey = `realtime_${uniqueCodes.sort().join('_')}`
-    if (pendingRequests.has(requestKey)) {
-      return pendingRequests.get(requestKey)!
+    const pendingRequest = getPendingRequest<FundRealtimeData[]>(requestKey)
+    if (pendingRequest) {
+      return pendingRequest
     }
 
     state.realtimeLoading = true
     const request = this.fetchRealtimeDataFromAPI(uniqueCodes)
-    pendingRequests.set(requestKey, request)
+    setPendingRequest(requestKey, request)
 
     try {
       const result = await request
@@ -474,13 +507,14 @@ class DataManager {
     }
 
     const requestKey = 'portfolio'
-    if (pendingRequests.has(requestKey)) {
-      return pendingRequests.get(requestKey)!
+    const pendingRequest = getPendingRequest<PortfolioLoadResult>(requestKey)
+    if (pendingRequest) {
+      return pendingRequest
     }
 
     state.portfolioLoading = true
     const request = this.fetchPortfolioFromAPI()
-    pendingRequests.set(requestKey, request)
+    setPendingRequest(requestKey, request)
 
     try {
       const result = await request
@@ -669,6 +703,7 @@ class DataManager {
       console.log('[DataManager] 所有数据刷新完成')
     } catch (e) {
       console.error('[DataManager] 刷新数据失败:', e)
+      throw e
     }
   }
 
@@ -693,6 +728,8 @@ class DataManager {
     Object.values(STORAGE_KEYS).forEach(key => {
       localStorage.removeItem(key)
     })
+    // 同时清除dirty标记
+    localStorage.removeItem(STORAGE_KEYS.FUND_LIST_DIRTY)
 
     console.log('[DataManager] 缓存已清除')
   }

@@ -1,6 +1,6 @@
 <template>
-  <div class="fund-chart">
-    <div class="chart-header">
+  <div class="fund-chart" :class="{ 'is-embedded': embedded }">
+    <div v-if="!embedded" class="chart-header">
       <h3>{{ name }} ({{ code }})</h3>
       <el-radio-group v-model="timeRange" size="small" @change="loadData">
         <el-radio-button value="1W">1周</el-radio-button>
@@ -10,18 +10,40 @@
         <el-radio-button value="1Y">1年</el-radio-button>
       </el-radio-group>
     </div>
-    <div v-show="loading" class="chart-loading">
+    <div v-else class="chart-toolbar">
+      <div>
+        <span class="chart-eyebrow">NAV TREND</span>
+        <h3>净值走势</h3>
+      </div>
+      <el-radio-group v-model="timeRange" size="small" @change="loadData">
+        <el-radio-button value="1W">1周</el-radio-button>
+        <el-radio-button value="1M">1月</el-radio-button>
+        <el-radio-button value="3M">3月</el-radio-button>
+        <el-radio-button value="6M">6月</el-radio-button>
+        <el-radio-button value="1Y">1年</el-radio-button>
+      </el-radio-group>
+    </div>
+    <div v-if="loading" class="chart-loading">
       <el-icon class="is-loading" size="32"><Loading /></el-icon>
       <span>加载中...</span>
     </div>
-    <div v-show="!loading" ref="chartRef" class="chart-container"></div>
+    <div v-else-if="chartMessage" class="chart-empty">
+      <span class="chart-empty__icon">
+        <el-icon><InfoFilled /></el-icon>
+      </span>
+      <div>
+        <strong>{{ chartMessage.title }}</strong>
+        <small>{{ chartMessage.detail }}</small>
+      </div>
+    </div>
+    <div v-show="!loading && !chartMessage" ref="chartRef" class="chart-container"></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { Loading } from '@element-plus/icons-vue'
+import { InfoFilled, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import fundApi from '@/api/fund'
 
@@ -29,14 +51,25 @@ const props = withDefaults(defineProps<{
   code: string
   name: string
   defaultRange?: string
+  embedded?: boolean
+  height?: number
 }>(), {
-  defaultRange: '3M'
+  defaultRange: '3M',
+  embedded: false,
+  height: 400
 })
 
 const chartRef = ref<HTMLElement>()
 const timeRange = ref(props.defaultRange)
 const loading = ref(false)
+const chartMessage = ref<{ title: string; detail: string } | null>(null)
 let chart: echarts.ECharts | null = null
+
+interface TooltipPoint {
+  name?: string
+  axisValue?: string
+  dataIndex?: number
+}
 
 // 金融专业配色方案
 const financialColors = {
@@ -100,6 +133,7 @@ const calculateDailyChanges = (values: number[]): number[] => {
 
 const loadData = async () => {
   loading.value = true
+  chartMessage.value = null
 
   try {
     // 确保图表已初始化
@@ -123,6 +157,11 @@ const loadData = async () => {
     // 检查数据有效性
     if (!data || !Array.isArray(data.dates) || data.dates.length === 0) {
       console.warn('图表数据为空:', data)
+      chart?.clear()
+      chartMessage.value = {
+        title: '暂无可用走势',
+        detail: '当前时间范围内没有历史净值数据'
+      }
       loading.value = false
       return
     }
@@ -153,12 +192,12 @@ const loadData = async () => {
           fontSize: 13
         },
         extraCssText: 'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); border-radius: 8px;',
-        formatter: (params: any) => {
+        formatter: (params: unknown) => {
           if (!params || !Array.isArray(params) || params.length === 0) {
             return ''
           }
           
-          const p = params[0]
+          const p = params[0] as TooltipPoint
           const date = p.name || p.axisValue || '--'
           const dataIndex = p.dataIndex
           
@@ -263,6 +302,11 @@ const loadData = async () => {
     chart.setOption(option, true)
   } catch (e) {
     console.error('加载图表数据失败:', e)
+    chart?.clear()
+    chartMessage.value = {
+      title: '走势加载失败',
+      detail: '请确认后端服务和历史净值数据源可用'
+    }
   } finally {
     loading.value = false
   }
@@ -288,6 +332,8 @@ watch(() => props.code, () => {
 
 <style scoped lang="scss">
 .fund-chart {
+  min-width: 0;
+
   .chart-header {
     display: flex;
     justify-content: space-between;
@@ -301,19 +347,102 @@ watch(() => props.code, () => {
       color: var(--text-primary);
     }
   }
-  
-  .chart-loading {
-    height: 400px;
+
+  .chart-toolbar {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+
+    h3 {
+      margin: 2px 0 0;
+      color: var(--text-primary);
+      font-size: 16px;
+      font-weight: 850;
+      line-height: 1.2;
+    }
+  }
+
+  .chart-eyebrow {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0;
+  }
+  
+  .chart-loading,
+  .chart-empty {
+    height: v-bind('`${props.height}px`');
+    display: flex;
     align-items: center;
     justify-content: center;
     gap: 12px;
     color: var(--text-secondary);
   }
+
+  .chart-loading {
+    flex-direction: column;
+  }
+
+  .chart-empty {
+    padding: 18px;
+    border: 1px dashed var(--border-base);
+    border-radius: var(--radius-base);
+    background: var(--bg-hover);
+    text-align: left;
+
+    strong,
+    small {
+      display: block;
+    }
+
+    strong {
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    small {
+      margin-top: 4px;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+  }
+
+  .chart-empty__icon {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: var(--radius-base);
+    background: var(--icon-surface);
+    color: var(--primary-color);
+  }
   
   .chart-container {
-    height: 400px;
+    height: v-bind('`${props.height}px`');
+  }
+
+  &.is-embedded {
+    .chart-container {
+      min-height: 280px;
+    }
+
+    :deep(.el-radio-button__inner) {
+      height: 30px;
+      padding: 0 11px;
+      display: inline-flex;
+      align-items: center;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .chart-toolbar,
+    .chart-header {
+      flex-direction: column;
+    }
   }
 }
 </style>

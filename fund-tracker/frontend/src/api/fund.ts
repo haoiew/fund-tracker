@@ -114,7 +114,7 @@ export const fundApi = {
     count: number
     funds: FundTrendResult[]
   }> {
-    const params: Record<string, any> = {
+    const params: Record<string, string | number | boolean> = {
       min_days: minDays,
       min_pct: minPct,
       include_realtime: includeRealtime
@@ -195,7 +195,7 @@ export const fundApi = {
     best_source: string | null
     total_sources: number
   }> {
-    const params: Record<string, any> = {}
+    const params: Record<string, string> = {}
     if (name) {
       params.name = name
     }

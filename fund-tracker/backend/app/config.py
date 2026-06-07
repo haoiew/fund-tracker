@@ -31,6 +31,7 @@ class Settings:
         "http://localhost:3000", "http://localhost:5173",
         "http://127.0.0.1:3000", "http://127.0.0.1:5173",
         "http://localhost:5174", "http://127.0.0.1:5174",
+        "tauri://localhost", "https://tauri.localhost",
     ])
 
     # 数据库（SQLite only）
@@ -86,6 +87,9 @@ class Settings:
         self.DEBUG = os.getenv("DEBUG", "false").lower() == "true" or self.DEBUG
         self.HOST = os.getenv("HOST", self.HOST)
         self.PORT = int(os.getenv("PORT", str(self.PORT)))
+        cors_origins = os.getenv("CORS_ORIGINS")
+        if cors_origins:
+            self.CORS_ORIGINS = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
 
         # 解析 .env 中的基金列表
         env_funds = os.getenv("DEFAULT_FUNDS")

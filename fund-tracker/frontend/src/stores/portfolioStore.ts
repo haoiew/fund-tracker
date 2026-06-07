@@ -4,14 +4,61 @@ import { dataManager } from './dataManager'
 import portfolioApi, { type PortfolioItem } from '@/api/portfolio'
 import { ElMessage } from 'element-plus'
 
-// 操作队列类型
-interface PendingOperation {
+type PortfolioAddInput = {
+  fund_code: string
+  fund_name?: string
+  hold_shares?: number
+  cost_amount?: number
+  cost_nav?: number
+  buy_date?: string
+  remark?: string
+}
+
+type PortfolioCreatePayload = Omit<PortfolioItem, 'id' | 'created_at' | 'updated_at'>
+
+type PortfolioUpdateInput = {
+  hold_shares?: number
+  cost_amount?: number
+  cost_nav?: number
+  buy_date?: string
+  remark?: string
+}
+
+type PendingOperationBase = {
   id: string
-  type: 'add' | 'update' | 'delete'
-  data: any
   status: 'pending' | 'success' | 'error'
   retryCount: number
   maxRetries: number
+}
+
+type PendingOperation =
+  | (PendingOperationBase & {
+      type: 'add'
+      data: { tempItem: PortfolioItem; apiData: PortfolioAddInput }
+    })
+  | (PendingOperationBase & {
+      type: 'update'
+      data: { id: number; originalItem: PortfolioItem; newData: PortfolioUpdateInput }
+    })
+  | (PendingOperationBase & {
+      type: 'delete'
+      data: { id: number; originalItem: PortfolioItem }
+    })
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
+}
+
+function toPortfolioCreatePayload(data: PortfolioAddInput): PortfolioCreatePayload {
+  return {
+    fund_code: data.fund_code,
+    fund_name: data.fund_name,
+    hold_shares: data.hold_shares || 0,
+    cost_amount: data.cost_amount || 0,
+    cost_nav: data.cost_nav,
+    buy_date: data.buy_date,
+    remark: data.remark
+  }
 }
 
 export const usePortfolioStore = defineStore('portfolio', () => {
@@ -120,15 +167,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   /**
    * 添加持仓（带乐观更新和确认机制）
    */
-  async function addItem(data: {
-    fund_code: string
-    fund_name?: string
-    hold_shares?: number
-    cost_amount?: number
-    cost_nav?: number
-    buy_date?: string
-    remark?: string
-  }): Promise<boolean> {
+  async function addItem(data: PortfolioAddInput): Promise<boolean> {
     const operationId = generateOperationId()
 
     // 创建乐观更新项
@@ -165,15 +204,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     try {
       // 调用API
-      await portfolioApi.add({
-        fund_code: data.fund_code,
-        fund_name: data.fund_name,
-        hold_shares: data.hold_shares || 0,
-        cost_amount: data.cost_amount || 0,
-        cost_nav: data.cost_nav,
-        buy_date: data.buy_date,
-        remark: data.remark
-      })
+      await portfolioApi.add(toPortfolioCreatePayload(data))
 
       // 更新操作状态为成功
       const operation = pendingOperations.value.get(operationId)
@@ -187,7 +218,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       ElMessage.success('添加成功')
       return true
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('添加持仓失败:', e)
 
       // 更新操作状态为错误
@@ -199,7 +230,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       // 回滚乐观更新
       await dataManager.refreshPortfolio()
 
-      ElMessage.error(e.message || '添加失败')
+      ElMessage.error(getErrorMessage(e, '添加失败'))
       return false
 
     } finally {
@@ -213,15 +244,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   /**
    * 批量添加持仓（优化性能）
    */
-  async function batchAddItems(items: Array<{
-    fund_code: string
-    fund_name?: string
-    hold_shares?: number
-    cost_amount?: number
-    cost_nav?: number
-    buy_date?: string
-    remark?: string
-  }>): Promise<{ success: number; failed: number }> {
+  async function batchAddItems(items: PortfolioAddInput[]): Promise<{ success: number; failed: number }> {
     let success = 0
     let failed = 0
 
@@ -249,15 +272,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     // 顺序执行API调用（避免并发问题）
     for (const data of items) {
       try {
-        await portfolioApi.add({
-          fund_code: data.fund_code,
-          fund_name: data.fund_name,
-          hold_shares: data.hold_shares || 0,
-          cost_amount: data.cost_amount || 0,
-          cost_nav: data.cost_nav,
-          buy_date: data.buy_date,
-          remark: data.remark
-        })
+        await portfolioApi.add(toPortfolioCreatePayload(data))
         success++
       } catch (e) {
         console.error(`添加 ${data.fund_code} 失败:`, e)
@@ -280,13 +295,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   /**
    * 更新持仓（带乐观更新和确认机制）
    */
-  async function updateItem(id: number, data: {
-    hold_shares?: number
-    cost_amount?: number
-    cost_nav?: number
-    buy_date?: string
-    remark?: string
-  }): Promise<boolean> {
+  async function updateItem(id: number, data: PortfolioUpdateInput): Promise<boolean> {
     const operationId = generateOperationId()
 
     // 保存原始数据用于回滚
@@ -340,7 +349,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       ElMessage.success('更新成功')
       return true
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('更新持仓失败:', e)
 
       // 更新操作状态
@@ -352,7 +361,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       // 回滚
       await dataManager.refreshPortfolio()
 
-      ElMessage.error(e.message || '更新失败')
+      ElMessage.error(getErrorMessage(e, '更新失败'))
       return false
 
     } finally {
@@ -403,7 +412,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
       return true
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('删除持仓失败:', e)
 
       // 更新操作状态
@@ -415,7 +424,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       // 回滚：恢复原始数据
       await dataManager.refreshPortfolio()
 
-      ElMessage.error(e.message || '删除失败')
+      ElMessage.error(getErrorMessage(e, '删除失败'))
       return false
 
     } finally {
@@ -447,7 +456,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
         try {
           switch (operation.type) {
             case 'add':
-              await portfolioApi.add(operation.data.apiData)
+              await portfolioApi.add(toPortfolioCreatePayload(operation.data.apiData))
               break
             case 'update':
               await portfolioApi.update(operation.data.id, operation.data.newData)
