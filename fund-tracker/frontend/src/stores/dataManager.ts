@@ -67,6 +67,12 @@ const state = reactive<DataManagerState>({
 })
 
 type PortfolioLoadResult = { items: PortfolioItem[], stats: PortfolioStats }
+type AlternativeFundPatch = Partial<FundRealtimeData> & {
+  estimate_change: number
+  status: string
+  data_kind: NonNullable<FundRealtimeData['data_kind']>
+  data_kind_label: string
+}
 
 // 正在进行的请求跟踪
 const pendingRequests = new Map<string, Promise<unknown>>()
@@ -499,10 +505,17 @@ class DataManager {
 
     return data.map(item => {
       const alternatives = alternativeMap.get(item.code)
+      const alternativePatch = this.buildPreferredAlternativeFund(item, alternatives)
+      return alternativePatch ? { ...item, ...alternativePatch } : item
+    })
+  }
+
+  private buildPreferredAlternativeFund(item: FundRealtimeData, alternatives?: RealtimeAlternativeResult): AlternativeFundPatch | null {
+    if (!alternatives) return null
+
       const estimate = alternatives?.holdings_based_estimate
       if (estimate?.feasible && estimate.weighted_stock_change_pct !== null && estimate.weighted_stock_change_pct !== undefined) {
         return {
-          ...item,
           estimate_change: estimate.weighted_stock_change_pct,
           update_time: this.formatMinuteTime(new Date()),
           status: '持仓估算',
@@ -520,7 +533,6 @@ class DataManager {
       const reference = alternatives?.reference_symbol_estimate
       if (reference?.feasible && reference.weighted_stock_change_pct !== null && reference.weighted_stock_change_pct !== undefined) {
         return {
-          ...item,
           estimate_change: reference.weighted_stock_change_pct,
           update_time: this.formatMinuteTime(new Date()),
           status: '标的估算',
@@ -535,13 +547,31 @@ class DataManager {
         }
       }
 
+      const realtimeCandidate = alternatives.same_name_realtime_candidates.find(candidate => {
+        return candidate.change_pct !== null && candidate.change_pct !== undefined
+      })
+      if (realtimeCandidate) {
+        return {
+          estimate_change: realtimeCandidate.change_pct as number,
+          update_time: realtimeCandidate.update_time || item.update_time,
+          status: '相近参考',
+          data_source: realtimeCandidate.source,
+          data_source_display_name: `相近基金参考：${realtimeCandidate.name}`,
+          data_source_short_name: 'Similar',
+          data_source_description: `采用相近基金 ${realtimeCandidate.code} ${realtimeCandidate.name} 的实时涨跌幅作为自动参考，不是本基金自身估值。`,
+          data_kind: 'similar_realtime_reference',
+          data_kind_label: '相近参考',
+          is_realtime: false,
+          data_timestamp: new Date().toISOString()
+        }
+      }
+
       const fallback = alternatives?.fallback_estimate
       if (!fallback?.feasible || fallback.change_pct === null || fallback.change_pct === undefined) {
-        return item
+        return null
       }
 
       return {
-        ...item,
         estimate_change: fallback.change_pct,
         update_time: fallback.update_time || item.update_time,
         status: '兜底估算',
@@ -554,8 +584,7 @@ class DataManager {
         is_realtime: false,
         data_timestamp: new Date().toISOString()
       }
-    })
-  }
+    }
 
   private formatMinuteTime(date: Date): string {
     const pad = (value: number) => String(value).padStart(2, '0')

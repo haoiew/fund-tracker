@@ -844,12 +844,20 @@ const isSimilarReferenceData = (row: Pick<FundRealtimeData, 'data_kind'> | DataS
   return row.data_kind === 'similar_realtime_reference'
 }
 
+const isReferenceEstimateData = (row: Pick<FundRealtimeData, 'data_kind'> | DataSourceComparisonItem): boolean => {
+  return row.data_kind === 'reference_symbol_estimate'
+}
+
+const isFallbackEstimateData = (row: Pick<FundRealtimeData, 'data_kind'> | DataSourceComparisonItem): boolean => {
+  return row.data_kind === 'fallback_estimate'
+}
+
 const isLatestNavData = (row: Pick<FundRealtimeData, 'data_kind' | 'is_realtime'> | DataSourceComparisonItem): boolean => {
   return row.data_kind === 'latest_nav' || (!row.data_kind && row.is_realtime === false)
 }
 
 const getFundChangeClass = (fund: FundRealtimeData): string => {
-  if (isHoldingEstimateData(fund) || isSimilarReferenceData(fund)) return getChangeClass(fund.estimate_change)
+  if (isHoldingEstimateData(fund) || isReferenceEstimateData(fund) || isSimilarReferenceData(fund) || isFallbackEstimateData(fund)) return getChangeClass(fund.estimate_change)
   if (isLatestNavData(fund)) return 'text-muted-change'
   return getChangeClass(fund.estimate_change)
 }
@@ -861,14 +869,18 @@ const getSourceChangeClass = (sourceRow: DataSourceComparisonItem): string => {
 
 const getFundChangeTone = (fund: FundRealtimeData): string => {
   if (isHoldingEstimateData(fund)) return 'is-holdings-estimate'
+  if (isReferenceEstimateData(fund)) return 'is-reference-estimate'
   if (isSimilarReferenceData(fund)) return 'is-similar-reference'
+  if (isFallbackEstimateData(fund)) return 'is-fallback-estimate'
   if (isLatestNavData(fund)) return 'is-latest-nav'
   return getChangeTone(fund.estimate_change)
 }
 
 const getChangeTooltip = (fund: FundRealtimeData): string => {
   if (isHoldingEstimateData(fund)) return fund.data_source_description || '基于最新披露持仓和实时股票行情的替代估算，不是基金公司发布的盘中估值。'
+  if (isReferenceEstimateData(fund)) return fund.data_source_description || '采用明确跟踪标的或场内份额行情作为自动参考，不是基金公司发布的盘中估值。'
   if (isSimilarReferenceData(fund)) return fund.data_source_description || '采用相近基金实时涨跌幅作为人工参考，不是本基金自身估值。'
+  if (isFallbackEstimateData(fund)) return fund.data_source_description || '采用净值或报价源涨跌幅作为兜底参考，不是基金公司发布的盘中估值。'
   if (!isLatestNavData(fund)) return ''
   return '该涨跌幅来自最新公布净值相对上一交易日的日增长率，不是盘中实时估值。'
 }
@@ -879,6 +891,9 @@ const getStatusType = (status: string): 'success' | 'info' | 'warning' | 'danger
   if (status === '最新净值') return 'info'
   if (status === '场内行情') return 'warning'
   if (status === '持仓估算') return 'warning'
+  if (status === '标的估算') return 'warning'
+  if (status === '相近参考') return 'warning'
+  if (status === '兜底估算') return 'warning'
   return 'info'
 }
 
@@ -1753,10 +1768,22 @@ onMounted(() => {
       color: #c2410c;
     }
 
+    &.is-reference-estimate {
+      border-color: #bae6fd;
+      background: #f0f9ff;
+      color: #0369a1;
+    }
+
     &.is-similar-reference {
       border-color: #bfdbfe;
       background: #eff6ff;
       color: #2563eb;
+    }
+
+    &.is-fallback-estimate {
+      border-color: #e9d5ff;
+      background: #faf5ff;
+      color: #7e22ce;
     }
   }
 
