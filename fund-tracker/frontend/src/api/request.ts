@@ -20,6 +20,42 @@ interface EnhancedApiError extends Error {
   retryCount: number
 }
 
+function redactRequestData(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(redactRequestData)
+
+  const redacted: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    redacted[key] = /api[_-]?key|authorization|token|secret|password/i.test(key)
+      ? '***'
+      : redactRequestData(item)
+  }
+  return redacted
+}
+
+function formatServerErrorPayload(payload: unknown): string {
+  if (!payload) return ''
+  if (typeof payload === 'string') return payload
+  if (Array.isArray(payload)) {
+    return payload
+      .map(item => formatServerErrorPayload(item))
+      .filter(Boolean)
+      .join('；')
+  }
+  if (typeof payload === 'object') {
+    const data = payload as Record<string, unknown>
+    const direct = data.detail ?? data.message ?? data.error
+    if (direct) return formatServerErrorPayload(direct)
+    if (typeof data.msg === 'string') return data.msg
+    try {
+      return JSON.stringify(data)
+    } catch {
+      return ''
+    }
+  }
+  return String(payload)
+}
+
 // 创建 axios 实例
 const service: AxiosInstance = axios.create({
   baseURL: resolveApiBaseUrl(),
@@ -116,7 +152,7 @@ service.interceptors.request.use(
 
     // 只在开发环境打印日志
     if (import.meta.env.DEV) {
-      console.log('[API Request]', config.method?.toUpperCase(), config.url, config.data)
+      console.log('[API Request]', config.method?.toUpperCase(), config.url, redactRequestData(config.data))
     }
     return config
   },
@@ -156,6 +192,7 @@ service.interceptors.response.use(
       // 服务器返回错误
       const status = error.response.status
       errorCode = `HTTP_${status}`
+      const serverMessage = formatServerErrorPayload(error.response.data)
       
       switch (status) {
         case 400:
@@ -213,6 +250,9 @@ service.interceptors.response.use(
           break
         default:
           message = `请求失败: ${status}`
+      }
+      if (serverMessage) {
+        message = serverMessage
       }
     } else if (error.request) {
       // 请求发送但没有收到响应

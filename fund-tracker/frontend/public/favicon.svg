@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Fund Tracker">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#0c111d"/>
+  <rect x="5" y="5" width="54" height="54" rx="13" fill="none" stroke="#202b3d" stroke-width="2"/>
+  <path d="M16 44h32" fill="none" stroke="#273247" stroke-width="4" stroke-linecap="round"/>
+  <path d="M16 40l11-10 9 6 12-15" fill="none" stroke="#f8fafc" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M41 21h7v7" fill="none" stroke="#2dd4bf" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="48" cy="21" r="4" fill="#2dd4bf"/>
+</svg>

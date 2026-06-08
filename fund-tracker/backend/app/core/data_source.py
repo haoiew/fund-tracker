@@ -21,6 +21,42 @@ from app.logger import get_logger
 
 logger = get_logger("data_source")
 
+DATA_SOURCE_COMPARISON_SOURCES = [
+    ("tiantian", 1),
+    ("efinance", 2),
+    ("tencent", 3),
+    ("eastmoney_lsjz", 4),
+    ("pingzhongdata", 5),
+]
+
+DATA_SOURCE_METADATA: Dict[str, Dict[str, str]] = {
+    "tiantian": {
+        "display_name": "天天基金盘中估值接口",
+        "short_name": "TTFund",
+        "description": "天天基金 fundgz 接口，返回盘中估算净值、估算涨跌幅和估算时刻，是开放式基金实时估值的优先来源。",
+    },
+    "efinance": {
+        "display_name": "EFinance 批量基金行情接口",
+        "short_name": "EFinance",
+        "description": "Python efinance 库封装的基金行情接口，适合批量补充基金净值、估算涨跌幅和公开日期；当无盘中估值时仅作为最新净值来源。",
+    },
+    "tencent": {
+        "display_name": "腾讯基金行情",
+        "short_name": "Tencent",
+        "description": "腾讯基金行情接口，对部分 QDII、港股主题基金可返回最新公布净值。",
+    },
+    "eastmoney_lsjz": {
+        "display_name": "东方财富历史净值接口",
+        "short_name": "Eastmoney NAV",
+        "description": "东方财富 f10/lsjz 净值接口，返回最近公布的单位净值和相对上一交易日的日增长率。",
+    },
+    "pingzhongdata": {
+        "display_name": "东方财富基金页面数据",
+        "short_name": "Eastmoney Page",
+        "description": "东方财富基金详情页 JS 数据，作为净值趋势和最新净值的兜底来源。",
+    },
+}
+
 
 class FundType(Enum):
     OPEN_END = "open_end"
@@ -42,6 +78,29 @@ class FundDataResult:
     @property
     def is_success(self) -> bool:
         return self.error is None and (self.nav is not None or self.change_pct is not None)
+
+
+def get_data_source_metadata(source: str) -> Dict[str, str]:
+    fallback = {
+        "display_name": source or "未知数据源",
+        "short_name": source or "未知",
+        "description": "未登记说明的数据源。",
+    }
+    return {**fallback, **DATA_SOURCE_METADATA.get(source, {})}
+
+
+def _has_intraday_timestamp(update_time: Optional[str]) -> bool:
+    return bool(update_time and re.search(r"\d{1,2}:\d{2}", update_time))
+
+
+def _classify_data_kind(source: str, update_time: Optional[str]) -> tuple[str, str]:
+    if source in {"tiantian", "efinance"} and _has_intraday_timestamp(update_time):
+        return "realtime_estimate", "实时估值"
+    return "latest_nav", "最新净值"
+
+
+def classify_data_kind(source: str, update_time: Optional[str]) -> tuple[str, str]:
+    return _classify_data_kind(source, update_time)
 
 
 class EfinanceAdapter:
@@ -318,6 +377,30 @@ class DataSourceManager:
         self._eastmoney = EastmoneyDirectAdapter()
         self._name_cache: Dict[str, str] = {}
 
+    def _complete_latest_nav_change(self, result: FundDataResult) -> FundDataResult:
+        """用最新净值源补齐缺失的日涨跌幅，避免把无涨跌显示成不可用。"""
+        if not result.is_success or result.change_pct is not None:
+            return result
+
+        data_kind, _ = _classify_data_kind(result.source, result.update_time)
+        if data_kind == "realtime_estimate":
+            return result
+
+        for fetcher in (self._eastmoney._try_eastmoney_lsjz, self._eastmoney._try_pingzhongdata):
+            fallback = fetcher(result.code)
+            if fallback.is_success and fallback.change_pct is not None:
+                return FundDataResult(
+                    code=result.code,
+                    name=fallback.name or result.name,
+                    nav=fallback.nav if fallback.nav is not None else result.nav,
+                    change_pct=fallback.change_pct,
+                    update_time=fallback.update_time or result.update_time,
+                    source=fallback.source,
+                    fetch_duration_ms=result.fetch_duration_ms + fallback.fetch_duration_ms,
+                )
+
+        return result
+
     async def fetch_batch(self, codes: List[str]) -> List[FundDataResult]:
         """批量获取 - 优先tiantian实时估值，efinance批量补充"""
         # 先用tiantian获取实时估值（实时性最好）
@@ -349,6 +432,11 @@ class DataSourceManager:
                 final_results.append(fallback)
 
         # 缓存基金名称
+        final_results = [
+            await asyncio.to_thread(self._complete_latest_nav_change, r)
+            for r in final_results
+        ]
+
         for r in final_results:
             if r.is_success and r.name and r.name != r.code:
                 self._name_cache[r.code] = r.name
@@ -373,9 +461,82 @@ class DataSourceManager:
 
         result = await asyncio.to_thread(self._efinance.fetch_single, code)
         if result.is_success:
-            return result
+            return await asyncio.to_thread(self._complete_latest_nav_change, result)
 
-        return await asyncio.to_thread(self._eastmoney.fetch_single, code)
+        fallback = await asyncio.to_thread(self._eastmoney.fetch_single, code)
+        return await asyncio.to_thread(self._complete_latest_nav_change, fallback)
+
+    async def compare_sources(self, code: str) -> Dict[str, Any]:
+        """获取单只基金在各数据源下的实时结果，用于界面内对比。"""
+        fetchers = {
+            "tiantian": self._eastmoney._try_tiantian,
+            "efinance": self._efinance.fetch_single,
+            "tencent": self._eastmoney._try_tencent,
+            "eastmoney_lsjz": self._eastmoney._try_eastmoney_lsjz,
+            "pingzhongdata": self._eastmoney._try_pingzhongdata,
+        }
+
+        async def fetch_source(source: str, priority: int) -> Dict[str, Any]:
+            metadata = get_data_source_metadata(source)
+            try:
+                result = await asyncio.to_thread(fetchers[source], code)
+            except Exception as exc:
+                data_kind, data_kind_label = _classify_data_kind(source, None)
+                return {
+                    "source": source,
+                    **metadata,
+                    "priority": priority,
+                    "name": None,
+                    "estimate_nav": None,
+                    "estimate_change_pct": None,
+                    "last_nav": None,
+                    "last_change_pct": None,
+                    "update_time": "--",
+                    "data_kind": data_kind,
+                    "data_kind_label": data_kind_label,
+                    "is_realtime": False,
+                    "is_fresh": False,
+                    "error": str(exc),
+                }
+
+            if result.is_success and result.name and result.name != code:
+                self._name_cache[code] = result.name
+            data_kind, data_kind_label = _classify_data_kind(source, result.update_time)
+
+            return {
+                "source": source,
+                **metadata,
+                "priority": priority,
+                "name": result.name if result.is_success else None,
+                "estimate_nav": result.nav if result.is_success else None,
+                "estimate_change_pct": result.change_pct if result.is_success else None,
+                "last_nav": None,
+                "last_change_pct": None,
+                "update_time": result.update_time or "--",
+                "data_kind": data_kind,
+                "data_kind_label": data_kind_label,
+                "is_realtime": result.is_success and data_kind == "realtime_estimate",
+                "is_fresh": result.is_success,
+                "error": result.error,
+            }
+
+        sources = await asyncio.gather(*[
+            fetch_source(source, priority)
+            for source, priority in DATA_SOURCE_COMPARISON_SOURCES
+        ])
+        sources = sorted(sources, key=lambda item: item["priority"])
+        best = (
+            next((item for item in sources if item["is_fresh"] and item["is_realtime"]), None)
+            or next((item for item in sources if item["is_fresh"] and item["estimate_change_pct"] is not None), None)
+            or next((item for item in sources if item["is_fresh"]), None)
+        )
+
+        return {
+            "sources": sources,
+            "best_source": best["source"] if best else None,
+            "best_source_display_name": best["display_name"] if best else None,
+            "total_sources": len([item for item in sources if item["is_fresh"]]),
+        }
 
     async def get_fund_name(self, code: str) -> str:
         """获取基金名称"""

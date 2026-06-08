@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import pytest
+import asyncio
 
 
 def test_fund_match_preserves_share_class():
@@ -12,6 +12,119 @@ def test_fund_match_preserves_share_class():
     assert "share_class_match" in matched_reason
     assert mismatch_score <= 82
     assert "share_class_mismatch" in mismatch_reason
+
+
+def test_truncated_fund_name_generates_multiple_search_keywords():
+    from app.api.v1.portfolio import _build_fund_search_keywords
+
+    keywords = _build_fund_search_keywords("景顺长城纳斯达克科技ETF联接(...")
+
+    assert keywords[0] == "景顺长城纳斯达克科技ETF联接"
+    assert "景顺长城纳斯达克" in keywords
+    assert len(set(keywords)) == len(keywords)
+
+
+def test_ai_url_join_accepts_base_url_with_or_without_chat_path():
+    from app.api.v1.portfolio import _join_ai_url
+
+    assert _join_ai_url("https://api.example.com/v1", "/chat/completions") == "https://api.example.com/v1/chat/completions"
+    assert _join_ai_url("https://api.example.com/v1/chat/completions", "/chat/completions") == "https://api.example.com/v1/chat/completions"
+
+
+def test_ai_connection_test_omits_temperature(client, monkeypatch):
+    from app.api.v1 import portfolio as portfolio_api
+
+    captured = {}
+
+    async def fake_call_ai_chat_completion(**kwargs):
+        captured.update(kwargs)
+        return {"choices": [{"message": {"content": "OK"}}]}, 123, 200
+
+    monkeypatch.setattr(portfolio_api, "_call_ai_chat_completion", fake_call_ai_chat_completion)
+
+    resp = client.post("/api/v1/portfolio/ai-connection-test", json={
+        "model": "test-model",
+        "base_url": "https://api.example.com/v1",
+        "api_key": "test-key",
+    })
+
+    assert resp.status_code == 200
+    assert "temperature" not in captured
+    assert captured["max_tokens"] == 8
+    assert captured["messages"][0]["content"] == "只回复 OK，用于接口连通性检测。"
+
+
+def test_ai_connection_test_can_validate_vision_input(client, monkeypatch):
+    from app.api.v1 import portfolio as portfolio_api
+
+    captured_calls = []
+
+    async def fake_call_ai_chat_completion(**kwargs):
+        captured_calls.append(kwargs)
+        return {"choices": [{"message": {"content": "OK"}}]}, 123, 200
+
+    monkeypatch.setattr(portfolio_api, "_call_ai_chat_completion", fake_call_ai_chat_completion)
+
+    resp = client.post("/api/v1/portfolio/ai-connection-test", json={
+        "model": "test-model",
+        "base_url": "https://api.example.com/v1",
+        "api_key": "test-key",
+        "include_vision": True,
+    })
+
+    assert resp.status_code == 200
+    body = resp.json()["data"]
+    assert body["vision_latency_ms"] == 123
+    assert len(captured_calls) == 2
+    vision_content = captured_calls[1]["messages"][0]["content"]
+    assert isinstance(vision_content, list)
+    assert vision_content[1]["type"] == "image_url"
+
+
+def test_ai_chat_completion_uses_max_completion_tokens(monkeypatch):
+    from app.api.v1 import portfolio as portfolio_api
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            return {"choices": [{"message": {"content": "OK"}}]}
+
+    class FakeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers, json):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["payload"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr(portfolio_api.httpx, "AsyncClient", FakeClient)
+
+    asyncio.run(
+        portfolio_api._call_ai_chat_completion(
+            base_url="https://api.example.com/v1",
+            api_key="test-key",
+            model="GPT-5.5",
+            messages=[{"role": "user", "content": "OK"}],
+            timeout=portfolio_api._AI_TEST_TIMEOUT,
+            max_tokens=8,
+        )
+    )
+
+    assert captured["url"] == "https://api.example.com/v1/chat/completions"
+    assert captured["payload"]["model"] == "gpt-5.5"
+    assert captured["payload"]["max_completion_tokens"] == 8
+    assert "max_tokens" not in captured["payload"]
 
 
 def test_portfolio_crud_and_summary(client):

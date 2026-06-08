@@ -19,13 +19,13 @@ data-source-test/      # Standalone data source benchmarking tool
 
 ### One-click start (Windows)
 ```bash
-fund-tracker/scripts/start.bat   # Launches backend (:8001) + frontend (:5173)
+fund-tracker/scripts/start.bat   # Launches backend (:8001) + frontend (:3000)
 ```
 
 ### Backend
 ```bash
 cd fund-tracker/backend
-pip install -r requirements.txt
+conda activate fund-tracker
 python -m app.main               # http://127.0.0.1:8001
 # API docs: http://127.0.0.1:8001/docs
 ```
@@ -34,7 +34,7 @@ python -m app.main               # http://127.0.0.1:8001
 ```bash
 cd fund-tracker/frontend
 npm install
-npm run dev                      # http://localhost:5173 (proxies /api/* -> :8001)
+npm run dev                      # http://localhost:3000 (proxies /api/* -> :8001)
 npm run electron:dev             # Electron dev mode
 npm run electron:build:win       # Build Windows installer
 ```
@@ -73,7 +73,7 @@ Frontend (Vue 3)
 ### Backend Architecture (fund-tracker/backend/app/)
 
 - **config.py** — Centralized Settings dataclass, single source of truth for all config
-- **core/data_source.py** — DataSourceManager with strategy chain: efinance (primary batch) -> eastmoney_direct (fallback per-fund, with sub-strategies: tiantian, tencent, lsjz, pingzhongdata). QDII funds prefer Tencent API.
+- **core/data_source.py** — DataSourceManager with strategy chain and comparison metadata: tiantian realtime estimate -> efinance batch supplement -> Tencent/Eastmoney latest NAV fallbacks (`tencent`, `eastmoney_lsjz`, `pingzhongdata`). QDII/HK-themed funds may only expose latest NAV dates; UI distinguishes `实时估值` from `最新净值`.
 - **core/cache.py** — In-memory LRU cache (no Redis dependency)
 - **core/scheduler.py** — APScheduler background tasks
 - **services/** — Business logic: fund_service (data/screen/compare), history_service (NAV persistence), portfolio_service (CRUD + profit calc)
@@ -86,13 +86,16 @@ Frontend (Vue 3)
 - **stores/fundStore.ts / portfolioStore.ts** — Pinia stores
 - **api/request.ts** — Axios instance; note the auto-unwrap interceptor extracts `response.data.data`
 - **views/Home/HomeView.vue** — Main dashboard (largest view component)
+- **views/Portfolio/PortfolioView.vue** — Holdings table plus AI screenshot import workflow: image recognition -> import preview -> confirm import
+- **views/Settings/SettingsView.vue** — App and AI provider settings, including text and image-input connectivity tests
 - **router/index.ts** — 6 routes: Home, Screen, Compare, Portfolio, Settings, About
 
 ### Key Design Decisions
 
 - SQLite + in-memory cache — zero infrastructure dependencies (no Docker/Redis/PostgreSQL required for dev)
-- Multi-source data fetching with automatic fallback for reliability
+- Multi-source data fetching with automatic fallback and source comparison metadata for reliability and explainability
 - Frontend proxies `/api/*` via Vite dev server; production uses `/api/v1` directly
+- Use `http://localhost:3000` as the canonical dev frontend origin. Avoid ad-hoc `127.0.0.1:5173` sessions because localStorage caches are origin-scoped.
 - Electron wraps the Vue app for desktop distribution
 
 ### data-source-test/

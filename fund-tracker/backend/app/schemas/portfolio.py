@@ -169,6 +169,24 @@ class AiRecognizeRequest(BaseModel):
     prompt: Optional[str] = Field(None, description="自定义提示词")
 
 
+class AiConnectionTestRequest(BaseModel):
+    """AI接口连通性测试请求"""
+    model: str = Field(..., description="AI模型名称")
+    base_url: str = Field(..., description="AI API基础URL")
+    api_key: str = Field(..., description="AI API密钥")
+    include_vision: bool = Field(default=False, description="是否同时测试图片输入能力")
+
+
+class AiConnectionTestResponse(BaseModel):
+    """AI接口连通性测试响应"""
+    ok: bool = Field(..., description="是否连通")
+    latency_ms: Optional[int] = Field(None, description="端到端延迟毫秒")
+    vision_latency_ms: Optional[int] = Field(None, description="视觉输入测试延迟毫秒")
+    status_code: Optional[int] = Field(None, description="上游HTTP状态码")
+    model: str = Field(default="", description="测试模型")
+    message: str = Field(default="", description="测试结果说明")
+
+
 class AiRecognizeHolding(BaseModel):
     """AI识别出的单条持仓"""
     row_index: Optional[int] = Field(None, ge=1, description="截图列表中的行号")

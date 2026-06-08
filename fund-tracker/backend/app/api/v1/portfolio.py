@@ -5,15 +5,18 @@
 import asyncio
 import json
 import re
+import time
 from difflib import SequenceMatcher
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
+import httpx
 from sqlalchemy.orm import Session
 
 from app.db.base import get_db
 from app.schemas.portfolio import (
     PortfolioCreate, PortfolioUpdate, PortfolioResponse, PortfolioProfitResponse,
     AiRecognizeRequest, AiRecognizeResponse, AiRecognizeHolding,
+    AiConnectionTestRequest, AiConnectionTestResponse,
     PortfolioTransactionCreate, PortfolioTransactionResponse,
     PortfolioImportConfirmRequest, PortfolioImportConfirmResponse,
     PortfolioImportPreviewRequest, PortfolioImportPreviewResponse
@@ -30,12 +33,123 @@ _NOISE_WORDS = (
     "发起式", "增强", "lof", "etf", "qdii", "fof", "人民币"
 )
 
+_FUND_STYLE_WORDS = (
+    "混合型", "混合", "股票型", "股票", "债券型", "债券", "指数型", "指数",
+    "发起式", "发起", "联接", "基金", "lof", "etf", "qdii", "fof", "人民币"
+)
+
+_AI_REQUEST_TIMEOUT = httpx.Timeout(connect=15, read=180, write=60, pool=10)
+_AI_TEST_TIMEOUT = httpx.Timeout(connect=5, read=15, write=10, pool=5)
+_AI_VISION_TEST_TIMEOUT = httpx.Timeout(connect=10, read=60, write=20, pool=5)
+
+DEFAULT_AI_RECOGNIZE_PROMPT = (
+    '你是基金持仓截图识别器。请从这张基金持仓截图中提取“我的持有”列表里的每一只基金，返回严格JSON，不要包含解释、Markdown或代码块。'
+    '只读取列表行，不要把顶部“总金额、昨日收益、持有收益、累计收益”当成基金。'
+    '先读取“全部(n)”中的n作为expected_count；如果截图显示全部(18)，holdings必须返回18条，除非某行完全不可见。'
+    '每条记录必须带row_index，从列表第一只基金开始按从上到下编号；不要合并名称相似或重复出现的基金。'
+    '截图列表通常有三列：左列是基金名称；中列是“金额/昨日收益”，第一行是当前金额market_value，第二行是昨日收益daily_return；'
+    '右列是“持仓收益/率”，第一行是持有收益holding_return，第二行是持有收益率holding_return_rate。'
+    '红色加号为正数，绿色减号为负数，必须保留正负号；数字中的逗号去掉。'
+    '名称可能换行，例如“南方香港优选股票(QDII-LOF)”必须合并成一个名称。'
+    'A类、C类、QDII、LOF、ETF、FOF、人民币这些后缀会影响基金代码，能看到时必须保留。'
+    '如果基金名称被省略号、括号截断或看不完整，不要猜全名或A/C类别，原样填写raw_fund_name和fund_name。'
+    'JSON结构：{"expected_count":18,"holdings":[{"row_index":1,"fund_name":"基金名称","raw_fund_name":"截图原始名称","market_value":金额数字,'
+    '"daily_return":昨日收益数字,"holding_return":持有收益数字,"holding_return_rate":收益率数字或null}]}。'
+    '无法识别的数字填0，无法识别的收益率填null。'
+)
+
+_VISION_TEST_IMAGE_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAUElEQVR4nGMQIREwQKivRACEBgiHoGoIyQBXikcPshoGZHVY9aApYEBTRJCLrgHNAZhSWDR8hQUIVnFqaCDNSaR5mrRgJS3iSEsaJCc+kgAAW+73CGUip7AAAAAASUVORK5CYII="
+)
+
+
+def _normalize_ai_model_id(model: str) -> str:
+    stripped = (model or "").strip()
+    if re.match(r"^gpt-", stripped, flags=re.IGNORECASE):
+        return stripped.lower()
+    return stripped
+
+
+def _join_ai_url(base_url: str, path: str) -> str:
+    cleaned = (base_url or "").strip().rstrip("/")
+    normalized_path = path.strip("/")
+    if cleaned.endswith(normalized_path):
+        return cleaned
+    return f"{cleaned}/{normalized_path}"
+
+
+def _extract_ai_error_message(resp: httpx.Response) -> str:
+    try:
+        data = resp.json()
+    except ValueError:
+        text = resp.text.strip()
+        return text[:300] if text else f"HTTP {resp.status_code}"
+
+    error = data.get("error") if isinstance(data, dict) else None
+    if isinstance(error, dict):
+        message = error.get("message") or error.get("code") or str(error)
+    elif isinstance(error, str):
+        message = error
+    elif isinstance(data, dict):
+        message = data.get("message") or data.get("detail") or str(data)
+    else:
+        message = str(data)
+    return str(message)[:300]
+
+
+async def _call_ai_chat_completion(
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    messages: list[dict],
+    timeout: httpx.Timeout,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+) -> tuple[dict, int, int]:
+    normalized_model = _normalize_ai_model_id(model)
+    payload = {
+        "model": normalized_model,
+        "messages": messages,
+        **({"temperature": temperature} if temperature is not None else {}),
+        **({"max_completion_tokens": max_tokens} if max_tokens is not None else {})
+    }
+    started = time.perf_counter()
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(
+            _join_ai_url(base_url, "/chat/completions"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            },
+            json=payload
+        )
+    latency_ms = int((time.perf_counter() - started) * 1000)
+    if resp.status_code >= 400:
+        message = _extract_ai_error_message(resp)
+        if resp.status_code == 503:
+            message = (
+                f"{message}。上游返回 503，通常表示 Base URL 当前没有把模型 {normalized_model} "
+                "路由到可用服务，或模型临时不可用；请先在该服务商后台确认模型列表/额度/线路。"
+            )
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI API调用失败: HTTP {resp.status_code} - {message}"
+        )
+    try:
+        return resp.json(), latency_ms, resp.status_code
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=f"AI API返回不是有效JSON: {str(e)}")
+
 
 def _normalize_fund_name(name: str) -> str:
     normalized = re.sub(r"[\s（）()【】\[\]·,，.。_-]+", "", (name or "").lower())
     for word in _NOISE_WORDS:
         normalized = normalized.replace(word, "")
     normalized = normalized.replace("a类", "a").replace("c类", "c")
+    normalized = re.sub(r"(东方红中证)东方红", r"\1", normalized)
+    normalized = normalized.replace("东方红红利", "东方红中证红利")
     return normalized
 
 
@@ -55,6 +169,50 @@ def _build_fund_search_keyword(name: str) -> str:
     return keyword or (name or "").strip()
 
 
+def _build_fund_search_keywords(name: str) -> list[str]:
+    primary = _build_fund_search_keyword(name)
+    compact = re.sub(r"[\s（）()【】\[\]·,，.。_-]+", "", primary).strip()
+    without_style = compact
+    for word in _FUND_STYLE_WORDS:
+        without_style = re.sub(re.escape(word), "", without_style, flags=re.IGNORECASE)
+
+    share_class = _extract_share_class(primary)
+    stem_without_class = re.sub(r"(A|C|a|c)类?$", "", without_style)
+    candidates = [
+        primary,
+        re.sub(r"[（(].*?[）)]", "", primary).strip(),
+        compact,
+        without_style,
+        stem_without_class,
+    ]
+    if share_class and len(stem_without_class) >= 4:
+        candidates.append(f"{stem_without_class}{share_class}")
+    if len(primary) > 8:
+        candidates.append(primary[:12])
+        candidates.append(primary[:8])
+    if len(stem_without_class) >= 4:
+        candidates.append(stem_without_class[:6])
+        candidates.append(stem_without_class[:4])
+
+    seen: set[str] = set()
+    keywords: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            keywords.append(candidate)
+    return keywords
+
+
+def _is_ordered_subsequence(needle: str, haystack: str) -> bool:
+    if not needle:
+        return False
+    position = 0
+    for char in haystack:
+        if position < len(needle) and needle[position] == char:
+            position += 1
+    return position == len(needle)
+
+
 def _score_fund_match(query_name: str, candidate_name: str) -> tuple[int, str]:
     query = _normalize_fund_name(query_name)
     candidate = _normalize_fund_name(candidate_name)
@@ -68,6 +226,9 @@ def _score_fund_match(query_name: str, candidate_name: str) -> tuple[int, str]:
     elif len(query) >= 6 and len(candidate) >= 6 and (query in candidate or candidate in query):
         score = 92
         reason = "strong_contains"
+    elif len(query) >= 4 and _is_ordered_subsequence(query, candidate):
+        score = 88
+        reason = "ordered_subsequence"
     else:
         ratio = SequenceMatcher(None, query, candidate).ratio()
         score = int(ratio * 100)
@@ -86,7 +247,7 @@ def _score_fund_match(query_name: str, candidate_name: str) -> tuple[int, str]:
 
 def _match_fund_candidate(fund_name: str, search_results: list[dict]) -> tuple[str, str, str, int, list[dict]]:
     candidates = []
-    for result in search_results[:5]:
+    for result in search_results[:12]:
         name = result.get("name", "")
         code = result.get("code", "")
         score, reason = _score_fund_match(fund_name, name)
@@ -102,6 +263,24 @@ def _match_fund_candidate(fund_name: str, search_results: list[dict]) -> tuple[s
     if is_confident:
         return top["code"], top["name"], "matched", top["score"], candidates
     return "", fund_name, "ambiguous", top["score"], candidates
+
+
+def _search_fund_candidates(fund_service, fund_name: str, limit: int = 12) -> tuple[str, list[dict]]:
+    merged: list[dict] = []
+    seen_codes: set[str] = set()
+    used_keyword = ""
+    for keyword in _build_fund_search_keywords(fund_name):
+        results = fund_service.search_funds(keyword, limit=limit)
+        if results and not used_keyword:
+            used_keyword = keyword
+        for result in results:
+            code = str(result.get("code", ""))
+            if code and code not in seen_codes:
+                seen_codes.add(code)
+                merged.append(result)
+        if len(merged) >= limit:
+            break
+    return used_keyword or _build_fund_search_keyword(fund_name), merged[:limit]
 
 
 def _to_float(value, default: float = 0) -> float:
@@ -120,6 +299,12 @@ def _to_float(value, default: float = 0) -> float:
         .replace("%", "")
         .replace("＋", "+")
         .replace("－", "-")
+        .replace("−", "-")
+        .replace("–", "-")
+        .replace("—", "-")
+        .replace("﹣", "-")
+        .replace("元", "")
+        .replace(" ", "")
     )
     try:
         return float(text)
@@ -236,51 +421,115 @@ async def refresh_portfolio(db: Session = Depends(get_db)):
     return ResponseModel(data=await _build_portfolio_summary(db))
 
 
+@router.post("/ai-connection-test", response_model=ResponseModel[AiConnectionTestResponse])
+async def test_ai_connection(request: AiConnectionTestRequest):
+    """测试OpenAI兼容AI接口连通性和延迟。"""
+    if not request.base_url.strip() or not request.model.strip() or not request.api_key.strip():
+        raise HTTPException(status_code=400, detail="模型名称、Base URL 和 API Key 不能为空")
+
+    try:
+        result, latency_ms, status_code = await _call_ai_chat_completion(
+            base_url=request.base_url,
+            api_key=request.api_key,
+            model=request.model,
+            timeout=_AI_TEST_TIMEOUT,
+            max_tokens=8,
+            messages=[{
+                "role": "user",
+                "content": "只回复 OK，用于接口连通性检测。"
+            }],
+        )
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as e:
+        logger.warning(f"AI接口连通性检测超时: {e}")
+        raise HTTPException(status_code=504, detail=f"AI接口连通性检测超时: {str(e)}")
+    except httpx.RequestError as e:
+        logger.warning(f"AI接口连通性检测失败: {e}")
+        raise HTTPException(status_code=502, detail=f"AI接口连通性检测失败: {str(e)}")
+    except Exception as e:
+        logger.warning(f"AI接口连通性检测异常: {e}")
+        raise HTTPException(status_code=502, detail=f"AI接口连通性检测异常: {str(e)}")
+
+    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    vision_latency_ms = None
+    if request.include_vision:
+        try:
+            _vision_result, vision_latency_ms, _vision_status_code = await _call_ai_chat_completion(
+                base_url=request.base_url,
+                api_key=request.api_key,
+                model=request.model,
+                timeout=_AI_VISION_TEST_TIMEOUT,
+                max_tokens=16,
+                temperature=0,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "请看这张测试图片，只回复 OK。"},
+                        {"type": "image_url", "image_url": {"url": _VISION_TEST_IMAGE_DATA_URL}},
+                    ],
+                }],
+            )
+        except HTTPException as e:
+            detail = e.detail if isinstance(e.detail, str) else str(e.detail)
+            raise HTTPException(status_code=e.status_code, detail=f"文本连接成功，但视觉输入测试失败: {detail}")
+        except httpx.TimeoutException as e:
+            logger.warning(f"AI视觉输入检测超时: {e}")
+            raise HTTPException(status_code=504, detail=f"文本连接成功，但视觉输入测试超时: {str(e)}")
+        except httpx.RequestError as e:
+            logger.warning(f"AI视觉输入检测失败: {e}")
+            raise HTTPException(status_code=502, detail=f"文本连接成功，但视觉输入测试失败: {str(e)}")
+        except Exception as e:
+            logger.warning(f"AI视觉输入检测异常: {e}")
+            raise HTTPException(status_code=502, detail=f"文本连接成功，但视觉输入测试异常: {str(e)}")
+
+    message = f"连接成功{f'，模型返回：{content[:40]}' if content else ''}"
+    if request.include_vision:
+        message = f"{message}；视觉输入测试通过"
+    return ResponseModel(data=AiConnectionTestResponse(
+        ok=True,
+        latency_ms=latency_ms,
+        vision_latency_ms=vision_latency_ms,
+        status_code=status_code,
+        model=request.model,
+        message=message
+    ))
+
+
 @router.post("/ai-recognize", response_model=ResponseModel[AiRecognizeResponse])
 async def ai_recognize_holding(request: AiRecognizeRequest):
     """AI识别持仓截图，并自动通过数据源匹配基金代码"""
-    import httpx
-
-    DEFAULT_PROMPT = (
-        '请从这张基金持仓截图中提取“我的持有”列表里的每一只基金，返回严格JSON，不要包含任何解释文字。'
-        '只读取列表行，不要把顶部“总金额、昨日收益、持有收益、累计收益”当成基金。'
-        '先读取“全部(n)”中的n作为expected_count；如果截图显示全部(18)，holdings应尽量返回18条。'
-        '每条记录必须带row_index，从列表第一只基金开始按从上到下编号；不要合并名称相似或重复出现的基金。'
-        '截图列表通常有三列：左列是基金名称；中列是“金额/昨日收益”，第一行是当前金额market_value，第二行是昨日收益daily_return；'
-        '右列是“持仓收益/率”，第一行是持有收益holding_return，第二行是持有收益率holding_return_rate。'
-        '红色加号为正数，绿色减号为负数，必须保留正负号。'
-        'A类、C类、QDII、LOF、ETF、FOF这些后缀会影响基金代码，能看到时必须保留。'
-        '如果基金名称被省略号、括号截断或看不完整，不要猜全名或A/C类别，原样填写raw_fund_name和fund_name。'
-        'JSON结构：{"expected_count":18,"holdings":[{"row_index":1,"fund_name":"基金名称","raw_fund_name":"截图原始名称","market_value":金额数字,'
-        '"daily_return":昨日收益数字,"holding_return":持有收益数字,"holding_return_rate":收益率数字或null}]}。'
-        '无法识别的数字填0，无法识别的收益率填null。'
-    )
-
-    prompt = request.prompt or DEFAULT_PROMPT
+    prompt = request.prompt or DEFAULT_AI_RECOGNIZE_PROMPT
 
     # 1. 调用 AI 识别图片
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{request.base_url}/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {request.api_key}"
-                },
-                json={
-                    "model": request.model,
-                    "messages": [{
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": request.image_base64}}
-                        ]
-                    }],
-                    "temperature": 0.1
-                }
-            )
-            resp.raise_for_status()
-            result = resp.json()
+        result, latency_ms, _status_code = await _call_ai_chat_completion(
+            base_url=request.base_url,
+            api_key=request.api_key,
+            model=request.model,
+            timeout=_AI_REQUEST_TIMEOUT,
+            max_tokens=4096,
+            temperature=0.1,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": request.image_base64}}
+                ]
+            }],
+        )
+        logger.info(f"AI识别接口调用完成: latency={latency_ms}ms model={request.model}")
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as e:
+        logger.error(f"AI API调用超时: {e}")
+        raise HTTPException(
+            status_code=504,
+            detail=f"AI截图识别超时: {str(e)}。文本连通性检测只验证普通对话接口；请在设置页勾选视觉输入检测，或换用支持图片输入且响应更快的模型。"
+        )
+    except httpx.RequestError as e:
+        logger.error(f"AI API调用失败: {e}")
+        raise HTTPException(status_code=502, detail=f"AI API调用失败: {str(e)}")
     except Exception as e:
         logger.error(f"AI API调用失败: {e}")
         raise HTTPException(status_code=502, detail=f"AI API调用失败: {str(e)}")
@@ -357,9 +606,8 @@ async def ai_recognize_holding(request: AiRecognizeRequest):
 
         try:
             if match_status != "invalid":
-                search_keyword = _build_fund_search_keyword(fund_name)
-                search_results = fund_service.search_funds(search_keyword, limit=5)
-                fund_code, fund_name, match_status, confidence, candidates = _match_fund_candidate(search_keyword, search_results)
+                _search_keyword, search_results = _search_fund_candidates(fund_service, fund_name, limit=12)
+                fund_code, fund_name, match_status, confidence, candidates = _match_fund_candidate(fund_name, search_results)
                 match_reason = candidates[0]["reason"] if candidates else ""
                 if is_truncated_name and match_status == "matched":
                     fund_code = ""

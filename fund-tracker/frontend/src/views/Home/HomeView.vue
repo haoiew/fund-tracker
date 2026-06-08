@@ -106,31 +106,62 @@
             @focus="onSearchFocus"
             @keydown.esc="closeSearchResults"
           />
-          <div v-if="showSearchResults" class="search-results-dropdown" v-click-outside="onClickOutsideSearch">
-            <div v-if="searchLoading" class="search-loading">
-              <el-icon class="is-loading" size="16"><Loading /></el-icon>
-              <span>搜索中...</span>
+        </div>
+      </div>
+
+      <div v-if="showSearchPanel" class="search-results-panel">
+        <div v-if="searchLoading" class="search-loading">
+          <el-icon class="is-loading" size="16"><Loading /></el-icon>
+          <span>搜索中...</span>
+        </div>
+        <div v-else-if="searchResults.length === 0 && searchInputValue.length >= 2" class="search-empty">
+          <el-icon size="16"><InfoFilled /></el-icon>
+          <span>未找到相关基金</span>
+        </div>
+        <div v-else-if="searchInputValue.length < 2" class="search-hint">
+          <el-icon size="16"><InfoFilled /></el-icon>
+          <span>请输入至少2个字符</span>
+        </div>
+        <div v-else class="search-results-list">
+          <button
+            v-for="item in searchResults"
+            :key="item.code"
+            type="button"
+            class="search-result-item"
+            @click="onSearchFundSelect(item)"
+          >
+            <span class="fund-code">{{ item.code }}</span>
+            <span class="fund-name">{{ item.name }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="searchResultFund" class="search-result-inline">
+        <div class="search-result-main">
+          <div>
+            <span class="expanded-kicker">SEARCH RESULT</span>
+            <h3>{{ searchResultFund.name }}</h3>
+            <span class="fund-code-pill">{{ searchResultFund.code }}</span>
+          </div>
+          <div class="search-result-metrics">
+            <div>
+              <span>估算净值</span>
+              <strong :class="getChangeClass(searchResultFund.estimate_change)">
+                {{ formatNav(searchResultFund.estimate_nav) }}
+              </strong>
             </div>
-            <div v-else-if="searchResults.length === 0 && searchInputValue.length >= 2" class="search-empty">
-              <el-icon size="16"><InfoFilled /></el-icon>
-              <span>未找到相关基金</span>
-            </div>
-            <div v-else-if="searchInputValue.length < 2" class="search-hint">
-              <el-icon size="16"><InfoFilled /></el-icon>
-              <span>请输入至少2个字符</span>
-            </div>
-            <div v-else class="search-results-list">
-              <div
-                v-for="item in searchResults"
-                :key="item.code"
-                class="search-result-item"
-                @click="onSearchFundSelect(item)"
-              >
-                <span class="fund-code">{{ item.code }}</span>
-                <span class="fund-name">{{ item.name }}</span>
-              </div>
+            <div>
+              <span>涨跌幅</span>
+              <strong :class="getChangeClass(searchResultFund.estimate_change)">
+                {{ formatChange(searchResultFund.estimate_change) }}
+              </strong>
             </div>
           </div>
+        </div>
+        <div class="search-result-actions">
+          <el-button text @click="clearSearchResult">关闭</el-button>
+          <el-button type="success" @click="addSearchFundToWatchlist">添加关注</el-button>
+          <el-button type="primary" @click="addSearchFundToPortfolio">添加持仓</el-button>
         </div>
       </div>
     </section>
@@ -189,7 +220,7 @@
         <el-table-column type="selection" width="40" />
         <el-table-column type="expand" width="36">
           <template #default="{ row }">
-            <div class="fund-expanded-panel">
+            <div v-if="expandedPanelMode === 'detail'" class="fund-expanded-panel">
               <div class="fund-expanded-summary">
                 <div class="expanded-title-row">
                   <div>
@@ -202,11 +233,11 @@
                 <div class="expanded-metrics">
                   <div class="expanded-metric">
                     <span>估算净值</span>
-                    <strong :class="getChangeClass(row.estimate_change)">{{ formatNav(row.estimate_nav) }}</strong>
+                    <strong :class="getFundChangeClass(row)">{{ formatNav(row.estimate_nav) }}</strong>
                   </div>
                   <div class="expanded-metric">
-                    <span>实时涨跌</span>
-                    <strong :class="getChangeClass(row.estimate_change)">{{ formatChange(row.estimate_change) }}</strong>
+                    <span>{{ row.is_realtime === false ? '净值涨跌' : '实时涨跌' }}</span>
+                    <strong :class="getFundChangeClass(row)">{{ formatChange(row.estimate_change) }}</strong>
                   </div>
                   <div class="expanded-metric">
                     <span>上一净值</span>
@@ -225,7 +256,12 @@
                   </div>
                   <div>
                     <span>数据来源</span>
-                    <strong>{{ row.data_source || '自动选择' }}</strong>
+                    <strong>{{ getFundDataSourceName(row) }}</strong>
+                    <small v-if="row.data_source_description">{{ row.data_source_description }}</small>
+                  </div>
+                  <div>
+                    <span>行情类型</span>
+                    <strong>{{ getFundDataKindLabel(row) }}</strong>
                   </div>
                   <div>
                     <span>更新时间</span>
@@ -242,6 +278,94 @@
                 <FundChart :code="row.code" :name="row.name" default-range="1M" embedded :height="292" />
               </div>
             </div>
+
+            <div v-else class="data-source-inline-panel">
+              <div class="data-source-panel-header">
+                <div>
+                  <span class="expanded-kicker">DATA SOURCES</span>
+                  <h3>{{ dataSourceData?.name || row.name }}</h3>
+                  <span class="fund-code-pill">{{ row.code }}</span>
+                </div>
+                <el-button text size="small" @click="collapseFundDetail">收起</el-button>
+              </div>
+
+              <div v-if="dataSourceLoading" class="loading-container inline-loading">
+                <el-icon class="is-loading" size="24"><Loading /></el-icon>
+                <p>正在加载数据源...</p>
+              </div>
+
+              <template v-else-if="dataSourceData">
+                <el-table :data="dataSourceData.sources" class="data-source-table" style="width: 100%" border>
+                  <el-table-column label="数据源" min-width="260">
+                    <template #default="{ row: sourceRow }">
+                      <div class="source-name-cell">
+                        <strong>{{ getSourceRowName(sourceRow) }}</strong>
+                        <small>{{ getSourceRowMeta(sourceRow) }}</small>
+                        <em v-if="sourceRow.description">{{ sourceRow.description }}</em>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="estimate_nav" label="估算净值" width="116" align="right">
+                    <template #default="{ row: sourceRow }">
+                      <span :class="getChangeClass(sourceRow.estimate_change_pct)">
+                        {{ formatNav(sourceRow.estimate_nav) }}
+                      </span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="estimate_change_pct" label="涨跌幅" width="112" align="right">
+                    <template #default="{ row: sourceRow }">
+                      <span :class="getSourceChangeClass(sourceRow)">
+                        {{ formatChange(sourceRow.estimate_change_pct) }}
+                      </span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="更新时间" min-width="160">
+                    <template #default="{ row: sourceRow }">
+                      <div class="source-time-cell">
+                        <span>{{ sourceRow.update_time || '--' }}</span>
+                        <small>{{ sourceRow.is_realtime ? '盘中估算时刻' : '净值公布日期' }}</small>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="is_fresh" label="状态" width="96" align="center">
+                    <template #default="{ row: sourceRow }">
+                      <el-tooltip v-if="!sourceRow.is_fresh" :content="sourceRow.error || '数据源当前不可用'" placement="top">
+                        <el-tag type="warning" size="small">不可用</el-tag>
+                      </el-tooltip>
+                      <el-tag v-else type="success" size="small">可用</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="104" align="center">
+                    <template #default="{ row: sourceRow }">
+                      <el-button
+                        type="primary"
+                        size="small"
+                        :disabled="!sourceRow.is_fresh || sourceRow.source === row.data_source"
+                        @click="selectDataSource(sourceRow.source)"
+                      >
+                        {{ sourceRow.source === row.data_source ? '当前' : '采用' }}
+                      </el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+
+                <div class="data-source-tips">
+                  <el-alert
+                    title="自动数据源链路"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                  >
+                    <template #default>
+                      当前自动推荐: <strong>{{ getBestSourceName() }}</strong>，
+                      可用数据源 <strong>{{ dataSourceData.total_sources }}</strong> 个。
+                    </template>
+                  </el-alert>
+                </div>
+              </template>
+
+              <el-empty v-else description="暂无数据源结果" />
+            </div>
           </template>
         </el-table-column>
 
@@ -256,7 +380,7 @@
 
         <el-table-column prop="estimate_nav" label="估算净值" width="116" align="right">
           <template #default="{ row }">
-            <div class="nav-cell" :class="getChangeClass(row.estimate_change)">
+            <div class="nav-cell" :class="getFundChangeClass(row)">
               {{ formatNav(row.estimate_nav) }}
             </div>
           </template>
@@ -264,11 +388,13 @@
 
         <el-table-column prop="estimate_change" label="涨跌幅" width="112" align="right" sortable>
           <template #default="{ row }">
-            <div class="change-pill" :class="getChangeTone(row.estimate_change)">
-              <el-icon v-if="row.estimate_change > 0" size="12"><ArrowUp /></el-icon>
-              <el-icon v-else-if="row.estimate_change < 0" size="12"><ArrowDown /></el-icon>
-              <span>{{ formatChange(row.estimate_change) }}</span>
-            </div>
+            <el-tooltip :content="getChangeTooltip(row)" placement="top" :disabled="!getChangeTooltip(row)">
+              <div class="change-pill" :class="getFundChangeTone(row)">
+                <el-icon v-if="row.is_realtime !== false && row.estimate_change > 0" size="12"><ArrowUp /></el-icon>
+                <el-icon v-else-if="row.is_realtime !== false && row.estimate_change < 0" size="12"><ArrowDown /></el-icon>
+                <span>{{ formatChange(row.estimate_change) }}</span>
+              </div>
+            </el-tooltip>
           </template>
         </el-table-column>
 
@@ -276,7 +402,7 @@
           <template #default="{ row }">
             <div class="time-cell">
               <span>{{ row.update_time || '--' }}</span>
-              <small>{{ row.data_source || 'auto' }}</small>
+              <small>{{ getFundDataSourceShortName(row) }}</small>
             </div>
           </template>
         </el-table-column>
@@ -285,17 +411,19 @@
           <template #default="{ row }">
             <el-tooltip placement="top">
               <template #content>
-                <div style="font-size: 12px;">
-                  <div>数据来源: {{ row.data_source || '未知' }}</div>
-                  <div v-if="row.data_timestamp">更新时间: {{ formatDateTime(row.data_timestamp) }}</div>
-                  <div style="color: #409eff; margin-top: 4px;">点击切换数据源</div>
-                </div>
-              </template>
+                  <div style="font-size: 12px;">
+                    <div>数据来源: {{ getFundDataSourceName(row) }}</div>
+                    <div>行情类型: {{ getFundDataKindLabel(row) }}</div>
+                    <div v-if="row.data_timestamp">更新时间: {{ formatDateTime(row.data_timestamp) }}</div>
+                    <div style="color: #409eff; margin-top: 4px;">点击展开数据源对比</div>
+                  </div>
+                </template>
               <el-tag 
                 :type="getStatusType(row.status)" 
                 size="small" 
                 effect="light" 
                 class="status-tag"
+                :class="{ 'is-active': expandedPanelMode === 'dataSource' && isFundExpanded(row) }"
                 @click.stop="showDataSourceMenu(row)"
               >
                 <span class="status-dot-inline"></span>
@@ -333,38 +461,6 @@
         </el-table-column>
       </el-table>
     </section>
-
-    <!-- 搜索结果对话框 -->
-    <el-dialog
-      v-model="searchResultDialogVisible"
-      title="基金详情"
-      width="400px"
-      destroy-on-close
-    >
-      <div v-if="searchResultFund" class="search-result-content">
-        <div class="fund-info">
-          <h3>{{ searchResultFund.name }}</h3>
-          <p class="fund-code">{{ searchResultFund.code }}</p>
-        </div>
-        <div class="fund-nav" v-if="searchResultFund.estimate_nav">
-          <div class="nav-value" :class="getChangeClass(searchResultFund.estimate_change)">
-            {{ formatNav(searchResultFund.estimate_nav) }}
-          </div>
-          <div class="nav-change" :class="getChangeClass(searchResultFund.estimate_change)">
-            {{ formatChange(searchResultFund.estimate_change) }}
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="searchResultDialogVisible = false">关闭</el-button>
-        <el-button type="success" @click="addSearchFundToWatchlist">
-          添加关注
-        </el-button>
-        <el-button type="primary" @click="addSearchFundToPortfolio">
-          添加持仓
-        </el-button>
-      </template>
-    </el-dialog>
 
     <!-- 添加持仓对话框 -->
     <el-dialog
@@ -408,75 +504,6 @@
         </el-button>
       </template>
     </el-dialog>
-
-    <!-- 数据源对比弹窗 -->
-    <el-dialog
-      v-model="dataSourceDialogVisible"
-      title="数据源对比"
-      width="700px"
-      destroy-on-close
-    >
-      <div v-if="dataSourceLoading" class="loading-container">
-        <el-icon class="is-loading" size="32"><Loading /></el-icon>
-        <p>正在加载数据源...</p>
-      </div>
-      <div v-else-if="dataSourceData" class="data-source-content">
-        <div class="fund-header">
-          <h3>{{ dataSourceData.name }}</h3>
-          <span class="fund-code">{{ dataSourceData.code }}</span>
-        </div>
-        <el-table :data="dataSourceData.sources" style="width: 100%" border>
-          <el-table-column prop="source" label="数据源" width="120" />
-          <el-table-column prop="estimate_nav" label="估算净值" width="100">
-            <template #default="{ row }">
-              <span :class="getChangeClass(row.estimate_change_pct)">
-                {{ row.estimate_nav?.toFixed(4) || '--' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="estimate_change_pct" label="涨跌幅" width="100">
-            <template #default="{ row }">
-              <span :class="getChangeClass(row.estimate_change_pct)">
-                {{ formatChange(row.estimate_change_pct) }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="update_time" label="更新时间" width="140" />
-          <el-table-column prop="is_fresh" label="状态" width="80">
-            <template #default="{ row }">
-              <el-tag :type="row.is_fresh ? 'success' : 'warning'" size="small">
-                {{ row.is_fresh ? '正常' : '过期' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="100" align="center">
-            <template #default="{ row }">
-              <el-button
-                type="primary"
-                size="small"
-                :disabled="row.source === dataSourceData.best_source"
-                @click="selectDataSource(row.source)"
-              >
-                {{ row.source === dataSourceData.best_source ? '当前' : '选择' }}
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div class="data-source-tips">
-          <el-alert
-            title="提示"
-            type="info"
-            :closable="false"
-            show-icon
-          >
-            <template #default>
-              当前最佳数据源: <strong>{{ dataSourceData.best_source || '自动选择' }}</strong>，
-              共获取到 <strong>{{ dataSourceData.total_sources }}</strong> 个数据源
-            </template>
-          </el-alert>
-        </div>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
@@ -487,7 +514,6 @@ defineOptions({
 
 import { ref, computed, onMounted, reactive } from 'vue'
 import { ArrowUp, ArrowDown, Search, Refresh, Wallet, Loading, Download, View, Plus, Check, DataLine, Coin, TrendCharts as TrendChartsIcon, InfoFilled, Delete } from '@element-plus/icons-vue'
-import { ClickOutside as vClickOutside } from 'element-plus'
 import type { TableInstance } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { useFundStore } from '@/stores/fundStore'
@@ -515,10 +541,10 @@ const filterType = ref<'all' | 'up' | 'down'>('all')
 const searchInputValue = ref('')
 const searchLoading = ref(false)
 const searchResults = ref<FundSearchItem[]>([])
-const selectedSearchFund = ref<FundSearchItem | null>(null)
 const showSearchResults = ref(false)
 const searchDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const isSearchInProgress = ref(false)
+const showSearchPanel = computed(() => showSearchResults.value || searchLoading.value || searchResults.value.length > 0 || searchInputValue.value.trim().length >= 2)
 
 // 添加持仓对话框状态
 const addDialogVisible = ref(false)
@@ -531,23 +557,28 @@ const addForm = reactive({
   cost_nav: 0
 })
 
-// 搜索基金对话框
-const searchResultDialogVisible = ref(false)
 const searchResultFund = ref<FundRealtimeData | null>(null)
 
-// 数据源对比弹窗
-const dataSourceDialogVisible = ref(false)
 const dataSourceLoading = ref(false)
+const expandedPanelMode = ref<'detail' | 'dataSource'>('detail')
 
 interface DataSourceComparisonItem {
   source: string
+  display_name?: string
+  short_name?: string
+  description?: string
   priority: number
+  name?: string | null
   estimate_nav: number | null
   estimate_change_pct: number | null
   last_nav: number | null
   last_change_pct: number | null
   update_time: string
+  data_kind?: 'realtime_estimate' | 'latest_nav'
+  data_kind_label?: string
+  is_realtime?: boolean
   is_fresh: boolean
+  error?: string | null
 }
 
 const dataSourceData = ref<{
@@ -555,6 +586,7 @@ const dataSourceData = ref<{
   name: string
   sources: DataSourceComparisonItem[]
   best_source: string | null
+  best_source_display_name?: string | null
   total_sources: number
 } | null>(null)
 const currentDataSourceFund = ref<FundRealtimeData | null>(null)
@@ -665,6 +697,85 @@ const getChangeTone = (val: number | string | null) => {
   return num > 0 ? 'is-up' : 'is-down'
 }
 
+const DATA_SOURCE_FALLBACK_NAMES: Record<string, string> = {
+  tiantian: '天天基金盘中估值接口',
+  efinance: 'EFinance 批量基金行情接口',
+  tencent: '腾讯基金行情',
+  eastmoney_lsjz: '东方财富历史净值接口',
+  pingzhongdata: '东方财富基金页面数据'
+}
+
+const DATA_SOURCE_SHORT_NAMES: Record<string, string> = {
+  tiantian: 'TTFund',
+  efinance: 'EFinance',
+  tencent: 'Tencent',
+  eastmoney_lsjz: 'Eastmoney NAV',
+  pingzhongdata: 'Eastmoney Page'
+}
+
+const getDataSourceDisplayName = (source?: string | null, displayName?: string | null): string => {
+  if (displayName) return displayName
+  if (!source) return '自动选择'
+  return DATA_SOURCE_FALLBACK_NAMES[source] || source
+}
+
+const getDataSourceShortName = (source?: string | null, shortName?: string | null): string => {
+  if (shortName) return shortName
+  if (!source) return 'Auto'
+  return DATA_SOURCE_SHORT_NAMES[source] || source
+}
+
+const getFundDataSourceName = (fund: FundRealtimeData): string => {
+  return getDataSourceDisplayName(fund.data_source, fund.data_source_display_name)
+}
+
+const getFundDataSourceShortName = (fund: FundRealtimeData): string => {
+  return getDataSourceShortName(fund.data_source, fund.data_source_short_name)
+}
+
+const getFundDataKindLabel = (fund: FundRealtimeData): string => {
+  return fund.data_kind_label || (fund.is_realtime ? '实时估值' : '最新净值')
+}
+
+const getSourceRowName = (sourceRow: DataSourceComparisonItem): string => {
+  return sourceRow.display_name || getDataSourceDisplayName(sourceRow.source)
+}
+
+const getSourceRowMeta = (sourceRow: DataSourceComparisonItem): string => {
+  const dataKind = sourceRow.data_kind_label || (sourceRow.is_realtime ? '实时估值' : '最新净值')
+  const shortName = getDataSourceShortName(sourceRow.source, sourceRow.short_name)
+  return `${shortName} · ${dataKind}`
+}
+
+const getBestSourceName = (): string => {
+  if (!dataSourceData.value?.best_source) return '无可用数据源'
+  return getDataSourceDisplayName(dataSourceData.value.best_source, dataSourceData.value.best_source_display_name)
+}
+
+const isLatestNavData = (row: Pick<FundRealtimeData, 'data_kind' | 'is_realtime'> | DataSourceComparisonItem): boolean => {
+  return row.data_kind === 'latest_nav' || row.is_realtime === false
+}
+
+const getFundChangeClass = (fund: FundRealtimeData): string => {
+  if (isLatestNavData(fund)) return 'text-muted-change'
+  return getChangeClass(fund.estimate_change)
+}
+
+const getSourceChangeClass = (sourceRow: DataSourceComparisonItem): string => {
+  if (isLatestNavData(sourceRow)) return 'text-muted-change'
+  return getChangeClass(sourceRow.estimate_change_pct)
+}
+
+const getFundChangeTone = (fund: FundRealtimeData): string => {
+  if (isLatestNavData(fund)) return 'is-latest-nav'
+  return getChangeTone(fund.estimate_change)
+}
+
+const getChangeTooltip = (fund: FundRealtimeData): string => {
+  if (!isLatestNavData(fund)) return ''
+  return '该涨跌幅来自最新公布净值相对上一交易日的日增长率，不是盘中实时估值。'
+}
+
 // 获取状态标签类型
 const getStatusType = (status: string): 'success' | 'info' | 'warning' | 'danger' => {
   if (status === '正常') return 'success'
@@ -698,6 +809,7 @@ const onSearchInput = () => {
 
   // 显示搜索结果面板
   showSearchResults.value = true
+  searchResultFund.value = null
 
   const query = searchInputValue.value.trim()
 
@@ -759,14 +871,6 @@ const closeSearchResults = () => {
   showSearchResults.value = false
 }
 
-// 点击搜索结果外部
-const onClickOutsideSearch = () => {
-  // 只有在搜索未进行时才允许关闭
-  if (!isSearchInProgress.value && !searchLoading.value) {
-    showSearchResults.value = false
-  }
-}
-
 // 选择搜索结果
 const onSearchFundSelect = async (fund: FundSearchItem) => {
   if (!fund) return
@@ -780,11 +884,14 @@ const onSearchFundSelect = async (fund: FundSearchItem) => {
     // 获取基金实时数据
     const fundData = await fundApi.getRealtime(fund.code)
     searchResultFund.value = fundData
-    searchResultDialogVisible.value = true
   } catch (e) {
     console.error('获取基金详情失败:', e)
     ElMessage.error('获取基金详情失败')
   }
+}
+
+const clearSearchResult = () => {
+  searchResultFund.value = null
 }
 
 // 添加搜索到的基金到关注列表
@@ -801,8 +908,7 @@ const addSearchFundToWatchlist = async () => {
     fundStore.addFund(searchResultFund.value.code)
     await fundStore.fetchRealtimeData()
     ElMessage.success(`已添加 ${searchResultFund.value.name} 到关注列表`)
-    searchResultDialogVisible.value = false
-    selectedSearchFund.value = null
+    searchResultFund.value = null
   } catch (e) {
     console.error('添加失败:', e)
     ElMessage.error('添加失败')
@@ -830,8 +936,7 @@ const addSearchFundToPortfolio = async () => {
     : searchResultFund.value.estimate_nav
   addForm.cost_nav = nav || 0
 
-  searchResultDialogVisible.value = false
-  selectedSearchFund.value = null
+  searchResultFund.value = null
   addDialogVisible.value = true
 }
 
@@ -866,16 +971,26 @@ const loadDefaultData = async () => {
 const isFundExpanded = (fund: FundRealtimeData) => expandedRowKeys.value.includes(fund.code)
 
 const toggleFundDetail = (fund: FundRealtimeData) => {
-  expandedRowKeys.value = isFundExpanded(fund) ? [] : [fund.code]
+  if (isFundExpanded(fund) && expandedPanelMode.value === 'detail') {
+    collapseFundDetail()
+    return
+  }
+  expandedPanelMode.value = 'detail'
+  expandedRowKeys.value = [fund.code]
 }
 
 const collapseFundDetail = () => {
   expandedRowKeys.value = []
+  dataSourceLoading.value = false
+  currentDataSourceFund.value = null
 }
 
 const handleExpandChange = (row: FundRealtimeData, expandedRows: FundRealtimeData[]) => {
   const isExpanded = expandedRows.some(item => item.code === row.code)
   expandedRowKeys.value = isExpanded ? [row.code] : []
+  if (isExpanded && !(expandedPanelMode.value === 'dataSource' && currentDataSourceFund.value?.code === row.code)) {
+    expandedPanelMode.value = 'detail'
+  }
 }
 
 const getTableRowClassName = ({ row }: { row: FundRealtimeData }) => {
@@ -992,23 +1107,49 @@ const confirmAddToPortfolio = async () => {
 }
 
 // 选择数据源
-const selectDataSource = async (source: string) => {
-  if (!currentDataSourceFund.value) return
-  
-  ElMessage.success(`已选择 ${source} 作为数据源`)
-  dataSourceDialogVisible.value = false
-  
-  // 刷新该基金数据
-  await refreshData()
+const selectDataSource = (source: string) => {
+  const fund = currentDataSourceFund.value
+  const selectedSource = dataSourceData.value?.sources.find(item => item.source === source)
+  if (!fund || !selectedSource) return
+
+  if (!selectedSource.is_fresh) {
+    ElMessage.warning(`${source} 当前不可用`)
+    return
+  }
+
+  const updatedFund = {
+    ...fund,
+    estimate_nav: selectedSource.estimate_nav,
+    estimate_change: selectedSource.estimate_change_pct,
+    update_time: selectedSource.update_time || fund.update_time,
+    status: selectedSource.is_realtime ? '正常' : (selectedSource.data_kind_label || '最新净值'),
+    data_source: selectedSource.source,
+    data_source_display_name: selectedSource.display_name,
+    data_source_short_name: selectedSource.short_name,
+    data_source_description: selectedSource.description,
+    data_kind: selectedSource.data_kind,
+    data_kind_label: selectedSource.data_kind_label,
+    is_realtime: selectedSource.is_realtime,
+    data_timestamp: new Date().toISOString()
+  }
+
+  dataManager.updateRealtimeItem(updatedFund)
+  currentDataSourceFund.value = updatedFund
+  ElMessage.success(`当前行已采用 ${getDataSourceDisplayName(selectedSource.source, selectedSource.display_name)} 数据`)
 }
 
 // 显示数据源菜单
 const showDataSourceMenu = async (fund: FundRealtimeData) => {
   console.log('点击状态标签，基金:', fund.code, fund.name)
+  if (isFundExpanded(fund) && expandedPanelMode.value === 'dataSource') {
+    collapseFundDetail()
+    return
+  }
+
   currentDataSourceFund.value = fund
-  
-  // 直接打开数据源对比弹窗
-  dataSourceDialogVisible.value = true
+  expandedPanelMode.value = 'dataSource'
+  expandedRowKeys.value = [fund.code]
+  dataSourceData.value = null
   dataSourceLoading.value = true
   
   try {
@@ -1143,6 +1284,9 @@ onMounted(() => {
 
   .search-card {
     padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
 
   .search-toolbar {
@@ -1150,7 +1294,6 @@ onMounted(() => {
   }
 
   .search-box {
-    position: relative;
     flex: 1;
     min-width: 280px;
     max-width: 560px;
@@ -1158,67 +1301,136 @@ onMounted(() => {
     .search-input {
       width: 100%;
     }
+  }
 
-    .search-results-dropdown {
-      position: absolute;
-      top: calc(100% + 6px);
-      left: 0;
-      right: 0;
-      z-index: 100;
-      max-height: 320px;
-      overflow-y: auto;
-      background: var(--bg-card);
-      border: 1px solid var(--border-light);
-      border-radius: var(--radius-base);
-      box-shadow: var(--shadow-lg);
-      backdrop-filter: blur(14px);
+  .search-results-panel {
+    width: min(100%, 560px);
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    box-shadow: var(--shadow-light);
 
-      .search-loading,
-      .search-empty,
-      .search-hint {
-        display: flex;
+    .search-loading,
+    .search-empty,
+    .search-hint {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .search-results-list {
+      padding: 6px;
+
+      .search-result-item {
+        width: 100%;
+        min-height: 38px;
+        display: grid;
+        grid-template-columns: 78px minmax(0, 1fr);
         align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 16px;
-        color: var(--text-secondary);
-        font-size: 14px;
-      }
+        gap: 12px;
+        padding: 8px 10px;
+        border: 0;
+        border-radius: var(--radius-sm);
+        background: transparent;
+        cursor: pointer;
+        transition: background-color var(--transition-fast);
 
-      .search-results-list {
-        padding: 6px 0;
+        &:hover {
+          background: var(--bg-hover);
+        }
 
-        .search-result-item {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 11px 16px;
-          cursor: pointer;
-          transition: background-color var(--transition-fast);
+        .fund-code {
+          font-family: var(--font-mono);
+          font-size: 12px;
+          color: var(--primary-color);
+          font-weight: 800;
+        }
 
-          &:hover {
-            background: var(--bg-hover);
-          }
-
-          .fund-code {
-            min-width: 72px;
-            font-family: var(--font-mono);
-            font-size: 12px;
-            color: var(--primary-color);
-            font-weight: 700;
-          }
-
-          .fund-name {
-            flex: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            font-size: 14px;
-            color: var(--text-primary);
-          }
+        .fund-name {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          text-align: left;
+          font-size: 14px;
+          color: var(--text-primary);
         }
       }
     }
+  }
+
+  .search-result-inline {
+    width: min(100%, 760px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-light);
+  }
+
+  .search-result-main {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+
+    h3 {
+      margin: 2px 0 6px;
+      color: var(--text-primary);
+      font-size: 16px;
+      font-weight: 850;
+      line-height: 1.25;
+    }
+  }
+
+  .search-result-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(92px, 1fr));
+    gap: 8px;
+
+    div {
+      padding: 9px 10px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      background: var(--bg-hover);
+    }
+
+    span,
+    strong {
+      display: block;
+      white-space: nowrap;
+    }
+
+    span {
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    strong {
+      margin-top: 2px;
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 850;
+    }
+  }
+
+  .search-result-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .toolbar-actions {
@@ -1323,6 +1535,12 @@ onMounted(() => {
       background: var(--danger-light);
       color: var(--danger-color);
     }
+
+    &.is-latest-nav {
+      border-color: var(--border-light);
+      background: #f1f5f9;
+      color: #64748b;
+    }
   }
 
   .time-cell {
@@ -1386,6 +1604,10 @@ onMounted(() => {
     &:hover {
       opacity: 0.84;
     }
+
+    &.is-active {
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+    }
   }
 
   .status-dot-inline {
@@ -1406,6 +1628,79 @@ onMounted(() => {
     border: 1px solid var(--border-light);
     border-radius: var(--radius-base);
     box-shadow: inset 0 1px 0 rgba(37, 99, 235, 0.06);
+  }
+
+  .data-source-inline-panel {
+    min-width: 0;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    box-shadow: inset 0 1px 0 rgba(37, 99, 235, 0.06);
+  }
+
+  .data-source-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+
+    h3 {
+      margin: 3px 0 8px;
+      color: var(--text-primary);
+      font-size: 17px;
+      font-weight: 850;
+      line-height: 1.25;
+    }
+  }
+
+  .data-source-table {
+    border-radius: var(--radius-base);
+    overflow: hidden;
+  }
+
+  .source-name-cell,
+  .source-time-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+
+    strong,
+    span {
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    small {
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+
+    em {
+      color: var(--text-secondary);
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      font-size: 11px;
+      font-style: normal;
+      line-height: 1.35;
+    }
+  }
+
+  .data-source-tips {
+    margin-top: 12px;
+  }
+
+  .inline-loading {
+    min-height: 150px;
+    padding: 24px;
   }
 
   .fund-expanded-summary,
@@ -1508,6 +1803,14 @@ onMounted(() => {
       font-size: 12px;
       font-weight: 800;
     }
+
+    small {
+      display: block;
+      margin-top: 4px;
+      color: var(--text-secondary);
+      font-size: 11px;
+      line-height: 1.35;
+    }
   }
 
   :deep(.fund-table) {
@@ -1580,6 +1883,20 @@ onMounted(() => {
     .expanded-meta-grid {
       grid-template-columns: 1fr;
     }
+
+    .search-result-inline,
+    .search-result-main {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .search-result-metrics {
+      grid-template-columns: 1fr;
+    }
+
+    .search-result-actions {
+      justify-content: flex-start;
+    }
   }
 }
 
@@ -1591,72 +1908,8 @@ onMounted(() => {
   color: var(--danger-color);
 }
 
-.search-result-content {
-  .fund-info {
-    text-align: center;
-    margin-bottom: 20px;
-
-    h3 {
-      margin: 0 0 8px;
-      font-size: 18px;
-      color: var(--text-primary);
-    }
-
-    .fund-code {
-      margin: 0;
-      font-size: 14px;
-      color: var(--text-secondary);
-      font-family: monospace;
-    }
-  }
-
-  .fund-nav {
-    text-align: center;
-    padding: 20px;
-    background: var(--bg-page);
-    border-radius: var(--radius-base);
-
-    .nav-value {
-      font-size: 32px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-
-    .nav-change {
-      font-size: 16px;
-    }
-  }
-}
-
-// 数据源对比弹窗样式
-.data-source-content {
-  .fund-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 20px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border-light);
-
-    h3 {
-      margin: 0;
-      font-size: 18px;
-      color: var(--text-primary);
-    }
-
-    .fund-code {
-      font-size: 14px;
-      color: var(--text-secondary);
-      font-family: monospace;
-      background: var(--bg-page);
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-  }
-
-  .data-source-tips {
-    margin-top: 20px;
-  }
+.text-muted-change {
+  color: #64748b;
 }
 
 .loading-container {

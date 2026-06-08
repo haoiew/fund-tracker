@@ -8,8 +8,8 @@
 
 ### 核心特性
 
-- **实时数据**: 多数据源降级策略（efinance + eastmoney），确保数据准确性
-- **持仓管理**: 记录投资金额，实时计算盈亏
+- **实时数据**: 天天基金、efinance、腾讯基金、东方财富多源降级，并区分实时估值与最新净值
+- **持仓管理**: 记录投资金额，实时计算盈亏，支持截图 AI 识别导入
 - **基金筛选**: 连续涨跌趋势筛选
 - **基金对比**: 多基金多周期对比，含基准指数
 - **可视化图表**: ECharts 丰富的图表展示历史走势
@@ -23,7 +23,7 @@
 | 运行壳 | Web 优先 / Tauri-ready / Electron 兼容 |
 | 后端 | FastAPI + SQLAlchemy |
 | 数据库 | SQLite（零外部依赖） |
-| 数据源 | efinance + eastmoney API + AKShare |
+| 数据源 | 天天基金 + efinance + 腾讯基金 + 东方财富 + AKShare |
 
 ## 快速开始
 
@@ -31,6 +31,7 @@
 
 - Python 3.11+
 - Node.js ^20.19.0 || >=22.12.0
+- Windows 一键启动脚本默认使用 Miniforge/Conda 环境 `fund-tracker`
 
 ### 一键启动（Windows）
 
@@ -43,7 +44,7 @@ scripts/start.bat
 ```bash
 # 1. 启动后端
 cd backend
-pip install -r requirements.txt
+conda activate fund-tracker
 python -m app.main
 # 服务地址: http://127.0.0.1:8001
 # API文档: http://127.0.0.1:8001/docs
@@ -52,7 +53,7 @@ python -m app.main
 cd frontend
 npm install
 npm run dev
-# 访问: http://localhost:5173
+# 访问: http://localhost:3000
 ```
 
 ### 跨端运行壳
@@ -86,7 +87,8 @@ fund-tracker/
 ## 功能模块
 
 ### 1. 基金数据模块
-- 实时估值查询（efinance + eastmoney 多源降级）
+- 实时估值查询（天天基金 + efinance + 腾讯基金 + 东方财富多源降级）
+- 数据源对比会展示中文名称，并标记“实时估值”或“最新净值”
 - 历史净值数据获取与本地持久化
 - 涨跌幅趋势分析
 - 基金搜索
@@ -96,6 +98,7 @@ fund-tracker/
 - 记录购买金额和份额
 - 实时盈亏计算
 - 资产分布统计
+- AI 识别导入持仓截图，含视觉连通性检测、导入预检和确认导入
 
 ### 3. 基金筛选与对比
 - 连续涨跌趋势筛选
@@ -113,7 +116,7 @@ fund-tracker/
 ```bash
 # 后端测试
 cd backend
-pip install -r requirements.txt
+conda activate fund-tracker
 pytest
 
 # 前端 lint

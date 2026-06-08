@@ -265,217 +265,342 @@
     <el-dialog
       v-model="showImportDialog"
       title="导入持仓数据"
-      width="750px"
+      width="1080px"
+      class="portfolio-import-dialog"
       destroy-on-close
     >
-      <el-tabs v-model="importTab">
-        <el-tab-pane label="文件导入" name="file">
-          <div class="import-dialog-content">
-            <el-upload
-              class="import-uploader"
-              drag
-              action="#"
-              :auto-upload="false"
-              :on-change="handleImportFileChange"
-              :limit="1"
-              accept=".json"
-            >
-              <el-icon class="el-icon--upload"><Upload /></el-icon>
-              <div class="el-upload__text">
-                拖拽文件到此处或 <em>点击上传</em>
+      <div class="import-workflow">
+        <div class="import-stepper" aria-label="导入步骤">
+          <div
+            v-for="step in importSteps"
+            :key="step.key"
+            class="import-step"
+            :class="{ active: importCurrentStep === step.key, done: step.done }"
+          >
+            <span class="import-step__index">{{ step.index }}</span>
+            <span class="import-step__copy">
+              <strong>{{ step.title }}</strong>
+              <small>{{ step.summary }}</small>
+            </span>
+          </div>
+        </div>
+
+        <el-tabs v-model="importTab" class="import-tabs">
+          <el-tab-pane label="AI识别导入" name="ai">
+            <div class="ai-import-content">
+              <div v-if="!aiConfigReady" class="ai-config-tip">
+                <el-alert type="warning" :closable="false" show-icon>
+                  <template #title>
+                    请先在 <router-link to="/settings">设置页面</router-link> 配置 AI 模型信息
+                  </template>
+                </el-alert>
               </div>
-              <template #tip>
-                <div class="el-upload__tip">
-                  支持导入 JSON 格式的持仓数据文件
+
+              <div class="import-source-grid">
+                <section class="import-source-card">
+                  <div class="import-source-card__header">
+                    <span>截图</span>
+                    <el-button v-if="aiImagePreview" link type="danger" size="small" @click="clearAiImage">移除</el-button>
+                  </div>
+                  <el-upload
+                    class="ai-image-uploader"
+                    drag
+                    action="#"
+                    :auto-upload="false"
+                    :on-change="handleAiImageChange"
+                    :limit="1"
+                    :show-file-list="false"
+                    accept="image/*"
+                  >
+                    <div v-if="aiImagePreview" class="ai-image-preview">
+                      <img :src="aiImagePreview" alt="持仓截图预览" />
+                    </div>
+                    <template v-else>
+                      <el-icon class="el-icon--upload"><Upload /></el-icon>
+                      <div class="el-upload__text">
+                        拖拽图片到此处或 <em>点击上传</em>
+                      </div>
+                    </template>
+                  </el-upload>
+                </section>
+
+                <aside class="import-status-card">
+                  <span class="import-status-card__eyebrow">AI 识别</span>
+                  <h4>{{ aiImagePreview ? '截图已就绪' : '等待截图' }}</h4>
+                  <div class="import-status-list">
+                    <div>
+                      <span>模型配置</span>
+                      <el-tag size="small" :type="aiConfigReady ? 'success' : 'warning'">
+                        {{ aiConfigReady ? '已配置' : '未配置' }}
+                      </el-tag>
+                    </div>
+                    <div>
+                      <span>识别结果</span>
+                      <strong>{{ importPreview.length > 0 ? `${importPreview.length} 条` : '--' }}</strong>
+                    </div>
+                    <div>
+                      <span>可导入</span>
+                      <strong>{{ readyImportCount }}</strong>
+                    </div>
+                  </div>
+                  <el-button
+                    type="primary"
+                    class="ai-recognize-button"
+                    :loading="aiRecognizing"
+                    :disabled="!aiImageBase64 || !aiConfigReady"
+                    @click="handleAiRecognize"
+                  >
+                    <el-icon><MagicStick /></el-icon>
+                    {{ importPreview.length > 0 ? '重新识别' : '开始识别' }}
+                  </el-button>
+                  <el-alert
+                    v-if="aiRecognizeNotice"
+                    class="ai-recognize-notice"
+                    :type="aiRecognizeNotice.type"
+                    show-icon
+                    @close="aiRecognizeNotice = null"
+                  >
+                    <template #title>
+                      {{ aiRecognizeNotice.title }}
+                    </template>
+                    <div v-if="aiRecognizeNotice.messages.length" class="ai-recognize-notice__messages">
+                      <div v-for="(message, index) in aiRecognizeNotice.messages" :key="index">{{ message }}</div>
+                    </div>
+                  </el-alert>
+                  <div class="ai-recognize-log">
+                    <div class="ai-recognize-log__header">
+                      <span>识别日志</span>
+                      <el-tag size="small" :type="aiRecognizing ? 'primary' : 'info'">
+                        {{ aiRecognizing ? '运行中' : '待命' }}
+                      </el-tag>
+                    </div>
+                    <ol>
+                      <li
+                        v-for="entry in aiRecognizeLogs"
+                        :key="entry.id"
+                        :class="`is-${entry.status}`"
+                      >
+                        <span>{{ entry.time }}</span>
+                        <strong>{{ entry.message }}</strong>
+                      </li>
+                    </ol>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="文件导入" name="file">
+            <div class="import-dialog-content">
+              <div class="import-source-grid">
+                <section class="import-source-card">
+                  <div class="import-source-card__header">
+                    <span>JSON 文件</span>
+                    <el-tag v-if="importFile" size="small" type="success">已选择</el-tag>
+                  </div>
+                  <el-upload
+                    class="import-uploader"
+                    drag
+                    action="#"
+                    :auto-upload="false"
+                    :on-change="handleImportFileChange"
+                    :limit="1"
+                    :show-file-list="false"
+                    accept=".json"
+                  >
+                    <el-icon class="el-icon--upload"><Upload /></el-icon>
+                    <div class="el-upload__text">
+                      拖拽文件到此处或 <em>点击上传</em>
+                    </div>
+                  </el-upload>
+                </section>
+
+                <aside class="import-status-card">
+                  <span class="import-status-card__eyebrow">文件导入</span>
+                  <h4>{{ importFile?.name || '等待文件' }}</h4>
+                  <div class="import-status-list">
+                    <div>
+                      <span>读取结果</span>
+                      <strong>{{ importPreview.length > 0 ? `${importPreview.length} 条` : '--' }}</strong>
+                    </div>
+                    <div>
+                      <span>可导入</span>
+                      <strong>{{ readyImportCount }}</strong>
+                    </div>
+                    <div>
+                      <span>需核对</span>
+                      <strong>{{ reviewImportCount }}</strong>
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+
+        <div v-if="importStats.total_value > 0" class="import-stats">
+          <div class="import-stat">
+            <span>总金额</span>
+            <strong>¥{{ importStats.total_value?.toFixed(2) }}</strong>
+          </div>
+          <div class="import-stat">
+            <span>总收益</span>
+            <strong :class="importStats.total_holding_return >= 0 ? 'text-success' : 'text-danger'">
+              {{ importStats.total_holding_return >= 0 ? '+' : '' }}¥{{ importStats.total_holding_return?.toFixed(2) }}
+            </strong>
+          </div>
+          <div class="import-stat">
+            <span>基金数量</span>
+            <strong>{{ importStats.holdings_count }} 只</strong>
+          </div>
+        </div>
+
+        <div v-if="importLoading" class="import-progress-section">
+          <div class="progress-header">
+            <span>导入进度</span>
+            <span class="progress-text">{{ importProgress.current }}/{{ importProgress.total }} ({{ importProgress.percentage }}%)</span>
+          </div>
+          <el-progress :percentage="importProgress.percentage" :show-text="false" status="success" />
+          <div class="progress-status">
+            <span v-if="importProgress.percentage < 30">正在查询基金代码...</span>
+            <span v-else-if="importProgress.percentage < 100">正在添加持仓...</span>
+            <span v-else>导入完成！</span>
+          </div>
+        </div>
+
+        <div v-if="importPreview.length > 0 && !importLoading" class="import-preview">
+          <div class="preview-header">
+            <div>
+              <strong>核对导入数据</strong>
+              <small>{{ importPreview.length }} 条识别结果</small>
+            </div>
+            <div class="preview-tags">
+              <el-tag type="success">可导入 {{ readyImportCount }}</el-tag>
+              <el-tag v-if="reviewImportCount > 0" type="warning">需核对 {{ reviewImportCount }}</el-tag>
+            </div>
+          </div>
+          <el-table :data="importPreview" size="small" border height="340">
+            <el-table-column type="index" label="序号" width="50" />
+            <el-table-column prop="fund_code" label="基金代码" width="170">
+              <template #default="{ row }">
+                <el-tag v-if="row.fund_code && row.import_status === 'ready'" size="small" type="success">{{ row.fund_code }}</el-tag>
+                <el-select
+                  v-else-if="row.candidates?.length"
+                  v-model="row.fund_code"
+                  size="small"
+                  filterable
+                  placeholder="选择代码"
+                  class="candidate-select"
+                  @change="onImportCandidateSelect(row)"
+                >
+                  <el-option
+                    v-for="candidate in row.candidates"
+                    :key="candidate.code"
+                    :label="`${candidate.code} ${candidate.name}`"
+                    :value="candidate.code"
+                  />
+                </el-select>
+                <el-tag v-else-if="row._matchStatus === 'ambiguous'" size="small" type="warning">需确认</el-tag>
+                <el-tag v-else-if="row._matchStatus === 'invalid'" size="small" type="danger">异常</el-tag>
+                <el-tag v-else-if="row._matchStatus === 'searching'" size="small" type="warning">搜索中...</el-tag>
+                <el-tag v-else-if="row._matchStatus === 'not_found'" size="small" type="danger">未找到</el-tag>
+                <span v-else>--</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="fund_name" label="基金名称" min-width="180" show-overflow-tooltip />
+            <el-table-column label="手动搜索" min-width="260">
+              <template #default="{ row }">
+                <el-select
+                  v-model="row._manualFundCode"
+                  size="small"
+                  filterable
+                  remote
+                  reserve-keyword
+                  placeholder="输入代码或名称搜索"
+                  :remote-method="createImportFundSearch(row)"
+                  :loading="row._searchLoading"
+                  class="manual-fund-search"
+                  @change="confirmImportFund(row)"
+                >
+                  <el-option
+                    v-for="candidate in row._manualCandidates || []"
+                    :key="candidate.code"
+                    :label="`${candidate.code} ${candidate.name}`"
+                    :value="candidate.code"
+                  />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column prop="confidence" label="置信度" width="80" align="right">
+              <template #default="{ row }">
+                {{ row.confidence ?? 0 }}%
+              </template>
+            </el-table-column>
+            <el-table-column prop="market_value" label="市值" width="110" align="right">
+              <template #default="{ row }">
+                ¥{{ row.market_value?.toFixed(2) || '--' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="daily_return" label="昨日收益" width="110" align="right">
+              <template #default="{ row }">
+                <span :class="(row.daily_return || 0) >= 0 ? 'text-success' : 'text-danger'">
+                  {{ (row.daily_return || 0) >= 0 ? '+' : '' }}¥{{ row.daily_return?.toFixed(2) || '0.00' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="holding_return" label="持有收益" width="110" align="right">
+              <template #default="{ row }">
+                <span :class="row.holding_return >= 0 ? 'text-success' : 'text-danger'">
+                  {{ row.holding_return >= 0 ? '+' : '' }}¥{{ row.holding_return?.toFixed(2) || '--' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="current_nav" label="当前净值" width="100" align="right">
+              <template #default="{ row }">
+                {{ row.current_nav ? row.current_nav.toFixed(4) : '--' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="estimated_shares" label="推算份额" width="110" align="right">
+              <template #default="{ row }">
+                {{ row.estimated_shares ? formatNumber(row.estimated_shares) : '--' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="estimated_cost_nav" label="成本净值" width="100" align="right">
+              <template #default="{ row }">
+                {{ row.estimated_cost_nav ? row.estimated_cost_nav.toFixed(4) : '--' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="导入状态" min-width="150">
+              <template #default="{ row }">
+                <div class="import-status-cell">
+                  <el-tag size="small" :type="row.import_status === 'ready' ? 'success' : row.import_status === 'invalid' ? 'danger' : 'warning'">
+                    {{ row.import_status === 'ready' ? '可导入' : '需核对' }}
+                  </el-tag>
+                  <span v-if="row.import_reason" class="result-error">{{ row.import_reason }}</span>
                 </div>
               </template>
-            </el-upload>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="AI识别导入" name="ai">
-          <div class="ai-import-content">
-            <div v-if="!aiConfigReady" class="ai-config-tip">
-              <el-alert type="warning" :closable="false" show-icon>
-                <template #title>
-                  请先在 <router-link to="/settings">设置页面</router-link> 配置 AI 模型信息
-                </template>
-              </el-alert>
-            </div>
-
-            <div class="ai-input-section">
-              <div class="ai-input-tip">
-                <el-icon><InfoFilled /></el-icon>
-                <span>上传持仓截图，AI将自动识别并提取基金名称和市值</span>
-              </div>
-              <el-upload
-                class="ai-image-uploader"
-                drag
-                action="#"
-                :auto-upload="false"
-                :on-change="handleAiImageChange"
-                :limit="1"
-                accept="image/*"
-              >
-                <el-icon class="el-icon--upload"><Upload /></el-icon>
-                <div class="el-upload__text">
-                  拖拽图片到此处或 <em>点击上传</em>
-                </div>
-                <template #tip>
-                  <div class="el-upload__tip">支持 PNG、JPG 等图片格式</div>
-                </template>
-              </el-upload>
-              <div v-if="aiImagePreview" class="ai-image-preview">
-                <img :src="aiImagePreview" alt="预览" />
-                <el-button link type="danger" size="small" @click="clearAiImage">移除图片</el-button>
-              </div>
-              <el-button
-                type="primary"
-                class="ai-recognize-button"
-                :loading="aiRecognizing"
-                :disabled="!aiImageBase64 || !aiConfigReady"
-                @click="handleAiRecognize"
-              >
-                <el-icon><MagicStick /></el-icon>
-                AI识别
-              </el-button>
-            </div>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-
-      <div v-if="importStats.total_value > 0" class="import-stats">
-        <el-descriptions :column="3" border size="small">
-          <el-descriptions-item label="总金额">¥{{ importStats.total_value?.toFixed(2) }}</el-descriptions-item>
-          <el-descriptions-item label="总收益">
-            <span :class="importStats.total_holding_return >= 0 ? 'text-success' : 'text-danger'">
-              {{ importStats.total_holding_return >= 0 ? '+' : '' }}¥{{ importStats.total_holding_return?.toFixed(2) }}
-            </span>
-          </el-descriptions-item>
-          <el-descriptions-item label="基金数量">{{ importStats.holdings_count }} 只</el-descriptions-item>
-        </el-descriptions>
-      </div>
-
-      <div v-if="importLoading" class="import-progress-section">
-        <div class="progress-header">
-          <span>导入进度</span>
-          <span class="progress-text">{{ importProgress.current }}/{{ importProgress.total }} ({{ importProgress.percentage }}%)</span>
+            </el-table-column>
+          </el-table>
         </div>
-        <el-progress :percentage="importProgress.percentage" :show-text="false" status="success" />
-        <div class="progress-status">
-          <span v-if="importProgress.percentage < 30">正在查询基金代码...</span>
-          <span v-else-if="importProgress.percentage < 100">正在添加持仓...</span>
-          <span v-else>导入完成！</span>
-        </div>
-      </div>
 
-      <div v-if="importPreview.length > 0 && !importLoading" class="import-preview">
-        <div class="preview-header">
-          <span>预览数据 ({{ importPreview.length }} 条)</span>
-          <el-tag type="success">可导入 {{ readyImportCount }}</el-tag>
-          <el-tag v-if="importPreview.length - readyImportCount > 0" type="warning">
-            需核对 {{ importPreview.length - readyImportCount }}
-          </el-tag>
-        </div>
-        <el-table :data="importPreview" size="small" border height="300">
-          <el-table-column type="index" label="序号" width="50" />
-          <el-table-column prop="fund_code" label="基金代码" width="170">
-            <template #default="{ row }">
-              <el-tag v-if="row.fund_code && row.import_status === 'ready'" size="small" type="success">{{ row.fund_code }}</el-tag>
-              <el-select
-                v-else-if="row.candidates?.length"
-                v-model="row.fund_code"
-                size="small"
-                filterable
-                placeholder="选择代码"
-                class="candidate-select"
-                @change="onImportCandidateSelect(row)"
-              >
-                <el-option
-                  v-for="candidate in row.candidates"
-                  :key="candidate.code"
-                  :label="`${candidate.code} ${candidate.name}`"
-                  :value="candidate.code"
-                />
-              </el-select>
-              <el-tag v-else-if="row._matchStatus === 'ambiguous'" size="small" type="warning">需确认</el-tag>
-              <el-tag v-else-if="row._matchStatus === 'invalid'" size="small" type="danger">异常</el-tag>
-              <el-tag v-else-if="row._matchStatus === 'searching'" size="small" type="warning">搜索中...</el-tag>
-              <el-tag v-else-if="row._matchStatus === 'not_found'" size="small" type="danger">未找到</el-tag>
-              <span v-else>--</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="fund_name" label="基金名称" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="confidence" label="置信度" width="80" align="right">
-            <template #default="{ row }">
-              {{ row.confidence ?? 0 }}%
-            </template>
-          </el-table-column>
-          <el-table-column prop="market_value" label="市值" width="110" align="right">
-            <template #default="{ row }">
-              ¥{{ row.market_value?.toFixed(2) || '--' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="daily_return" label="昨日收益" width="110" align="right">
-            <template #default="{ row }">
-              <span :class="(row.daily_return || 0) >= 0 ? 'text-success' : 'text-danger'">
-                {{ (row.daily_return || 0) >= 0 ? '+' : '' }}¥{{ row.daily_return?.toFixed(2) || '0.00' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="holding_return" label="持有收益" width="110" align="right">
-            <template #default="{ row }">
-              <span :class="row.holding_return >= 0 ? 'text-success' : 'text-danger'">
-                {{ row.holding_return >= 0 ? '+' : '' }}¥{{ row.holding_return?.toFixed(2) || '--' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="current_nav" label="当前净值" width="100" align="right">
-            <template #default="{ row }">
-              {{ row.current_nav ? row.current_nav.toFixed(4) : '--' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="estimated_shares" label="推算份额" width="110" align="right">
-            <template #default="{ row }">
-              {{ row.estimated_shares ? formatNumber(row.estimated_shares) : '--' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="estimated_cost_nav" label="成本净值" width="100" align="right">
-            <template #default="{ row }">
-              {{ row.estimated_cost_nav ? row.estimated_cost_nav.toFixed(4) : '--' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="导入状态" min-width="140">
-            <template #default="{ row }">
-              <div>
-                <el-tag size="small" :type="row.import_status === 'ready' ? 'success' : row.import_status === 'invalid' ? 'danger' : 'warning'">
-                  {{ row.import_status === 'ready' ? '可导入' : '需核对' }}
+        <div v-if="showImportResults" class="import-results">
+          <el-alert
+            :title="`导入完成：成功 ${importResults.filter(r => r.status === 'success').length} 条，跳过 ${importResults.filter(r => r.status === 'skipped').length} 条，失败 ${importResults.filter(r => r.status === 'failed').length} 条`"
+            :type="importResults.some(r => r.status !== 'success') ? 'warning' : 'success'"
+            show-icon
+            :closable="false"
+            class="import-result-alert"
+          />
+          <div v-if="importResults.some(r => r.status !== 'success')">
+            <div class="result-failed-list">
+              <div v-for="(r, idx) in importResults.filter(r => r.status !== 'success')" :key="idx" class="result-failed-item">
+                <el-tag :type="r.status === 'skipped' ? 'warning' : 'danger'" size="small">
+                  {{ r.status === 'skipped' ? '跳过' : '失败' }}
                 </el-tag>
-                <span v-if="row.import_reason" class="result-error">{{ row.import_reason }}</span>
+                <span class="result-fund-name">{{ r.fund_name }}</span>
+                <span v-if="r.fund_code" class="result-fund-code">({{ r.fund_code }})</span>
+                <span class="result-error">{{ r.error }}</span>
               </div>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-
-      <!-- 导入结果 -->
-      <div v-if="showImportResults" class="import-results">
-        <el-alert
-          :title="`导入完成：成功 ${importResults.filter(r => r.status === 'success').length} 条，跳过 ${importResults.filter(r => r.status === 'skipped').length} 条，失败 ${importResults.filter(r => r.status === 'failed').length} 条`"
-          :type="importResults.some(r => r.status !== 'success') ? 'warning' : 'success'"
-          show-icon
-          :closable="false"
-          class="import-result-alert"
-        />
-        <div v-if="importResults.some(r => r.status !== 'success')">
-          <div class="result-failed-list">
-            <div v-for="(r, idx) in importResults.filter(r => r.status !== 'success')" :key="idx" class="result-failed-item">
-              <el-tag :type="r.status === 'skipped' ? 'warning' : 'danger'" size="small">
-                {{ r.status === 'skipped' ? '跳过' : '失败' }}
-              </el-tag>
-              <span class="result-fund-name">{{ r.fund_name }}</span>
-              <span v-if="r.fund_code" class="result-fund-code">({{ r.fund_code }})</span>
-              <span class="result-error">{{ r.error }}</span>
             </div>
           </div>
         </div>
@@ -496,7 +621,7 @@
             :loading="importLoading"
             @click="confirmImport"
           >
-            {{ importLoading ? '导入中...' : `确认导入 (${readyImportCount})` }}
+            {{ importLoading ? '导入中...' : readyImportCount > 0 ? `导入 ${readyImportCount} 条` : '等待可导入数据' }}
           </el-button>
         </template>
       </template>
@@ -510,7 +635,7 @@ defineOptions({
 })
 
 import { ref, reactive, computed, onMounted } from 'vue'
-import { Plus, Refresh, Wallet, TrendCharts, TrendCharts as Percentage, Delete, Upload, Loading, InfoFilled, MagicStick } from '@element-plus/icons-vue'
+import { Plus, Refresh, Wallet, TrendCharts, TrendCharts as Percentage, Delete, Upload, Loading, MagicStick } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePortfolioStore } from '@/stores/portfolioStore'
 import { useFundStore } from '@/stores/fundStore'
@@ -520,7 +645,7 @@ import portfolioApi from '@/api/portfolio'
 import fundApi, { type FundSearchItem } from '@/api/fund'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
-import { loadAppSettings } from '@/platform/appSettings'
+import { DEFAULT_AI_PROMPT, loadAppSettings } from '@/platform/appSettings'
 
 const { t } = useI18n()
 const portfolioStore = usePortfolioStore()
@@ -568,6 +693,9 @@ interface ImportPreviewItem {
   status?: 'ready' | 'skipped' | 'invalid'
   reason?: string
   _matchStatus?: string
+  _manualFundCode?: string
+  _manualCandidates?: FundSearchItem[]
+  _searchLoading?: boolean
 }
 
 interface ApiErrorLike {
@@ -577,6 +705,19 @@ interface ApiErrorLike {
     }
   }
   message?: string
+}
+
+interface AiRecognizeNotice {
+  type: 'success' | 'warning' | 'error'
+  title: string
+  messages: string[]
+}
+
+interface AiRecognizeLogEntry {
+  id: string
+  time: string
+  message: string
+  status: 'pending' | 'running' | 'success' | 'warning' | 'error'
 }
 
 const getErrorMessage = (error: unknown, fallback = '未知错误') => {
@@ -596,11 +737,53 @@ const importStats = ref({
   holdings_count: 0
 })
 const readyImportCount = computed(() => importPreview.value.filter(item => item.import_status === 'ready').length)
+const reviewImportCount = computed(() => Math.max(importPreview.value.length - readyImportCount.value, 0))
+const importCurrentStep = computed<'source' | 'review' | 'confirm'>(() => {
+  if (showImportResults.value || importLoading.value) return 'confirm'
+  if (importPreview.value.length > 0) return 'review'
+  return 'source'
+})
+const importSteps = computed(() => [
+  {
+    key: 'source',
+    index: 1,
+    title: '上传',
+    summary: importTab.value === 'ai' ? '选择持仓截图' : '选择 JSON 文件',
+    done: Boolean(aiImageBase64.value || importFile.value)
+  },
+  {
+    key: 'review',
+    index: 2,
+    title: '核对',
+    summary: readyImportCount.value > 0
+      ? `${readyImportCount.value} 条可导入`
+      : '等待识别结果',
+    done: readyImportCount.value > 0
+  },
+  {
+    key: 'confirm',
+    index: 3,
+    title: '导入',
+    summary: showImportResults.value ? '查看结果' : '写入本地持仓',
+    done: showImportResults.value
+  }
+] as const)
 
 // AI识别相关
 const aiImageBase64 = ref('')
 const aiImagePreview = ref('')
 const aiRecognizing = ref(false)
+const aiRecognizeNotice = ref<AiRecognizeNotice | null>(null)
+const aiRecognizeLogs = ref<AiRecognizeLogEntry[]>([])
+
+const pushAiRecognizeLog = (message: string, status: AiRecognizeLogEntry['status'] = 'running') => {
+  aiRecognizeLogs.value.push({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+    message,
+    status
+  })
+}
 
 const loadAiConfig = () => {
   const settings = loadAppSettings()
@@ -608,7 +791,7 @@ const loadAiConfig = () => {
     model: settings.aiModel,
     baseUrl: settings.aiBaseUrl,
     apiKey: settings.aiApiKey,
-    prompt: settings.aiPrompt
+    prompt: settings.aiPrompt?.trim() || DEFAULT_AI_PROMPT
   }
 }
 
@@ -713,6 +896,52 @@ const onImportCandidateSelect = async (row: ImportPreviewItem) => {
 
   try {
     await refreshImportPreview()
+  } catch (error) {
+    console.error('刷新导入预检失败:', error)
+    ElMessage.error('刷新导入预检失败，请稍后重试')
+  }
+}
+
+const searchImportFund = async (row: ImportPreviewItem, keyword: string) => {
+  const query = keyword.trim()
+  if (!query) {
+    row._manualCandidates = []
+    return
+  }
+  row._searchLoading = true
+  try {
+    row._manualCandidates = await fundApi.search(query, 10)
+  } catch (error) {
+    console.error('复核基金搜索失败:', error)
+    row._manualCandidates = []
+    ElMessage.error('基金搜索失败，请稍后重试')
+  } finally {
+    row._searchLoading = false
+  }
+}
+
+const createImportFundSearch = (row: ImportPreviewItem) => {
+  return (keyword: string) => searchImportFund(row, keyword)
+}
+
+const confirmImportFund = async (row: ImportPreviewItem) => {
+  const selected = row._manualCandidates?.find(candidate => candidate.code === row._manualFundCode)
+  if (!selected) return
+  row.fund_code = selected.code
+  row.fund_name = selected.name
+  row.match_status = 'matched'
+  row.confidence = 100
+  row.match_reason = 'manual_search_confirmed'
+  row._matchStatus = 'matched'
+  row.import_reason = ''
+  row.candidates = [
+    { code: selected.code, name: selected.name, score: 100, reason: 'manual_search_confirmed' },
+    ...(row.candidates || []).filter(candidate => candidate.code !== selected.code)
+  ]
+
+  try {
+    await refreshImportPreview()
+    ElMessage.success(`已确认 ${selected.code} ${selected.name}`)
   } catch (error) {
     console.error('刷新导入预检失败:', error)
     ElMessage.error('刷新导入预检失败，请稍后重试')
@@ -937,6 +1166,7 @@ const handleAiImageChange = (uploadFile: UploadFile) => {
   const file = uploadFile.raw
   if (!file) return
 
+  clearAiRecognitionResult()
   const reader = new FileReader()
   reader.onload = (e) => {
     const result = e.target?.result as string
@@ -949,22 +1179,37 @@ const handleAiImageChange = (uploadFile: UploadFile) => {
 const clearAiImage = () => {
   aiImageBase64.value = ''
   aiImagePreview.value = ''
+  clearAiRecognitionResult()
 }
 
 const handleAiRecognize = async () => {
   if (!aiImageBase64.value) {
+    aiRecognizeNotice.value = {
+      type: 'warning',
+      title: '请先上传持仓截图',
+      messages: []
+    }
     ElMessage.warning('请先上传持仓截图')
     return
   }
 
   const config = loadAiConfig()
   if (!config.model || !config.baseUrl || !config.apiKey) {
+    aiRecognizeNotice.value = {
+      type: 'warning',
+      title: '请先在设置页面配置 AI 模型信息',
+      messages: ['配置完成后可以先使用“测试连接”确认接口可用。']
+    }
     ElMessage.warning('请先在设置页面配置 AI 模型信息')
     return
   }
 
   aiRecognizing.value = true
+  aiRecognizeNotice.value = null
+  aiRecognizeLogs.value = []
+  pushAiRecognizeLog('读取模型配置和截图数据')
   try {
+    pushAiRecognizeLog(`调用 ${config.model} 进行图片识别，等待模型返回`)
     const result = await portfolioApi.aiRecognize({
       image_base64: aiImageBase64.value,
       model: config.model,
@@ -974,10 +1219,12 @@ const handleAiRecognize = async () => {
     })
 
     if (result.holdings && result.holdings.length > 0) {
+      pushAiRecognizeLog(`模型返回 ${result.holdings.length} 条持仓，开始匹配基金代码`, 'success')
       const sourceItems: ImportPreviewItem[] = result.holdings.map((h, index) => ({
         ...h,
         row_index: h.row_index || index + 1
       }))
+      pushAiRecognizeLog('调用本地基金数据源预检导入可行性')
       const preview = await portfolioApi.previewImport({
         strict: true,
         holdings: buildImportHoldingsPayload(sourceItems)
@@ -992,12 +1239,25 @@ const handleAiRecognize = async () => {
 
       const notFoundCount = result.holdings.filter((h) => h.match_status === 'not_found').length
       const reviewCount = result.holdings.filter((h) => h.match_status === 'ambiguous' || h.match_status === 'invalid').length
+      const noticeMessages = buildAiRecognizeNoticeMessages(result, preview.ready_count)
       if (result.warnings?.length) {
         ElMessage.warning(result.warnings.join('；'))
       }
       if (notFoundCount > 0 || reviewCount > 0 || preview.ready_count < result.holdings.length) {
+        pushAiRecognizeLog(`完成：${preview.ready_count} 条可导入，${result.holdings.length - preview.ready_count} 条需要人工核对`, 'warning')
+        aiRecognizeNotice.value = {
+          type: 'warning',
+          title: `AI识别完成：${result.holdings.length} 条数据，${preview.ready_count} 条可导入`,
+          messages: noticeMessages
+        }
         ElMessage.warning(`AI识别出 ${result.holdings.length} 条数据，${preview.ready_count} 条可导入，${result.holdings.length - preview.ready_count} 条需要核对`)
       } else {
+        pushAiRecognizeLog('完成：全部持仓通过预检，可直接导入', 'success')
+        aiRecognizeNotice.value = {
+          type: 'success',
+          title: `AI识别完成：${result.holdings.length} 条持仓全部可导入`,
+          messages: noticeMessages
+        }
         ElMessage.success(`AI识别出 ${result.holdings.length} 条持仓数据，全部可导入`)
       }
     } else {
@@ -1006,6 +1266,12 @@ const handleAiRecognize = async () => {
   } catch (error: unknown) {
     console.error('AI识别失败:', error)
     const errMsg = getErrorMessage(error)
+    aiRecognizeNotice.value = {
+      type: 'error',
+      title: 'AI识别失败',
+      messages: [errMsg, '请先在设置页使用“测试连接”检查模型、Base URL 和 API Key。']
+    }
+    pushAiRecognizeLog(`失败：${errMsg}`, 'error')
     ElMessage.error('AI识别失败: ' + errMsg)
   } finally {
     aiRecognizing.value = false
@@ -1076,6 +1342,48 @@ interface ImportResultItem {
 const importResults = ref<ImportResultItem[]>([])
 const showImportResults = ref(false)
 
+const resetImportStats = () => {
+  importStats.value = {
+    total_value: 0,
+    total_holding_return: 0,
+    holdings_count: 0
+  }
+}
+
+const clearAiRecognitionResult = () => {
+  aiRecognizeNotice.value = null
+  aiRecognizeLogs.value = []
+  importPreview.value = []
+  importResults.value = []
+  showImportResults.value = false
+  resetImportStats()
+}
+
+const buildAiRecognizeNoticeMessages = (
+  result: Awaited<ReturnType<typeof portfolioApi.aiRecognize>>,
+  readyCount: number
+) => {
+  const messages: string[] = []
+  if (result.expected_count && result.expected_count !== result.holdings.length) {
+    messages.push(`截图显示全部 ${result.expected_count} 条，当前识别到 ${result.holdings.length} 条，请核对是否漏识别。`)
+  }
+  if (readyCount < result.holdings.length) {
+    messages.push(`${result.holdings.length - readyCount} 条暂不能直接导入，请在预览表中确认基金代码或异常原因。`)
+  }
+  messages.push(...(result.warnings || []))
+
+  const rowWarnings = result.holdings.flatMap(item => {
+    const name = item.raw_fund_name || item.fund_name || `第 ${item.row_index || ''} 行`
+    return (item.warnings || []).map(warning => `第 ${item.row_index || '-'} 行 ${name}：${warning}`)
+  })
+  messages.push(...rowWarnings.slice(0, 6))
+  if (rowWarnings.length > 6) {
+    messages.push(`还有 ${rowWarnings.length - 6} 条行级提示，请查看预览表。`)
+  }
+
+  return Array.from(new Set(messages)).slice(0, 10)
+}
+
 const confirmImport = async () => {
   if (importPreview.value.length === 0) {
     ElMessage.warning('没有数据可导入')
@@ -1117,11 +1425,7 @@ const confirmImport = async () => {
       showImportDialog.value = false
       importPreview.value = []
       importFile.value = null
-      importStats.value = {
-        total_value: 0,
-        total_holding_return: 0,
-        holdings_count: 0
-      }
+      resetImportStats()
     }
 
     await dataManager.refreshPortfolio()
@@ -1157,11 +1461,10 @@ const closeImportDialog = () => {
   importPreview.value = []
   importResults.value = []
   importFile.value = null
-  importStats.value = {
-    total_value: 0,
-    total_holding_return: 0,
-    holdings_count: 0
-  }
+  aiImageBase64.value = ''
+  aiImagePreview.value = ''
+  aiRecognizeNotice.value = null
+  resetImportStats()
 }
 
 const completeMissingData = async (items: { tempId: number; fund_name: string; cost_amount: number }[]) => {
@@ -1316,12 +1619,90 @@ const completeAllPending = async () => {
     margin-top: 12px;
   }
 
+  .ai-recognize-notice {
+    margin-top: 12px;
+  }
+
+  .ai-recognize-notice__messages {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .ai-recognize-log {
+    margin-top: 12px;
+    padding: 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-page);
+
+    ol {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 150px;
+      margin: 8px 0 0;
+      padding: 0;
+      overflow-y: auto;
+      list-style: none;
+    }
+
+    li {
+      display: grid;
+      grid-template-columns: 62px minmax(0, 1fr);
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.4;
+
+      &.is-success strong {
+        color: var(--success-color);
+      }
+
+      &.is-warning strong {
+        color: var(--warning-color);
+      }
+
+      &.is-error strong {
+        color: var(--danger-color);
+      }
+    }
+
+    span {
+      color: var(--text-tertiary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    strong {
+      color: var(--text-primary);
+      font-weight: 700;
+    }
+  }
+
+  .ai-recognize-log__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 850;
+  }
+
   .import-result-alert {
     margin-bottom: 12px;
   }
 
   .candidate-select {
     width: 140px;
+  }
+
+  .manual-fund-search {
+    width: 100%;
   }
 
   .text-success {
@@ -1376,95 +1757,282 @@ const completeAllPending = async () => {
     }
   }
 
-  .ai-import-content {
-    .ai-config-tip {
-      margin-bottom: 16px;
+  .import-workflow {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
 
-      a {
-        color: var(--primary-color);
-        text-decoration: underline;
-      }
+  .import-stepper {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .import-step {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-page);
+    color: var(--text-secondary);
+  }
+
+  .import-step.active {
+    border-color: rgba(37, 99, 235, 0.24);
+    background: rgba(37, 99, 235, 0.06);
+    color: var(--text-primary);
+  }
+
+  .import-step.done .import-step__index {
+    background: var(--success-color);
+    color: #fff;
+  }
+
+  .import-step__index {
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-full);
+    background: var(--icon-surface);
+    color: var(--primary-color);
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .import-step__copy {
+    min-width: 0;
+
+    strong,
+    small {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    .ai-input-section {
-      .ai-input-tip {
-        display: flex;
-        align-items: flex-start;
-        gap: 8px;
-        margin-bottom: 12px;
-        padding: 10px 12px;
-        background: rgba(64, 158, 255, 0.06);
-        border-radius: 6px;
-        font-size: 13px;
-        color: var(--text-secondary);
-        line-height: 1.5;
+    strong {
+      color: inherit;
+      font-size: 13px;
+      font-weight: 850;
+    }
 
-        .el-icon {
-          color: var(--primary-color);
-          margin-top: 2px;
-          flex-shrink: 0;
-        }
-      }
-
-      .ai-image-uploader {
-        :deep(.el-upload) {
-          width: 100%;
-        }
-        :deep(.el-upload-dragger) {
-          width: 100%;
-          height: 140px;
-        }
-      }
-
-      .ai-image-preview {
-        margin-top: 12px;
-        text-align: center;
-
-        img {
-          max-width: 100%;
-          max-height: 200px;
-          border-radius: 6px;
-          border: 1px solid var(--border-light);
-        }
-      }
+    small {
+      margin-top: 2px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
     }
   }
 
-  .import-dialog-content {
-    .import-uploader {
-      margin-bottom: 20px;
+  .import-tabs {
+    :deep(.el-tabs__header) {
+      margin-bottom: 12px;
+    }
+  }
 
-      :deep(.el-upload) {
-        width: 100%;
-      }
+  .ai-config-tip {
+    margin-bottom: 12px;
 
-      :deep(.el-upload-dragger) {
-        width: 100%;
-        height: 180px;
-      }
+    a {
+      color: var(--primary-color);
+      text-decoration: underline;
+    }
+  }
+
+  .import-source-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.75fr);
+    gap: 14px;
+  }
+
+  .import-source-card,
+  .import-status-card {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-card);
+  }
+
+  .import-source-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+
+    span {
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 850;
+    }
+  }
+
+  .ai-image-uploader,
+  .import-uploader {
+    :deep(.el-upload) {
+      width: 100%;
+    }
+
+    :deep(.el-upload-dragger) {
+      width: 100%;
+      height: 260px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      border-radius: var(--radius-base);
+      background: var(--bg-page);
+    }
+  }
+
+  .ai-image-preview {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+
+    img {
+      max-width: 100%;
+      max-height: 228px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-base);
+      object-fit: contain;
+      box-shadow: var(--shadow-light);
+    }
+  }
+
+  .import-status-card {
+    display: flex;
+    flex-direction: column;
+
+    h4 {
+      margin: 4px 0 14px;
+      color: var(--text-primary);
+      font-size: 18px;
+      font-weight: 850;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+  }
+
+  .import-status-card__eyebrow {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 850;
+  }
+
+  .import-status-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+
+    div {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 9px 10px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-base);
+      background: var(--bg-page);
+    }
+
+    span {
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    strong {
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 850;
     }
   }
 
   .import-stats {
-    margin-top: 16px;
-    margin-bottom: 16px;
-    padding: 16px;
-    background: var(--bg-page);
-    border-radius: var(--radius-base);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
 
-    :deep(.el-descriptions__label) {
-      font-weight: 500;
+  .import-stat {
+    padding: 12px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-page);
+
+    span,
+    strong {
+      display: block;
+    }
+
+    span {
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    strong {
+      margin-top: 4px;
+      color: var(--text-primary);
+      font-size: 16px;
+      font-weight: 850;
     }
   }
 
   .import-preview {
+    padding: 14px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-base);
+    background: var(--bg-card);
+
     .preview-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 12px;
       margin-bottom: 12px;
-      font-weight: 500;
     }
+
+    .preview-header strong,
+    .preview-header small {
+      display: block;
+    }
+
+    .preview-header strong {
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    .preview-header small {
+      margin-top: 2px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+    }
+  }
+
+  .preview-tags {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .import-status-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
   }
 
   .import-results {

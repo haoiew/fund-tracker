@@ -127,10 +127,48 @@
           <div v-else-if="activeSection === 'ai'" class="settings-stack">
             <div class="setting-row">
               <div>
+                <span>配置档案</span>
+                <small>保存多套 OpenAI 兼容接口配置，按使用场景快速切换</small>
+              </div>
+              <div class="ai-profile-control">
+                <el-select
+                  v-model="settings.aiActiveConfigId"
+                  class="ai-profile-select"
+                  placeholder="选择配置"
+                  @change="switchAiConfig"
+                >
+                  <el-option
+                    v-for="config in settings.aiConfigs"
+                    :key="config.id"
+                    :label="`${config.name} · ${config.model || '未设置模型'}`"
+                    :value="config.id"
+                  />
+                </el-select>
+                <div class="ai-profile-actions">
+                  <el-button :icon="Check" @click="saveCurrentAiConfig">保存当前</el-button>
+                  <el-button :icon="CopyDocument" @click="saveAsNewAiConfig">另存为</el-button>
+                  <el-button :icon="Delete" :disabled="settings.aiConfigs.length <= 1" @click="deleteCurrentAiConfig">删除</el-button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <span>配置名称</span>
+                <small>用于区分不同服务商、账号或模型组合</small>
+              </div>
+              <el-input v-model="activeAiConfigName" placeholder="例如 OpenAI 主账号、备用中转、硅基流动" />
+            </div>
+
+            <div class="setting-row">
+              <div>
                 <span>模型名称</span>
                 <small>用于持仓截图识别的模型标识</small>
               </div>
-              <el-input v-model="settings.aiModel" placeholder="例如 gpt-4o、mimo-v2-pro" />
+              <div class="inline-control">
+                <el-input v-model="settings.aiModel" placeholder="例如 gpt-5.5" />
+                <el-button @click="useRecommendedAiModel">使用推荐</el-button>
+              </div>
             </div>
 
             <div class="setting-row">
@@ -149,15 +187,44 @@
               <el-input v-model="settings.aiApiKey" type="password" show-password placeholder="sk-..." />
             </div>
 
+            <div class="setting-row">
+              <div>
+                <span>连通性检测</span>
+                <small>由后端实际请求模型服务，返回接口可用性和延迟</small>
+              </div>
+              <div class="ai-test-control">
+                <el-checkbox v-model="aiVisionTestEnabled">
+                  同时测试图片输入能力
+                </el-checkbox>
+                <el-button type="primary" :icon="Timer" :loading="aiTestLoading" @click="testAiConnection">测试连接</el-button>
+                <el-alert
+                  v-if="aiTestResult"
+                  class="ai-test-result"
+                  :type="aiTestResult.ok ? 'success' : 'error'"
+                  :closable="false"
+                  show-icon
+                >
+                  <template #title>
+                    {{ aiTestResult.message }}
+                    <span v-if="aiTestResult.latencyMs !== null"> · 文本 {{ aiTestResult.latencyMs }}ms</span>
+                    <span v-if="aiTestResult.visionLatencyMs !== null"> · 图片 {{ aiTestResult.visionLatencyMs }}ms</span>
+                  </template>
+                </el-alert>
+              </div>
+            </div>
+
             <div class="setting-row is-vertical">
               <div>
                 <span>识别提示词</span>
                 <small>约束截图识别输出 JSON 结构</small>
               </div>
+              <div class="prompt-actions">
+                <el-button size="small" @click="restoreRecommendedPrompt">恢复推荐提示词</el-button>
+              </div>
               <el-input
                 v-model="settings.aiPrompt"
                 type="textarea"
-                :rows="8"
+                :rows="16"
                 placeholder="用于识别持仓截图的提示词"
               />
             </div>
@@ -192,15 +259,19 @@ defineOptions({
 
 import { computed, reactive, ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useThemeStore, type ThemeType } from '@/stores/themeStore'
-import { Brush, Coin, InfoFilled, MagicStick, Setting } from '@element-plus/icons-vue'
+import { Brush, Check, Coin, CopyDocument, Delete, InfoFilled, MagicStick, Setting, Timer } from '@element-plus/icons-vue'
 import {
   DEFAULT_APP_SETTINGS,
+  DEFAULT_AI_MODEL,
+  DEFAULT_AI_PROMPT,
   loadAppSettings,
   saveAppSettings,
+  type AiProviderConfig,
   type AppSettings
 } from '@/platform/appSettings'
+import portfolioApi from '@/api/portfolio'
 
 const { locale, t } = useI18n()
 const themeStore = useThemeStore()
@@ -242,7 +313,47 @@ const settingsSections = [
 
 const activeSectionMeta = computed(() => settingsSections.find(item => item.key === activeSection.value) ?? settingsSections[0])
 
-const settings = reactive<AppSettings>({ ...DEFAULT_APP_SETTINGS })
+const cloneDefaultSettings = (): AppSettings => JSON.parse(JSON.stringify(DEFAULT_APP_SETTINGS)) as AppSettings
+
+const settings = reactive<AppSettings>(cloneDefaultSettings())
+const lastActiveAiConfigId = ref(settings.aiActiveConfigId)
+const aiDraftName = ref('')
+const aiTestLoading = ref(false)
+const aiVisionTestEnabled = ref(true)
+const aiTestResult = ref<{ ok: boolean; message: string; latencyMs: number | null; visionLatencyMs: number | null } | null>(null)
+
+const activeAiConfig = computed(() => {
+  return settings.aiConfigs.find(config => config.id === settings.aiActiveConfigId) ?? settings.aiConfigs[0]
+})
+
+const activeAiConfigName = computed({
+  get: () => aiDraftName.value,
+  set: (value: string) => {
+    aiDraftName.value = value
+  }
+})
+
+const createAiConfigId = () => `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+const applyAiConfigToFields = (config: AiProviderConfig) => {
+  aiDraftName.value = config.name
+  settings.aiModel = config.model
+  settings.aiBaseUrl = config.baseUrl
+  settings.aiApiKey = config.apiKey
+  settings.aiPrompt = config.prompt?.trim() || DEFAULT_AI_PROMPT
+  aiTestResult.value = null
+}
+
+const syncCurrentAiConfig = (configId = settings.aiActiveConfigId) => {
+  const target = settings.aiConfigs.find(config => config.id === configId)
+  if (!target) return
+  target.name = aiDraftName.value.trim() || '未命名配置'
+  target.model = settings.aiModel.trim()
+  target.baseUrl = settings.aiBaseUrl.trim()
+  target.apiKey = settings.aiApiKey
+  target.prompt = settings.aiPrompt?.trim() || DEFAULT_AI_PROMPT
+  target.updatedAt = Date.now()
+}
 
 const changeLanguage = (lang: string) => {
   locale.value = lang
@@ -260,7 +371,126 @@ const handleColorModeChange = (colorMode: string) => {
   ElMessage.success('颜色模式已更新')
 }
 
+const useRecommendedAiModel = () => {
+  settings.aiModel = DEFAULT_AI_MODEL
+  aiTestResult.value = null
+  ElMessage.success('已填入推荐模型')
+}
+
+const restoreRecommendedPrompt = () => {
+  settings.aiPrompt = DEFAULT_AI_PROMPT
+  ElMessage.success('已恢复推荐提示词')
+}
+
+const switchAiConfig = (configId: string) => {
+  const next = settings.aiConfigs.find(config => config.id === configId)
+  if (!next) return
+  applyAiConfigToFields(next)
+  lastActiveAiConfigId.value = next.id
+}
+
+const saveCurrentAiConfig = () => {
+  syncCurrentAiConfig()
+  saveAppSettings({ ...settings, aiConfigs: [...settings.aiConfigs] })
+  ElMessage.success('当前 AI 配置已保存')
+}
+
+const saveAsNewAiConfig = () => {
+  const nextIndex = settings.aiConfigs.length + 1
+  const newConfig: AiProviderConfig = {
+    id: createAiConfigId(),
+    name: aiDraftName.value.trim() || `配置 ${nextIndex}`,
+    model: settings.aiModel.trim() || DEFAULT_AI_MODEL,
+    baseUrl: settings.aiBaseUrl.trim(),
+    apiKey: settings.aiApiKey,
+    prompt: settings.aiPrompt?.trim() || DEFAULT_AI_PROMPT,
+    updatedAt: Date.now()
+  }
+
+  settings.aiConfigs.push(newConfig)
+  settings.aiActiveConfigId = newConfig.id
+  lastActiveAiConfigId.value = newConfig.id
+  saveAppSettings({ ...settings, aiConfigs: [...settings.aiConfigs] })
+  ElMessage.success(`已另存为 ${newConfig.name}`)
+}
+
+const deleteCurrentAiConfig = async () => {
+  if (settings.aiConfigs.length <= 1 || !activeAiConfig.value) {
+    ElMessage.warning('至少保留一套 AI 配置')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定删除“${activeAiConfig.value.name}”吗？`,
+      '删除 AI 配置',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch {
+    return
+  }
+
+  const deletedId = activeAiConfig.value.id
+  const index = settings.aiConfigs.findIndex(config => config.id === deletedId)
+  settings.aiConfigs.splice(index, 1)
+  const next = settings.aiConfigs[Math.max(0, index - 1)] ?? settings.aiConfigs[0]
+  if (!next) return
+  settings.aiActiveConfigId = next.id
+  lastActiveAiConfigId.value = next.id
+  applyAiConfigToFields(next)
+  saveAppSettings({ ...settings, aiConfigs: [...settings.aiConfigs] })
+  ElMessage.success('AI 配置已删除')
+}
+
+const testAiConnection = async () => {
+  if (!settings.aiModel.trim() || !settings.aiBaseUrl.trim() || !settings.aiApiKey.trim()) {
+    aiTestResult.value = {
+      ok: false,
+      message: '请先填写模型名称、Base URL 和 API Key',
+      latencyMs: null,
+      visionLatencyMs: null
+    }
+    ElMessage.warning(aiTestResult.value.message)
+    return
+  }
+
+  aiTestLoading.value = true
+  aiTestResult.value = null
+  try {
+    const result = await portfolioApi.testAiConnection({
+      model: settings.aiModel.trim(),
+      base_url: settings.aiBaseUrl.trim(),
+      api_key: settings.aiApiKey,
+      include_vision: aiVisionTestEnabled.value
+    })
+
+    aiTestResult.value = {
+      ok: result.ok,
+      message: result.message || '连接成功',
+      latencyMs: result.latency_ms ?? null,
+      visionLatencyMs: result.vision_latency_ms ?? null
+    }
+    ElMessage.success(`AI 接口连接成功${result.latency_ms ? `，延迟 ${result.latency_ms}ms` : ''}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '连接失败，请检查配置'
+    aiTestResult.value = {
+      ok: false,
+      message,
+      latencyMs: null,
+      visionLatencyMs: null
+    }
+    ElMessage.error(`AI 接口连接失败：${message}`)
+  } finally {
+    aiTestLoading.value = false
+  }
+}
+
 const saveSettings = () => {
+  syncCurrentAiConfig()
   saveAppSettings({ ...settings })
   localStorage.setItem('fund-tracker-language', settings.language)
   localStorage.setItem('fund-tracker-color-mode', settings.colorMode)
@@ -268,7 +498,11 @@ const saveSettings = () => {
 }
 
 const resetSettings = () => {
-  Object.assign(settings, DEFAULT_APP_SETTINGS)
+  Object.assign(settings, cloneDefaultSettings())
+  lastActiveAiConfigId.value = settings.aiActiveConfigId
+  if (activeAiConfig.value) {
+    applyAiConfigToFields(activeAiConfig.value)
+  }
   themeStore.setTheme('light')
   changeLanguage('zh-CN')
   localStorage.setItem('fund-tracker-color-mode', 'red-up-green-down')
@@ -278,6 +512,10 @@ const resetSettings = () => {
 // 加载设置
 onMounted(() => {
   Object.assign(settings, loadAppSettings())
+  lastActiveAiConfigId.value = settings.aiActiveConfigId
+  if (activeAiConfig.value) {
+    applyAiConfigToFields(activeAiConfig.value)
+  }
 
   // 加载语言设置
   const savedLang = localStorage.getItem('fund-tracker-language')
@@ -447,6 +685,52 @@ onMounted(() => {
     display: block;
   }
 
+  .inline-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    .el-input {
+      flex: 1;
+    }
+  }
+
+  .ai-profile-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .ai-profile-select {
+    flex: 1;
+    min-width: 220px;
+  }
+
+  .ai-profile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .ai-test-control {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .ai-test-result {
+    width: 100%;
+  }
+
+  .prompt-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 8px;
+  }
+
   .slider-control {
     min-width: 0;
     padding-inline: 8px;
@@ -508,6 +792,25 @@ onMounted(() => {
     .settings-grid,
     .setting-row {
       grid-template-columns: 1fr;
+    }
+
+    .ai-profile-control,
+    .inline-control {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .ai-profile-select {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .ai-profile-actions {
+      width: 100%;
+
+      .el-button {
+        flex: 1;
+      }
     }
   }
 }

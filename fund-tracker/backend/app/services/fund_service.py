@@ -10,6 +10,7 @@ import time
 import os
 import re
 import threading
+from difflib import SequenceMatcher
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Dict, Optional, Any, Tuple
@@ -23,7 +24,7 @@ from urllib3.util.retry import Retry
 
 from app.config import settings
 from app.core.cache import get_cache
-from app.core.data_source import get_data_source, FundDataResult
+from app.core.data_source import classify_data_kind, get_data_source, get_data_source_metadata, FundDataResult
 from app.schemas.fund import FundRealtimeData
 from app.logger import get_logger
 
@@ -54,6 +55,7 @@ class FundService:
         self.cache = get_cache()
         self._data_source = get_data_source()
         self._fund_names_cache: Dict[str, str] = {}
+        self._eastmoney_fund_catalog_cache: Optional[List[Dict[str, str]]] = None
 
         self.session = requests.Session()
         retries = Retry(total=2, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
@@ -117,6 +119,61 @@ class FundService:
             return cached
         return code
 
+    def _lookup_catalog_name(self, code: str) -> Optional[str]:
+        code = str(code or "").strip()
+        if not code:
+            return None
+        try:
+            for item in self._load_eastmoney_fund_catalog():
+                if item.get("code") == code and item.get("name"):
+                    return item["name"]
+        except Exception:
+            return None
+        return None
+
+    def _build_realtime_response(self, code: str, name: str, result: FundDataResult) -> FundRealtimeData:
+        source = result.source or "unknown"
+        metadata = get_data_source_metadata(source)
+        data_kind, data_kind_label = classify_data_kind(source, result.update_time)
+        is_realtime = result.is_success and data_kind == "realtime_estimate"
+
+        if result.is_success:
+            resolved_name = result.name or name
+            if not resolved_name or resolved_name == code:
+                resolved_name = self._lookup_catalog_name(code) or resolved_name or code
+            status = "正常" if is_realtime else data_kind_label
+            rt = FundRealtimeData(
+                code=code,
+                name=resolved_name,
+                estimate_nav=Decimal(str(result.nav)) if result.nav else None,
+                estimate_change=Decimal(str(result.change_pct)) if result.change_pct is not None else None,
+                update_time=result.update_time or '--',
+                status=status,
+                data_source=source,
+                data_source_display_name=metadata.get("display_name"),
+                data_source_short_name=metadata.get("short_name"),
+                data_source_description=metadata.get("description"),
+                data_kind=data_kind,
+                data_kind_label=data_kind_label,
+                is_realtime=is_realtime,
+            )
+            if resolved_name and resolved_name != code:
+                self._fund_names_cache[code] = resolved_name
+                self.cache.set(f"fund_name:{code}", resolved_name, settings.FUND_INFO_CACHE_TTL)
+            return rt
+
+        return FundRealtimeData(
+            code=code, name=name,
+            status='获取失败',
+            data_source=source,
+            data_source_display_name=metadata.get("display_name"),
+            data_source_short_name=metadata.get("short_name"),
+            data_source_description=metadata.get("description"),
+            data_kind=data_kind,
+            data_kind_label=data_kind_label,
+            is_realtime=False,
+        )
+
     async def get_realtime_data(self, code: str) -> FundRealtimeData:
         """获取单只基金实时数据"""
         cache_key = f"realtime:{code}"
@@ -126,29 +183,29 @@ class FundService:
 
         name = self.get_fund_name(code)
         result = await self._data_source.fetch_single(code)
-
-        if result.is_success:
-            rt = FundRealtimeData(
-                code=code,
-                name=result.name or name,
-                estimate_nav=Decimal(str(result.nav)) if result.nav else None,
-                estimate_change=Decimal(str(result.change_pct)) if result.change_pct else None,
-                update_time=result.update_time or '--',
-                status='正常',
-                data_source=result.source,
-            )
-            if result.name and result.name != code:
-                self._fund_names_cache[code] = result.name
-                self.cache.set(f"fund_name:{code}", result.name, settings.FUND_INFO_CACHE_TTL)
-        else:
-            rt = FundRealtimeData(
-                code=code, name=name,
-                status='获取失败',
-                data_source=result.source or 'unknown'
-            )
+        rt = self._build_realtime_response(code, name, result)
 
         self.cache.set(cache_key, rt, settings.REALTIME_CACHE_TTL)
         return rt
+
+    async def get_data_source_comparison(self, code: str, name: Optional[str] = None) -> Dict[str, Any]:
+        """获取单只基金各数据源的实时估值对比。"""
+        comparison = await self._data_source.compare_sources(code)
+        resolved_name = (
+            name
+            or next((item.get("name") for item in comparison["sources"] if item.get("name")), None)
+            or self._fund_names_cache.get(code)
+            or self.get_fund_name(code)
+        )
+
+        return {
+            "code": code,
+            "name": resolved_name or code,
+            "sources": comparison["sources"],
+            "best_source": comparison["best_source"],
+            "best_source_display_name": comparison.get("best_source_display_name"),
+            "total_sources": comparison["total_sources"],
+        }
 
     async def get_realtime_batch(self, codes: List[str]) -> List[FundRealtimeData]:
         """批量获取实时数据"""
@@ -173,26 +230,7 @@ class FundService:
             for idx, result in zip(uncached_indices, ds_results):
                 code = codes[idx]
                 name = self.get_fund_name(code)
-
-                if result.is_success:
-                    rt = FundRealtimeData(
-                        code=code,
-                        name=result.name or name,
-                        estimate_nav=Decimal(str(result.nav)) if result.nav else None,
-                        estimate_change=Decimal(str(result.change_pct)) if result.change_pct else None,
-                        update_time=result.update_time or '--',
-                        status='正常',
-                        data_source=result.source,
-                    )
-                    if result.name and result.name != code:
-                        self._fund_names_cache[code] = result.name
-                        self.cache.set(f"fund_name:{code}", result.name, settings.FUND_INFO_CACHE_TTL)
-                else:
-                    rt = FundRealtimeData(
-                        code=code, name=name,
-                        status='获取失败',
-                        data_source=result.source or 'unknown'
-                    )
+                rt = self._build_realtime_response(code, name, result)
                 results[idx] = rt
                 self.cache.set(f"realtime:{code}", rt, settings.REALTIME_CACHE_TTL)
 
@@ -481,6 +519,9 @@ class FundService:
         return result
 
     def search_funds(self, keyword: str, limit: int = 10) -> List[Dict]:
+        keyword = str(keyword or "").strip()
+        if not keyword:
+            return []
         cache_key = f"search:{keyword}:{limit}"
         cached = self.cache.get(cache_key)
         if cached:
@@ -499,7 +540,10 @@ class FundService:
             finally:
                 sys.stdout = old_stdout
             if df is not None and not df.empty:
-                mask = df['基金简称'].str.contains(keyword, na=False, case=False) | df['基金代码'].str.contains(keyword, na=False)
+                mask = (
+                    df['基金简称'].str.contains(keyword, na=False, case=False, regex=False)
+                    | df['基金代码'].astype(str).str.contains(keyword, na=False, regex=False)
+                )
                 matched = df[mask].head(limit)
                 results = [{'code': str(r['基金代码']), 'name': str(r['基金简称']), 'type': str(r.get('基金类型', '')), 'company': str(r.get('基金公司', ''))} for _, r in matched.iterrows()]
                 if results:
@@ -509,24 +553,87 @@ class FundService:
             logger.debug(f"AKShare搜索失败: {e}")
         return []
 
-    def _search_from_eastmoney(self, keyword: str, limit: int) -> List[Dict]:
+    @staticmethod
+    def _normalize_search_text(value: str) -> str:
+        text = re.sub(r"[\s（）()【】\[\]·,，.。_-]+", "", str(value or "").lower())
+        for word in ("证券投资基金", "开放式", "基金", "混合型", "股票型", "债券型", "指数型", "发起式", "发起"):
+            text = text.replace(word, "")
+        text = re.sub(r"(东方红中证)东方红", r"\1", text)
+        text = text.replace("东方红红利", "东方红中证红利")
+        return text
+
+    @staticmethod
+    def _is_ordered_subsequence(needle: str, haystack: str) -> bool:
+        if not needle:
+            return False
+        position = 0
+        for char in haystack:
+            if position < len(needle) and needle[position] == char:
+                position += 1
+        return position == len(needle)
+
+    def _score_search_match(self, keyword: str, item: Dict[str, str]) -> int:
+        code = str(item.get('code', ''))
+        name = str(item.get('name', ''))
+        keyword_lower = keyword.lower()
+        normalized_keyword = self._normalize_search_text(keyword)
+        normalized_name = self._normalize_search_text(name)
+        if keyword_lower == code.lower():
+            return 120
+        if keyword_lower and keyword_lower in code.lower():
+            return 110
+        if keyword_lower and keyword_lower in name.lower():
+            return 100
+        if normalized_keyword and normalized_keyword == normalized_name:
+            return 98
+        if normalized_keyword and normalized_keyword in normalized_name:
+            return 94
+        if len(normalized_keyword) >= 4 and self._is_ordered_subsequence(normalized_keyword, normalized_name):
+            return 86
+        if len(normalized_keyword) >= 4:
+            ratio = SequenceMatcher(None, normalized_keyword, normalized_name).ratio()
+            return int(ratio * 80)
+        return 0
+
+    def _load_eastmoney_fund_catalog(self) -> List[Dict[str, str]]:
+        if self._eastmoney_fund_catalog_cache is not None:
+            return self._eastmoney_fund_catalog_cache
         try:
             url = "http://fund.eastmoney.com/js/fundcode_search.js"
             resp = self.session.get(url, timeout=10)
             if resp.status_code != 200:
+                self._eastmoney_fund_catalog_cache = []
                 return []
             match = re.search(r'var\s+r\s*=\s*(\[.*?\]);', resp.text, re.DOTALL)
             if not match:
+                self._eastmoney_fund_catalog_cache = []
                 return []
             data = json.loads(match.group(1))
-            keyword_lower = keyword.lower()
+            self._eastmoney_fund_catalog_cache = [
+                {
+                    'code': str(item[0]),
+                    'name': str(item[2]),
+                    'type': str(item[3]) if len(item) > 3 else '',
+                    'company': ''
+                }
+                for item in data
+                if len(item) >= 3
+            ]
+            return self._eastmoney_fund_catalog_cache
+        except Exception:
+            self._eastmoney_fund_catalog_cache = []
+            return []
+
+    def _search_from_eastmoney(self, keyword: str, limit: int) -> List[Dict]:
+        try:
+            data = self._load_eastmoney_fund_catalog()
             matched = []
             for item in data:
-                if keyword_lower in item[0].lower() or keyword_lower in item[2].lower():
-                    matched.append({'code': item[0], 'name': item[2], 'type': item[3] if len(item) > 3 else '', 'company': ''})
-                if len(matched) >= limit:
-                    break
-            return matched
+                score = self._score_search_match(keyword, item)
+                if score >= 70:
+                    matched.append({**item, '_score': score})
+            matched.sort(key=lambda item: item.get('_score', 0), reverse=True)
+            return [{key: value for key, value in item.items() if key != '_score'} for item in matched[:limit]]
         except Exception:
             return []
 

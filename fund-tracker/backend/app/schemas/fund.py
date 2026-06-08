@@ -68,6 +68,12 @@ class FundRealtimeData(BaseModel):
     update_time: str = Field(default="--", description="估值更新时间")
     status: str = Field(default="获取中", description="数据状态")
     data_source: str = Field(default="unknown", description="数据来源")
+    data_source_display_name: Optional[str] = Field(None, description="数据来源中文名称")
+    data_source_short_name: Optional[str] = Field(None, description="数据来源短名称")
+    data_source_description: Optional[str] = Field(None, description="数据来源说明")
+    data_kind: str = Field(default="latest_nav", description="数据类型: realtime_estimate/latest_nav")
+    data_kind_label: str = Field(default="最新净值", description="数据类型显示名称")
+    is_realtime: bool = Field(default=False, description="是否为盘中实时估值")
     data_timestamp: Optional[str] = Field(None, description="数据获取时间戳")
     # 新增字段
     previous_nav: Optional[Decimal] = Field(None, description="昨日净值")

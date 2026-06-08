@@ -66,6 +66,23 @@ export const portfolioApi = {
     return request.post('/portfolio/refresh')
   },
 
+  // 测试AI接口连通性和延迟
+  testAiConnection(data: {
+    model: string
+    base_url: string
+    api_key: string
+    include_vision?: boolean
+  }): Promise<{
+    ok: boolean
+    latency_ms?: number | null
+    vision_latency_ms?: number | null
+    status_code?: number | null
+    model: string
+    message: string
+  }> {
+    return request.post('/portfolio/ai-connection-test', data)
+  },
+
   // AI识别持仓截图（后端一体化：AI识别+自动匹配基金代码）
   aiRecognize(data: {
     image_base64: string
@@ -101,7 +118,7 @@ export const portfolioApi = {
     warnings: string[]
     ai_raw_content?: string
   }> {
-    return request.post('/portfolio/ai-recognize', data)
+    return request.post('/portfolio/ai-recognize', data, { timeout: 240000 })
   },
 
   previewImport(data: {

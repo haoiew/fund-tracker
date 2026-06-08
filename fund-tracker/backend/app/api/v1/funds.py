@@ -52,6 +52,13 @@ async def get_funds_realtime(codes: List[str]):
     return ResponseModel(data=results)
 
 
+@router.get("/{code}/data-sources", response_model=ResponseModel[dict])
+async def get_fund_data_sources(code: str, name: Optional[str] = Query(None)):
+    code = _validate_fund_code_value(code)
+    data = await get_fund_service().get_data_source_comparison(code, name)
+    return ResponseModel(data=data)
+
+
 @router.get("/{code}/history", response_model=ResponseModel[dict])
 async def get_fund_history(code: str, range: str = Query("3M")):
     code = _validate_fund_code_value(code)

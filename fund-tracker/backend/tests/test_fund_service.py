@@ -4,6 +4,7 @@
 """
 import pytest
 from decimal import Decimal
+import pandas as pd
 
 from app.services.fund_service import FundService
 from app.schemas.fund import FundRealtimeData
@@ -52,6 +53,59 @@ class TestFundService:
         if results:
             assert 'code' in results[0]
             assert 'name' in results[0]
+
+    def test_search_funds_uses_literal_keyword_for_akshare_fallback(self, fund_service, monkeypatch):
+        """基金名称带括号时不应触发 pandas 正则匹配警告。"""
+        fund_service.cache.clear()
+        monkeypatch.setattr(fund_service, "_search_from_eastmoney", lambda keyword, limit: [])
+
+        class FakeAkshare:
+            @staticmethod
+            def fund_name_em():
+                return pd.DataFrame([
+                    {
+                        "基金代码": "012345",
+                        "基金简称": "南方香港优选股票(QDII-LOF)",
+                        "基金类型": "QDII",
+                        "基金公司": "南方基金",
+                    }
+                ])
+
+        import sys
+        monkeypatch.setitem(sys.modules, "akshare", FakeAkshare)
+
+        results = fund_service.search_funds("南方香港优选股票(QDII-LOF)", limit=5)
+
+        assert results == [{
+            "code": "012345",
+            "name": "南方香港优选股票(QDII-LOF)",
+            "type": "QDII",
+            "company": "南方基金",
+        }]
+
+    def test_search_funds_handles_short_alias(self, fund_service, monkeypatch):
+        """基金简称缺少中间词时仍应返回可人工确认的候选。"""
+        fund_service.cache.clear()
+        monkeypatch.setattr(fund_service, "_load_eastmoney_fund_catalog", lambda: [
+            {"code": "519674", "name": "银河创新成长混合A", "type": "混合型-偏股", "company": ""},
+            {"code": "014143", "name": "银河创新成长混合C", "type": "混合型-偏股", "company": ""},
+        ])
+
+        results = fund_service.search_funds("银河创新混合A", limit=5)
+
+        assert results[0]["code"] == "519674"
+
+    def test_search_funds_handles_duplicate_brand_alias(self, fund_service, monkeypatch):
+        """截图或平台别名重复品牌词时仍应返回实际基金。"""
+        fund_service.cache.clear()
+        monkeypatch.setattr(fund_service, "_load_eastmoney_fund_catalog", lambda: [
+            {"code": "012709", "name": "东方红中证红利低波动指数C", "type": "指数型-股票", "company": ""},
+            {"code": "025518", "name": "东方红中证东方红红利低波动指数D", "type": "指数型-股票", "company": ""},
+        ])
+
+        results = fund_service.search_funds("东方红中证东方红红利低波动指数C", limit=5)
+
+        assert results[0]["code"] == "012709"
 
 
 class TestFundTrendAnalysis:

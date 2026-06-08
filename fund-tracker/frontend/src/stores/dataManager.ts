@@ -365,6 +365,12 @@ class DataManager {
     return state.realtimeData.get(code)
   }
 
+  updateRealtimeItem(item: FundRealtimeData): void {
+    state.realtimeData.set(item.code, item)
+    state.realtimeLastFetch = Date.now()
+    this.saveRealtimeDataToStorage()
+  }
+
   /**
    * 加载实时数据
    */

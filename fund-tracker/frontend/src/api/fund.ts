@@ -9,6 +9,12 @@ export interface FundRealtimeData {
   update_time: string
   status: string
   data_source?: string
+  data_source_display_name?: string
+  data_source_short_name?: string
+  data_source_description?: string
+  data_kind?: 'realtime_estimate' | 'latest_nav'
+  data_kind_label?: string
+  is_realtime?: boolean
   data_timestamp?: string
   // 新增字段
   previous_nav?: number | null
@@ -184,15 +190,24 @@ export const fundApi = {
     name: string
     sources: Array<{
       source: string
+      display_name?: string
+      short_name?: string
+      description?: string
       priority: number
+      name?: string | null
       estimate_nav: number | null
       estimate_change_pct: number | null
       last_nav: number | null
       last_change_pct: number | null
       update_time: string
+      data_kind?: 'realtime_estimate' | 'latest_nav'
+      data_kind_label?: string
+      is_realtime?: boolean
       is_fresh: boolean
+      error?: string | null
     }>
     best_source: string | null
+    best_source_display_name?: string | null
     total_sources: number
   }> {
     const params: Record<string, string> = {}

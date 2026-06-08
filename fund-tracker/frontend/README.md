@@ -1,48 +1,27 @@
-# .
+# Fund Tracker Frontend
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 3 + TypeScript + Element Plus frontend for Fund Tracker. The Vite dev server is pinned to `http://localhost:3000` by `vite.config.ts` and proxies `/api/*` to `http://127.0.0.1:8001/api/v1/*`.
 
-## Recommended IDE Setup
+## Commands
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
+```bash
 npm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Type-Check, Compile and Minify for Production
-
-```sh
-npm run build
-```
-
-### Lint with [ESLint](https://eslint.org/)
-
-```sh
+npm run dev          # http://localhost:3000
+npm run type-check
+npm run build        # type-check + Vite production build
 npm run lint
 ```
+
+## Runtime Notes
+
+- Use `scripts/start.bat` from the repository root on Windows when you want the canonical local stack. It clears ports `8001`, `3000`, and `5173`, then starts backend `8001` and frontend `3000`.
+- Avoid using alternate frontend origins such as `127.0.0.1:5173` for normal testing. Browser `localStorage` is origin-scoped, so different frontend URLs can create separate caches and make data state hard to reason about.
+- Development API base defaults to `/api`; the Vite proxy rewrites it to `/api/v1` on the backend.
+
+## Key Areas
+
+- `src/api/request.ts` wraps Axios and unwraps `ResponseModel.data`.
+- `src/stores/dataManager.ts` coordinates local cache and refresh flows.
+- `src/views/Home/HomeView.vue` renders realtime fund tracking and data-source comparison.
+- `src/views/Portfolio/PortfolioView.vue` handles holdings, AI screenshot recognition, import preview, and confirm import.
+- `src/views/Settings/SettingsView.vue` stores AI provider configs and can test both text and image-input connectivity.
