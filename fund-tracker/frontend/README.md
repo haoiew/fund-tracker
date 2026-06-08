@@ -10,6 +10,8 @@ npm run dev          # http://localhost:3000
 npm run type-check
 npm run build        # type-check + Vite production build
 npm run lint
+npm run tauri:dev:web
+npm run tauri:build:web
 ```
 
 ## Runtime Notes
@@ -17,6 +19,7 @@ npm run lint
 - Use `scripts/start.bat` from the repository root on Windows when you want the canonical local stack. It clears ports `8001`, `3000`, and `5173`, then starts backend `8001` and frontend `3000`.
 - Avoid using alternate frontend origins such as `127.0.0.1:5173` for normal testing. Browser `localStorage` is origin-scoped, so different frontend URLs can create separate caches and make data state hard to reason about.
 - Development API base defaults to `/api`; the Vite proxy rewrites it to `/api/v1` on the backend.
+- Tauri-specific web mode uses `--mode tauri`, keeps the same Vue application, and can switch API base through `VITE_TAURI_API_BASE_URL`.
 
 ## Key Areas
 

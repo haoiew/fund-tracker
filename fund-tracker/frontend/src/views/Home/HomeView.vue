@@ -286,7 +286,14 @@
                   <h3>{{ dataSourceData?.name || row.name }}</h3>
                   <span class="fund-code-pill">{{ row.code }}</span>
                 </div>
-                <el-button text size="small" @click="collapseFundDetail">收起</el-button>
+                <div class="data-source-header-side">
+                  <div v-if="dataSourceData" class="data-source-mini-meta">
+                    <span>Auto</span>
+                    <strong>{{ getBestSourceName() }}</strong>
+                    <em>{{ dataSourceData.total_sources }} sources</em>
+                  </div>
+                  <el-button text size="small" @click="collapseFundDetail">收起</el-button>
+                </div>
               </div>
 
               <div v-if="dataSourceLoading" class="loading-container inline-loading">
@@ -349,18 +356,88 @@
                   </el-table-column>
                 </el-table>
 
-                <div class="data-source-tips">
+                <div v-if="alternativesLoading" class="alternative-section">
+                  <el-icon class="is-loading"><Loading /></el-icon>
+                  <span>正在评估替代估算...</span>
+                </div>
+
+                <div v-else-if="realtimeAlternatives && !realtimeAlternatives.skipped" class="alternative-section">
+                  <div class="alternative-header">
+                    <div>
+                      <span class="expanded-kicker">FALLBACK ESTIMATE</span>
+                      <h4>替代实时估算</h4>
+                    </div>
+                    <el-tag type="warning" size="small">非官方实时估值</el-tag>
+                  </div>
+
+                  <div v-if="realtimeAlternatives.holdings_based_estimate?.feasible" class="holding-estimate-row">
+                    <div>
+                      <strong :class="getChangeClass(realtimeAlternatives.holdings_based_estimate.weighted_stock_change_pct ?? null)">
+                        {{ formatChange(realtimeAlternatives.holdings_based_estimate.weighted_stock_change_pct ?? null) }}
+                      </strong>
+                      <span>
+                        持仓日期 {{ realtimeAlternatives.holdings_based_estimate.position_date || '--' }} ·
+                        报价覆盖 {{ formatPercentRatio(realtimeAlternatives.holdings_based_estimate.quoted_weight_coverage) }} ·
+                        {{ realtimeAlternatives.holdings_based_estimate.quoted_count || 0 }}/{{ realtimeAlternatives.holdings_based_estimate.holding_count || 0 }} 只
+                      </span>
+                    </div>
+                    <el-button size="small" type="warning" plain @click="selectHoldingEstimate">
+                      采用估算
+                    </el-button>
+                  </div>
+
                   <el-alert
-                    title="自动数据源链路"
-                    type="info"
+                    v-else
+                    type="warning"
                     :closable="false"
                     show-icon
+                    title="暂未形成可用持仓估算"
                   >
                     <template #default>
-                      当前自动推荐: <strong>{{ getBestSourceName() }}</strong>，
-                      可用数据源 <strong>{{ dataSourceData.total_sources }}</strong> 个。
+                      {{ realtimeAlternatives.holdings_based_estimate?.reason || '缺少可解析持仓或实时股票报价覆盖不足' }}
                     </template>
                   </el-alert>
+
+                  <div v-if="realtimeAlternatives.fallback_estimate?.feasible" class="holding-estimate-row">
+                    <div>
+                      <strong :class="getChangeClass(realtimeAlternatives.fallback_estimate.change_pct ?? null)">
+                        {{ formatChange(realtimeAlternatives.fallback_estimate.change_pct ?? null) }}
+                      </strong>
+                      <span>
+                        {{ realtimeAlternatives.fallback_estimate.source === 'tencent' ? '腾讯基金行情' : '最新净值涨跌幅' }} ·
+                        {{ realtimeAlternatives.fallback_estimate.update_time || '--' }}
+                      </span>
+                    </div>
+                    <el-button size="small" type="warning" plain @click="selectFallbackEstimate">
+                      采用兜底
+                    </el-button>
+                  </div>
+
+                  <div v-if="realtimeAlternatives.reference_symbol_estimate?.feasible" class="holding-estimate-row">
+                    <div>
+                      <strong :class="getChangeClass(realtimeAlternatives.reference_symbol_estimate.weighted_stock_change_pct ?? null)">
+                        {{ formatChange(realtimeAlternatives.reference_symbol_estimate.weighted_stock_change_pct ?? null) }}
+                      </strong>
+                      <span>
+                        {{ realtimeAlternatives.reference_symbol_estimate.references?.map(ref => ref.name).join('、') || '参考标的' }}
+                      </span>
+                    </div>
+                    <el-button size="small" type="warning" plain @click="selectReferenceEstimate">
+                      采用标的
+                    </el-button>
+                  </div>
+
+                  <div v-if="realtimeAlternatives.same_name_realtime_candidates.length" class="candidate-strip">
+                    <span>相近基金实时参考</span>
+                    <button
+                      v-for="candidate in realtimeAlternatives.same_name_realtime_candidates"
+                      :key="candidate.code"
+                      type="button"
+                      @click="applyCandidateRealtime(candidate)"
+                    >
+                      {{ candidate.code }} {{ formatChange(candidate.change_pct) }}
+                    </button>
+                  </div>
                 </div>
               </template>
 
@@ -522,7 +599,7 @@ import { dataManager } from '@/stores/dataManager'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FundChart from '@/components/Charts/FundChart.vue'
 import { exportFundsToCSV } from '@/utils/export'
-import fundApi, { type FundRealtimeData, type FundSearchItem } from '@/api/fund'
+import fundApi, { type FundRealtimeData, type FundSearchItem, type RealtimeAlternativeResult } from '@/api/fund'
 
 const { t } = useI18n()
 const fundStore = useFundStore()
@@ -560,6 +637,7 @@ const addForm = reactive({
 const searchResultFund = ref<FundRealtimeData | null>(null)
 
 const dataSourceLoading = ref(false)
+const alternativesLoading = ref(false)
 const expandedPanelMode = ref<'detail' | 'dataSource'>('detail')
 
 interface DataSourceComparisonItem {
@@ -590,6 +668,7 @@ const dataSourceData = ref<{
   total_sources: number
 } | null>(null)
 const currentDataSourceFund = ref<FundRealtimeData | null>(null)
+const realtimeAlternatives = ref<RealtimeAlternativeResult | null>(null)
 
 // 统计数据
 const upCount = computed(() => fundStore.upFunds.length)
@@ -676,6 +755,11 @@ const formatChange = (val: number | string | null) => {
   return (num > 0 ? '+' : '') + num.toFixed(2) + '%'
 }
 
+const formatPercentRatio = (val?: number | null) => {
+  if (val === null || val === undefined || isNaN(Number(val))) return '--'
+  return `${(Number(val) * 100).toFixed(0)}%`
+}
+
 // 格式化金额 - 显示两位小数
 const formatCurrency = (val: number): string => {
   if (val === null || val === undefined || isNaN(val)) return '--'
@@ -709,8 +793,8 @@ const DATA_SOURCE_SHORT_NAMES: Record<string, string> = {
   tiantian: 'TTFund',
   efinance: 'EFinance',
   tencent: 'Tencent',
-  eastmoney_lsjz: 'Eastmoney NAV',
-  pingzhongdata: 'Eastmoney Page'
+  eastmoney_lsjz: 'Eastmoney',
+  pingzhongdata: 'Eastmoney'
 }
 
 const getDataSourceDisplayName = (source?: string | null, displayName?: string | null): string => {
@@ -752,11 +836,20 @@ const getBestSourceName = (): string => {
   return getDataSourceDisplayName(dataSourceData.value.best_source, dataSourceData.value.best_source_display_name)
 }
 
+const isHoldingEstimateData = (row: Pick<FundRealtimeData, 'data_kind'> | DataSourceComparisonItem): boolean => {
+  return row.data_kind === 'holdings_estimate'
+}
+
+const isSimilarReferenceData = (row: Pick<FundRealtimeData, 'data_kind'> | DataSourceComparisonItem): boolean => {
+  return row.data_kind === 'similar_realtime_reference'
+}
+
 const isLatestNavData = (row: Pick<FundRealtimeData, 'data_kind' | 'is_realtime'> | DataSourceComparisonItem): boolean => {
-  return row.data_kind === 'latest_nav' || row.is_realtime === false
+  return row.data_kind === 'latest_nav' || (!row.data_kind && row.is_realtime === false)
 }
 
 const getFundChangeClass = (fund: FundRealtimeData): string => {
+  if (isHoldingEstimateData(fund) || isSimilarReferenceData(fund)) return getChangeClass(fund.estimate_change)
   if (isLatestNavData(fund)) return 'text-muted-change'
   return getChangeClass(fund.estimate_change)
 }
@@ -767,11 +860,15 @@ const getSourceChangeClass = (sourceRow: DataSourceComparisonItem): string => {
 }
 
 const getFundChangeTone = (fund: FundRealtimeData): string => {
+  if (isHoldingEstimateData(fund)) return 'is-holdings-estimate'
+  if (isSimilarReferenceData(fund)) return 'is-similar-reference'
   if (isLatestNavData(fund)) return 'is-latest-nav'
   return getChangeTone(fund.estimate_change)
 }
 
 const getChangeTooltip = (fund: FundRealtimeData): string => {
+  if (isHoldingEstimateData(fund)) return fund.data_source_description || '基于最新披露持仓和实时股票行情的替代估算，不是基金公司发布的盘中估值。'
+  if (isSimilarReferenceData(fund)) return fund.data_source_description || '采用相近基金实时涨跌幅作为人工参考，不是本基金自身估值。'
   if (!isLatestNavData(fund)) return ''
   return '该涨跌幅来自最新公布净值相对上一交易日的日增长率，不是盘中实时估值。'
 }
@@ -781,6 +878,7 @@ const getStatusType = (status: string): 'success' | 'info' | 'warning' | 'danger
   if (status === '正常') return 'success'
   if (status === '最新净值') return 'info'
   if (status === '场内行情') return 'warning'
+  if (status === '持仓估算') return 'warning'
   return 'info'
 }
 
@@ -982,7 +1080,9 @@ const toggleFundDetail = (fund: FundRealtimeData) => {
 const collapseFundDetail = () => {
   expandedRowKeys.value = []
   dataSourceLoading.value = false
+  alternativesLoading.value = false
   currentDataSourceFund.value = null
+  realtimeAlternatives.value = null
 }
 
 const handleExpandChange = (row: FundRealtimeData, expandedRows: FundRealtimeData[]) => {
@@ -1138,6 +1238,104 @@ const selectDataSource = (source: string) => {
   ElMessage.success(`当前行已采用 ${getDataSourceDisplayName(selectedSource.source, selectedSource.display_name)} 数据`)
 }
 
+const selectHoldingEstimate = () => {
+  const fund = currentDataSourceFund.value
+  const estimate = realtimeAlternatives.value?.holdings_based_estimate
+  if (!fund || !estimate?.feasible || estimate.weighted_stock_change_pct === null || estimate.weighted_stock_change_pct === undefined) return
+
+  const updatedFund = {
+    ...fund,
+    estimate_change: estimate.weighted_stock_change_pct,
+    status: '持仓估算',
+    data_source: 'holdings_estimate',
+    data_source_display_name: '持仓实时估算',
+    data_source_short_name: 'Holdings',
+    data_source_description: `基于 ${estimate.position_date || '最新披露'} 十大持仓和实时股票行情的加权估算，报价覆盖 ${formatPercentRatio(estimate.quoted_weight_coverage)}。`,
+    data_kind: 'holdings_estimate' as const,
+    data_kind_label: '持仓估算',
+    is_realtime: false,
+    data_timestamp: new Date().toISOString()
+  }
+
+  dataManager.updateRealtimeItem(updatedFund)
+  currentDataSourceFund.value = updatedFund
+  ElMessage.success('当前行已采用持仓估算涨跌幅')
+}
+
+const selectFallbackEstimate = () => {
+  const fund = currentDataSourceFund.value
+  const fallback = realtimeAlternatives.value?.fallback_estimate
+  if (!fund || !fallback?.feasible || fallback.change_pct === null || fallback.change_pct === undefined) return
+
+  const updatedFund = {
+    ...fund,
+    estimate_change: fallback.change_pct,
+    update_time: fallback.update_time || fund.update_time,
+    status: '兜底估算',
+    data_source: fallback.source || 'fallback_estimate',
+    data_source_display_name: '净值/行情兜底估算',
+    data_source_short_name: 'Fallback',
+    data_source_description: `持仓穿透不可用，使用${fallback.source === 'tencent' ? '腾讯基金行情' : '最新净值涨跌幅'}作为估算参考。`,
+    data_kind: 'fallback_estimate' as const,
+    data_kind_label: '兜底估算',
+    is_realtime: false,
+    data_timestamp: new Date().toISOString()
+  }
+
+  dataManager.updateRealtimeItem(updatedFund)
+  currentDataSourceFund.value = updatedFund
+  ElMessage.success('当前行已采用兜底估算涨跌幅')
+}
+
+const selectReferenceEstimate = () => {
+  const fund = currentDataSourceFund.value
+  const reference = realtimeAlternatives.value?.reference_symbol_estimate
+  if (!fund || !reference?.feasible || reference.weighted_stock_change_pct === null || reference.weighted_stock_change_pct === undefined) return
+
+  const updatedFund = {
+    ...fund,
+    estimate_change: reference.weighted_stock_change_pct,
+    update_time: new Date().toLocaleString('zh-CN', { hour12: false }),
+    status: '标的估算',
+    data_source: 'reference_symbol_estimate',
+    data_source_display_name: '引用标的估算',
+    data_source_short_name: 'Reference',
+    data_source_description: `持仓穿透不足，使用 ${reference.references?.map(ref => ref.name).join('、') || '参考标的'} 行情估算。`,
+    data_kind: 'reference_symbol_estimate' as const,
+    data_kind_label: '标的估算',
+    is_realtime: false,
+    data_timestamp: new Date().toISOString()
+  }
+
+  dataManager.updateRealtimeItem(updatedFund)
+  currentDataSourceFund.value = updatedFund
+  ElMessage.success('当前行已采用引用标的估算涨跌幅')
+}
+
+const applyCandidateRealtime = (candidate: RealtimeAlternativeResult['same_name_realtime_candidates'][number]) => {
+  const fund = currentDataSourceFund.value
+  if (!fund) return
+
+  const updatedFund = {
+    ...fund,
+    estimate_change: candidate.change_pct,
+    update_time: candidate.update_time || fund.update_time,
+    status: '相近参考',
+    data_source: candidate.source,
+    data_source_display_name: `相近基金参考：${candidate.name}`,
+    data_source_short_name: 'Similar',
+    data_source_description: `采用相近基金 ${candidate.code} ${candidate.name} 的实时涨跌幅作为人工参考。`,
+    data_kind: 'similar_realtime_reference' as const,
+    data_kind_label: '相近参考',
+    is_realtime: false,
+    data_timestamp: new Date().toISOString()
+  }
+
+  dataManager.updateRealtimeItem(updatedFund)
+  currentDataSourceFund.value = updatedFund
+  ElMessage.success(`当前行已采用 ${candidate.code} 相近基金参考`)
+}
+
 // 显示数据源菜单
 const showDataSourceMenu = async (fund: FundRealtimeData) => {
   console.log('点击状态标签，基金:', fund.code, fund.name)
@@ -1150,18 +1348,25 @@ const showDataSourceMenu = async (fund: FundRealtimeData) => {
   expandedPanelMode.value = 'dataSource'
   expandedRowKeys.value = [fund.code]
   dataSourceData.value = null
+  realtimeAlternatives.value = null
   dataSourceLoading.value = true
+  alternativesLoading.value = fund.is_realtime === false
   
   try {
     console.log('正在获取数据源对比...')
-    const result = await fundApi.getDataSources(fund.code, fund.name)
+    const [result, alternatives] = await Promise.all([
+      fundApi.getDataSources(fund.code, fund.name),
+      fund.is_realtime === false ? fundApi.getRealtimeAlternatives(fund.code, fund.name) : Promise.resolve(null)
+    ])
     console.log('数据源对比结果:', result)
     dataSourceData.value = result
+    realtimeAlternatives.value = alternatives
   } catch (error) {
     console.error('获取数据源对比失败:', error)
     ElMessage.error('获取数据源对比失败')
   } finally {
     dataSourceLoading.value = false
+    alternativesLoading.value = false
   }
 }
 
@@ -1541,6 +1746,18 @@ onMounted(() => {
       background: #f1f5f9;
       color: #64748b;
     }
+
+    &.is-holdings-estimate {
+      border-color: #fed7aa;
+      background: #fff7ed;
+      color: #c2410c;
+    }
+
+    &.is-similar-reference {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+      color: #2563eb;
+    }
   }
 
   .time-cell {
@@ -1595,18 +1812,27 @@ onMounted(() => {
   }
 
   .status-tag {
+    min-width: 68px;
+    height: 28px;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 5px;
+    box-sizing: border-box;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font-weight: 800;
+    line-height: 1;
+    vertical-align: middle;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 
     &:hover {
       opacity: 0.84;
     }
 
     &.is-active {
-      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.32);
+      background: rgba(37, 99, 235, 0.06);
     }
   }
 
@@ -1655,9 +1881,70 @@ onMounted(() => {
     }
   }
 
+  .data-source-header-side {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .data-source-mini-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+
+    span {
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    strong {
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    em {
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-style: normal;
+    }
+  }
+
   .data-source-table {
     border-radius: var(--radius-base);
     overflow: hidden;
+
+    :deep(.el-tag) {
+      min-width: 52px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      border-radius: var(--radius-sm);
+      line-height: 1;
+      font-weight: 800;
+      vertical-align: middle;
+    }
+
+    :deep(.el-button) {
+      min-width: 54px;
+      height: 28px;
+      box-sizing: border-box;
+      border-radius: var(--radius-sm);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    :deep(.el-button.is-disabled) {
+      opacity: 0.72;
+    }
   }
 
   .source-name-cell,
@@ -1694,8 +1981,81 @@ onMounted(() => {
     }
   }
 
-  .data-source-tips {
+  .alternative-section {
     margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  .alternative-header,
+  .holding-estimate-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .alternative-header {
+    h4 {
+      margin: 3px 0 0;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 850;
+    }
+  }
+
+  .holding-estimate-row {
+    padding: 10px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-hover);
+
+    div {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    strong {
+      font-family: var(--font-mono);
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    span {
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+  }
+
+  .candidate-strip {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    span {
+      color: var(--text-secondary);
+      font-weight: 700;
+    }
+
+    button {
+      height: 26px;
+      padding: 0 8px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      background: var(--bg-card);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
   }
 
   .inline-loading {
@@ -1843,6 +2203,10 @@ onMounted(() => {
     .el-table__cell {
       padding: 10px 0;
       border-bottom-color: var(--border-light);
+    }
+
+    .el-table__body .el-table__cell {
+      overflow: visible;
     }
 
     .el-table__expanded-cell {

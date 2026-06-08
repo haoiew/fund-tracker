@@ -47,12 +47,12 @@ DATA_SOURCE_METADATA: Dict[str, Dict[str, str]] = {
     },
     "eastmoney_lsjz": {
         "display_name": "东方财富历史净值接口",
-        "short_name": "Eastmoney NAV",
+        "short_name": "Eastmoney",
         "description": "东方财富 f10/lsjz 净值接口，返回最近公布的单位净值和相对上一交易日的日增长率。",
     },
     "pingzhongdata": {
         "display_name": "东方财富基金页面数据",
-        "short_name": "Eastmoney Page",
+        "short_name": "Eastmoney",
         "description": "东方财富基金详情页 JS 数据，作为净值趋势和最新净值的兜底来源。",
     },
 }

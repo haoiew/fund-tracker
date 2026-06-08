@@ -1,33 +1,14 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
-import electron from 'vite-plugin-electron'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  const isElectron = mode === 'electron'
-  const isNativeShell = mode === 'electron' || mode === 'tauri'
+  const isNativeShell = mode === 'tauri'
 
   return {
     plugins: [
-      vue(),
-      isElectron && electron({
-        entry: 'electron/main.js',
-        onstart: (options) => {
-          if (process.env.VITE_ELECTRON_STARTUP === '0') return
-          options.startup()
-        },
-        vite: {
-          build: {
-            sourcemap: true,
-            minify: false,
-            outDir: 'dist-electron',
-            rollupOptions: {
-              external: ['electron']
-            }
-          }
-        }
-      })
+      vue()
     ],
     resolve: {
       alias: {

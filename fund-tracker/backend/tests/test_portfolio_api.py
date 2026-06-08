@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import asyncio
+from decimal import Decimal
 
 
 def test_fund_match_preserves_share_class():
@@ -79,6 +80,25 @@ def test_ai_connection_test_can_validate_vision_input(client, monkeypatch):
     vision_content = captured_calls[1]["messages"][0]["content"]
     assert isinstance(vision_content, list)
     assert vision_content[1]["type"] == "image_url"
+
+
+def test_ai_recognize_empty_content_reports_model(client, monkeypatch):
+    from app.api.v1 import portfolio as portfolio_api
+
+    async def fake_call_ai_chat_completion(**kwargs):
+        return {"choices": [{"message": {"content": ""}}]}, 123, 200
+
+    monkeypatch.setattr(portfolio_api, "_call_ai_chat_completion", fake_call_ai_chat_completion)
+
+    resp = client.post("/api/v1/portfolio/ai-recognize", json={
+        "image_base64": "data:image/png;base64,AA==",
+        "model": "GPT-5.5",
+        "base_url": "https://api.example.com/v1",
+        "api_key": "test-key",
+    })
+
+    assert resp.status_code == 502
+    assert "AI返回内容为空: model=gpt-5.5" in resp.json()["detail"]
 
 
 def test_ai_chat_completion_uses_max_completion_tokens(monkeypatch):
@@ -323,3 +343,117 @@ def test_import_confirm_creates_ready_items_and_skips_unsafe_items(client):
     assert len(transactions) == 1
     assert transactions[0]["transaction_type"] == "snapshot"
     assert transactions[0]["source"] == "import"
+
+
+def test_realtime_alternatives_exposes_fallback_estimate(client, monkeypatch):
+    from app.schemas.fund import FundRealtimeData
+    from app.services import fund_service as fund_service_module
+
+    service = fund_service_module.get_fund_service()
+
+    async def fake_realtime_data(code: str) -> FundRealtimeData:
+        return FundRealtimeData(
+            code=code,
+            name="天弘标普500发起(QDII-FOF)C",
+            estimate_nav=Decimal("2.2046"),
+            estimate_change=Decimal("0.35"),
+            update_time="2026-06-04",
+            status="最新净值",
+            data_source="eastmoney_lsjz",
+            data_kind="latest_nav",
+            data_kind_label="最新净值",
+            is_realtime=False,
+        )
+
+    async def fake_comparison(code: str, name: str | None = None):
+        return {
+            "code": code,
+            "name": name or "天弘标普500发起(QDII-FOF)C",
+            "sources": [{
+                "source": "tencent",
+                "display_name": "腾讯基金行情",
+                "estimate_change_pct": 0.3459,
+                "update_time": "2026-06-04",
+                "is_realtime": False,
+                "is_fresh": True,
+            }],
+            "best_source": "tencent",
+            "best_source_display_name": "腾讯基金行情",
+            "total_sources": 1,
+        }
+
+    monkeypatch.setattr(service, "get_realtime_data", fake_realtime_data)
+    monkeypatch.setattr(service, "get_data_source_comparison", fake_comparison)
+    monkeypatch.setattr(service, "_estimate_from_holdings", lambda code: {
+        "feasible": False,
+        "reason": "no_parseable_f10_holdings_with_weights",
+    })
+
+    resp = client.get("/api/v1/funds/007722/realtime-alternatives")
+
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["holdings_based_estimate"]["feasible"] is False
+    assert data["fallback_estimate"]["feasible"] is True
+    assert data["fallback_estimate"]["source"] == "tencent"
+    assert data["fallback_estimate"]["change_pct"] == 0.3459
+
+
+def test_f10_qdii_hk_stock_holdings_are_parseable(monkeypatch):
+    from app.services import fund_service as fund_service_module
+
+    service = fund_service_module.get_fund_service()
+    sample = """
+    截止至：<font>2026-03-31</font>
+    <tr><th>序号</th><th>股票代码</th><th>股票名称</th><th>占净值比例</th></tr>
+    <tr><td>1</td><td><a href='http://quote.eastmoney.com/unify/r/116.00700'>00700</a></td><td><a href='http://quote.eastmoney.com/unify/r/116.00700'>腾讯控股</a></td><td>4.12%</td></tr>
+    """
+
+    monkeypatch.setattr(service, "_fetch_f10_holding_section", lambda code, section_type: sample if section_type == "jjcc" else "")
+
+    payload = service._fetch_f10_top_holdings("160125")
+
+    assert payload["source_type"] == "jjcc"
+    assert payload["position_date"] == "2026-03-31"
+    assert payload["holdings"][0]["symbol"] == "hk00700"
+    assert payload["holdings"][0]["weight"] == 4.12
+
+
+def test_reference_symbol_estimate_for_silver_and_sp500(monkeypatch):
+    from app.services import fund_service as fund_service_module
+
+    service = fund_service_module.get_fund_service()
+    monkeypatch.setattr(service, "_fetch_tencent_quote_changes", lambda symbols: {
+        "sz161226": -6.73,
+        "usSPY": -2.58,
+    })
+
+    silver = service._estimate_from_reference_symbols("161226", "国投瑞银白银期货(LOF)A")
+    sp500 = service._estimate_from_reference_symbols("007722", "天弘标普500发起(QDII-FOF)C")
+
+    assert silver["feasible"] is True
+    assert silver["weighted_stock_change_pct"] == -6.73
+    assert silver["references"][0]["symbol"] == "sz161226"
+    assert sp500["feasible"] is True
+    assert sp500["weighted_stock_change_pct"] == -2.58
+    assert sp500["references"][0]["symbol"] == "usSPY"
+
+
+def test_zqcc_holdings_return_non_quoteable_details(monkeypatch):
+    from app.services import fund_service as fund_service_module
+
+    service = fund_service_module.get_fund_service()
+    sample = """
+    <tr><th>序号</th><th>债券代码</th><th>债券名称</th><th>占净值比例</th><th>持仓市值（万元）</th></tr>
+    <tr><td>1</td><td>102298</td><td>国债2508</td><td>3.63%</td><td>14185.84</td></tr>
+    """
+    monkeypatch.setattr(service, "_fetch_f10_holding_section", lambda code, section_type: "" if section_type == "jjcc" else sample)
+
+    payload = service._fetch_f10_top_holdings("007722")
+    estimate = service._estimate_from_holdings("007722")
+
+    assert payload["source_type"] == "zqcc"
+    assert payload["holdings"][0]["holding_type"] == "bond_or_fund"
+    assert estimate["feasible"] is False
+    assert estimate["reason"] == "no_quoteable_symbols_in_f10_holdings"
+    assert estimate["top_holdings"][0]["name"] == "国债2508"

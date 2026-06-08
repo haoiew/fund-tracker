@@ -1,11 +1,8 @@
-export type AppShell = 'web' | 'tauri' | 'electron'
+export type AppShell = 'web' | 'tauri'
 
 declare global {
   interface Window {
     __TAURI__?: unknown
-    electronAPI?: {
-      isElectron?: boolean
-    }
   }
 }
 
@@ -17,15 +14,11 @@ export interface RuntimeInfo {
 }
 
 export function detectRuntime(): RuntimeInfo {
-  const shell: AppShell = window.__TAURI__
-    ? 'tauri'
-    : window.electronAPI?.isElectron
-      ? 'electron'
-      : 'web'
+  const shell: AppShell = window.__TAURI__ ? 'tauri' : 'web'
 
   return {
     shell,
-    isDesktopShell: shell === 'tauri' || shell === 'electron',
+    isDesktopShell: shell === 'tauri',
     isMobileViewport: window.matchMedia('(max-width: 760px)').matches,
     supportsLocalBackend: shell !== 'web' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   }

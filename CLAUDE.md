@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 fund-tracker/          # Main application
   backend/             # FastAPI + SQLAlchemy (Python)
-  frontend/            # Vue 3 + TypeScript + Electron
+  frontend/            # Vue 3 + TypeScript, Web-first with Tauri-ready shell hooks
 data-source-test/      # Standalone data source benchmarking tool
 ```
 
@@ -34,9 +34,9 @@ python -m app.main               # http://127.0.0.1:8001
 ```bash
 cd fund-tracker/frontend
 npm install
-npm run dev                      # http://localhost:5173 (proxies /api/* -> :8001)
-npm run electron:dev             # Electron dev mode
-npm run electron:build:win       # Build Windows installer
+npm run dev                      # http://localhost:3000 (proxies /api/* -> :8001)
+npm run tauri:dev:web            # Tauri-oriented web dev mode
+npm run tauri:build:web          # Build frontend assets for future Tauri shell
 ```
 
 ### Testing
@@ -93,7 +93,7 @@ Frontend (Vue 3)
 - SQLite + in-memory cache — zero infrastructure dependencies (no Docker/Redis/PostgreSQL required for dev)
 - Multi-source data fetching with automatic fallback for reliability
 - Frontend proxies `/api/*` via Vite dev server; production uses `/api/v1` directly
-- Electron wraps the Vue app for desktop distribution
+- Frontend stays Web-first; Tauri integration points are reserved for desktop and future Android packaging
 
 ### data-source-test/
 

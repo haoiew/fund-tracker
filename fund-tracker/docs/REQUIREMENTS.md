@@ -15,7 +15,7 @@
 | 前端 | Vue 3 + Vite + TypeScript | 3.5+ / 7.3+ |
 | UI库 | Element Plus | 2.13+ |
 | 图表 | ECharts | 5.4+ |
-| 运行壳 | Web 优先 / Tauri-ready / Electron兼容 | Vite shell mode |
+| 运行壳 | Web 优先 / Tauri-ready | Vite shell mode |
 
 ## 功能需求
 

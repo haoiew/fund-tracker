@@ -1,10 +1,9 @@
 {
-  "name": "fund-tracker-desktop",
+  "name": "fund-tracker-frontend",
   "version": "2.0.0",
-  "description": "基金跟踪器桌面版 - Fund Tracker Desktop",
+  "description": "基金跟踪器前端 - Fund Tracker Frontend",
   "private": true,
   "type": "module",
-  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "run-p type-check \"build-only {@}\" --",
@@ -14,15 +13,8 @@
     "lint": "run-s lint:*",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
-    "electron:dev": "vite --mode electron",
-    "electron:dev:web": "set VITE_ELECTRON_STARTUP=0&& vite --mode electron",
     "tauri:dev:web": "vite --mode tauri",
-    "tauri:build:web": "vite build --mode tauri",
-    "electron:build": "vite build && electron-builder",
-    "electron:build:win": "vite build && electron-builder --win",
-    "electron:build:mac": "vite build && electron-builder --mac",
-    "electron:build:linux": "vite build && electron-builder --linux",
-    "postinstall": "electron-builder install-app-deps"
+    "tauri:build:web": "vite build --mode tauri"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -41,8 +33,6 @@
     "@vitejs/plugin-vue": "^6.0.3",
     "@vue/eslint-config-typescript": "^14.6.0",
     "@vue/tsconfig": "^0.8.1",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.9.1",
     "eslint": "^9.39.2",
     "eslint-plugin-oxlint": "~1.42.0",
     "eslint-plugin-vue": "~10.7.0",
@@ -52,63 +42,7 @@
     "sass-embedded": "^1.97.3",
     "typescript": "~5.9.3",
     "vite": "^7.3.1",
-    "vite-plugin-electron": "^0.29.0",
     "vue-tsc": "^3.2.4"
-  },
-  "build": {
-    "appId": "com.fundtracker.desktop",
-    "productName": "基金跟踪器",
-    "directories": {
-      "output": "dist-electron"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*"
-    ],
-    "mac": {
-      "category": "public.app-category.finance",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ]
-    },
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "linux": {
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    }
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"

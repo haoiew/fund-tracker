@@ -12,7 +12,7 @@ export interface FundRealtimeData {
   data_source_display_name?: string
   data_source_short_name?: string
   data_source_description?: string
-  data_kind?: 'realtime_estimate' | 'latest_nav'
+  data_kind?: 'realtime_estimate' | 'latest_nav' | 'holdings_estimate' | 'reference_symbol_estimate' | 'fallback_estimate' | 'similar_realtime_reference'
   data_kind_label?: string
   is_realtime?: boolean
   data_timestamp?: string
@@ -63,6 +63,72 @@ export interface FundCompareResult {
   name: string
   chart_data: FundChartData
   current_change: number | null
+}
+
+export interface RealtimeAlternativeResult {
+  code: string
+  name: string
+  direct: {
+    change_pct: number | null
+    update_time: string
+    source: string
+    data_kind: string
+    is_realtime: boolean
+  }
+  skipped: boolean
+  reason: string
+  same_name_realtime_candidates: Array<{
+    code: string
+    name: string
+    change_pct: number | null
+    update_time: string
+    source: string
+    is_realtime: boolean
+  }>
+  exchange_or_quote_sources: Array<{
+    source: string
+    display_name?: string
+    change_pct: number | null
+    update_time: string
+    is_realtime: boolean
+  }>
+  holdings_based_estimate: {
+    feasible: boolean
+    reason: string
+    holding_count?: number
+    position_date?: string
+    quoted_count?: number
+    quoted_weight_coverage?: number
+    weighted_stock_change_pct?: number | null
+    top_holdings?: Array<{
+      code: string
+      name: string
+      weight: number
+      holding_type?: string | null
+      quote_change_pct: number | null
+    }>
+  } | null
+  reference_symbol_estimate?: {
+    feasible: boolean
+    reason: string
+    reference_count?: number
+    weighted_stock_change_pct?: number | null
+    references?: Array<{
+      symbol: string
+      name: string
+      kind: string
+      quote_change_pct?: number | null
+    }>
+  } | null
+  fallback_estimate?: {
+    feasible: boolean
+    reason: string
+    source?: string | null
+    change_pct?: number | null
+    update_time?: string | null
+    data_kind?: string
+    is_realtime?: boolean
+  } | null
 }
 
 // API 方法
@@ -215,6 +281,15 @@ export const fundApi = {
       params.name = name
     }
     return request.get(`/funds/${code}/data-sources`, { params })
+  },
+
+  // 获取无真实实时估值时的替代方案
+  getRealtimeAlternatives(code: string, name?: string): Promise<RealtimeAlternativeResult> {
+    const params: Record<string, string> = {}
+    if (name) {
+      params.name = name
+    }
+    return request.get(`/funds/${code}/realtime-alternatives`, { params })
   }
 }
 

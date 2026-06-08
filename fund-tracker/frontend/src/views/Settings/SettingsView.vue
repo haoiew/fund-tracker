@@ -383,6 +383,7 @@ const restoreRecommendedPrompt = () => {
 }
 
 const switchAiConfig = (configId: string) => {
+  syncCurrentAiConfig(lastActiveAiConfigId.value)
   const next = settings.aiConfigs.find(config => config.id === configId)
   if (!next) return
   applyAiConfigToFields(next)

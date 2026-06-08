@@ -116,9 +116,11 @@
 
       <el-table
         v-if="portfolioStore.items.length > 0 || portfolioStore.loading"
+        ref="portfolioTableRef"
         :data="portfolioStore.items"
         stripe
         class="portfolio-table"
+        max-height="640"
         v-loading="portfolioStore.loading"
         :empty-text="portfolioStore.loading ? '加载中...' : '暂无数据'"
         border
@@ -634,7 +636,7 @@ defineOptions({
   name: 'PortfolioView'
 })
 
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
 import { Plus, Refresh, Wallet, TrendCharts, TrendCharts as Percentage, Delete, Upload, Loading, MagicStick } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { usePortfolioStore } from '@/stores/portfolioStore'
@@ -663,6 +665,7 @@ const selectedItems = ref<PortfolioItem[]>([])
 
 const showImportDialog = ref(false)
 const importTab = ref('ai')
+const portfolioTableRef = ref<{ doLayout: () => void } | null>(null)
 
 interface ImportPreviewItem {
   row_index?: number
@@ -775,6 +778,12 @@ const aiImagePreview = ref('')
 const aiRecognizing = ref(false)
 const aiRecognizeNotice = ref<AiRecognizeNotice | null>(null)
 const aiRecognizeLogs = ref<AiRecognizeLogEntry[]>([])
+const aiConfigState = reactive({
+  model: '',
+  baseUrl: '',
+  apiKey: '',
+  prompt: DEFAULT_AI_PROMPT
+})
 
 const pushAiRecognizeLog = (message: string, status: AiRecognizeLogEntry['status'] = 'running') => {
   aiRecognizeLogs.value.push({
@@ -795,9 +804,14 @@ const loadAiConfig = () => {
   }
 }
 
-const aiConfigReady = computed(() => {
+const refreshAiConfigState = () => {
   const config = loadAiConfig()
-  return !!(config.model && config.baseUrl && config.apiKey)
+  Object.assign(aiConfigState, config)
+  return config
+}
+
+const aiConfigReady = computed(() => {
+  return !!(aiConfigState.model && aiConfigState.baseUrl && aiConfigState.apiKey)
 })
 
 const form = reactive({
@@ -1160,6 +1174,26 @@ const resetForm = () => {
 
 onMounted(() => {
   console.log('[PortfolioView] 页面已挂载，数据由 DataManager 统一管理')
+  refreshAiConfigState()
+})
+
+watch(
+  () => [portfolioStore.items.length, portfolioStore.loading],
+  async () => {
+    await nextTick()
+    portfolioTableRef.value?.doLayout()
+  },
+  { flush: 'post' }
+)
+
+watch(showImportDialog, (visible) => {
+  if (visible) {
+    const config = refreshAiConfigState()
+    clearAiRecognitionResult()
+    if (config.model && config.baseUrl && config.apiKey) {
+      pushAiRecognizeLog(`已读取当前模型配置：${config.model}`, 'success')
+    }
+  }
 })
 
 const handleAiImageChange = (uploadFile: UploadFile) => {
@@ -1193,7 +1227,7 @@ const handleAiRecognize = async () => {
     return
   }
 
-  const config = loadAiConfig()
+  const config = refreshAiConfigState()
   if (!config.model || !config.baseUrl || !config.apiKey) {
     aiRecognizeNotice.value = {
       type: 'warning',
@@ -1429,6 +1463,8 @@ const confirmImport = async () => {
     }
 
     await dataManager.refreshPortfolio()
+    await nextTick()
+    portfolioTableRef.value?.doLayout()
   } catch (e: unknown) {
     const errMsg = getErrorMessage(e)
     ElMessage.error('导入失败: ' + errMsg)
@@ -1576,6 +1612,10 @@ const completeAllPending = async () => {
   .portfolio-table {
     width: 100%;
     min-height: 260px;
+  }
+
+  .portfolio-table :deep(.el-table__body-wrapper) {
+    min-height: 0;
   }
 
   .error-note {
@@ -1847,6 +1887,7 @@ const completeAllPending = async () => {
   .import-source-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.75fr);
+    align-items: stretch;
     gap: 14px;
   }
 
@@ -1857,6 +1898,11 @@ const completeAllPending = async () => {
     border: 1px solid var(--border-light);
     border-radius: var(--radius-base);
     background: var(--bg-card);
+  }
+
+  .import-source-card {
+    display: flex;
+    flex-direction: column;
   }
 
   .import-source-card__header {
@@ -1875,13 +1921,19 @@ const completeAllPending = async () => {
 
   .ai-image-uploader,
   .import-uploader {
+    flex: 1;
+    display: flex;
+
     :deep(.el-upload) {
       width: 100%;
+      display: flex;
+      flex: 1;
     }
 
     :deep(.el-upload-dragger) {
       width: 100%;
-      height: 260px;
+      min-height: 260px;
+      height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1919,6 +1971,10 @@ const completeAllPending = async () => {
       line-height: 1.25;
       word-break: break-word;
     }
+  }
+
+  .import-status-card .ai-recognize-log {
+    margin-top: auto;
   }
 
   .import-status-card__eyebrow {

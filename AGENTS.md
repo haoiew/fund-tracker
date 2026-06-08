@@ -11,7 +11,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 ```
 fund-tracker/          # Main application
   backend/             # FastAPI + SQLAlchemy (Python)
-  frontend/            # Vue 3 + TypeScript + Electron
+  frontend/            # Vue 3 + TypeScript, Web-first with Tauri-ready shell hooks
 data-source-test/      # Standalone data source benchmarking tool
 ```
 
@@ -35,8 +35,8 @@ python -m app.main               # http://127.0.0.1:8001
 cd fund-tracker/frontend
 npm install
 npm run dev                      # http://localhost:3000 (proxies /api/* -> :8001)
-npm run electron:dev             # Electron dev mode
-npm run electron:build:win       # Build Windows installer
+npm run tauri:dev:web            # Tauri-oriented web dev mode
+npm run tauri:build:web          # Build frontend assets for future Tauri shell
 ```
 
 ### Testing
@@ -96,7 +96,7 @@ Frontend (Vue 3)
 - Multi-source data fetching with automatic fallback and source comparison metadata for reliability and explainability
 - Frontend proxies `/api/*` via Vite dev server; production uses `/api/v1` directly
 - Use `http://localhost:3000` as the canonical dev frontend origin. Avoid ad-hoc `127.0.0.1:5173` sessions because localStorage caches are origin-scoped.
-- Electron wraps the Vue app for desktop distribution
+- Frontend stays Web-first; Tauri integration points are reserved for desktop and future Android packaging
 
 ### data-source-test/
 

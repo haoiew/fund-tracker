@@ -518,7 +518,7 @@ async def ai_recognize_holding(request: AiRecognizeRequest):
                 ]
             }],
         )
-        logger.info(f"AI识别接口调用完成: latency={latency_ms}ms model={request.model}")
+        logger.info(f"AI识别接口调用完成: latency={latency_ms}ms model={_normalize_ai_model_id(request.model)}")
     except HTTPException:
         raise
     except httpx.TimeoutException as e:
@@ -536,7 +536,10 @@ async def ai_recognize_holding(request: AiRecognizeRequest):
 
     content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
     if not content:
-        raise HTTPException(status_code=502, detail="AI返回内容为空")
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI返回内容为空: model={_normalize_ai_model_id(request.model)}。请确认该模型支持图片输入，或在设置页勾选图片输入能力测试。"
+        )
 
     # 2. 解析 AI 返回的 JSON
     json_match = re.search(r'\{[\s\S]*\}', content)

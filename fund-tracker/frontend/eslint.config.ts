@@ -13,17 +13,8 @@ export default defineConfigWithVueTs(
     name: 'app/files-to-lint',
     files: ['**/*.{vue,ts,mts,tsx}'],
   },
-  {
-    name: 'app/electron-files',
-    files: ['electron/**/*'],
-    rules: {
-      '@typescript-eslint/no-require-imports': 'off',
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unused-vars': 'off'
-    }
-  },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/dist-electron/**', '**/coverage/**', 'electron/**/*']),
+  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**']),
 
   ...pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,

@@ -5,7 +5,7 @@
  */
 
 import { reactive, computed } from 'vue'
-import fundApi, { type FundRealtimeData } from '@/api/fund'
+import fundApi, { type FundRealtimeData, type RealtimeAlternativeResult } from '@/api/fund'
 import portfolioApi, { type PortfolioItem, type PortfolioStats } from '@/api/portfolio'
 
 // 数据管理器状态
@@ -457,9 +457,10 @@ class DataManager {
     try {
       console.log('[DataManager] 从API获取实时数据:', codes.length, '只基金')
       const data = await fundApi.getRealtimeBatch(codes)
+      const enrichedData = await this.enrichRealtimeAlternatives(data)
 
       // 更新内存缓存
-      data.forEach(item => {
+      enrichedData.forEach(item => {
         state.realtimeData.set(item.code, item)
       })
       state.realtimeLastFetch = Date.now()
@@ -468,8 +469,8 @@ class DataManager {
       // 保存到本地存储
       this.saveRealtimeDataToStorage()
 
-      console.log('[DataManager] 实时数据加载完成:', data.length)
-      return data
+      console.log('[DataManager] 实时数据加载完成:', enrichedData.length)
+      return enrichedData
     } catch (e) {
       console.error('[DataManager] 获取实时数据失败:', e)
       // 只有在没有本地缓存时才设置错误
@@ -478,6 +479,92 @@ class DataManager {
       }
       throw e
     }
+  }
+
+  private async enrichRealtimeAlternatives(data: FundRealtimeData[]): Promise<FundRealtimeData[]> {
+    const nonRealtimeItems = data.filter(item => item.is_realtime === false)
+    if (nonRealtimeItems.length === 0) {
+      return data
+    }
+
+    const alternativeResults = await Promise.allSettled(
+      nonRealtimeItems.map(item => fundApi.getRealtimeAlternatives(item.code, item.name))
+    )
+    const alternativeMap = new Map<string, RealtimeAlternativeResult>()
+    alternativeResults.forEach(result => {
+      if (result.status === 'fulfilled' && result.value && !result.value.skipped) {
+        alternativeMap.set(result.value.code, result.value)
+      }
+    })
+
+    return data.map(item => {
+      const alternatives = alternativeMap.get(item.code)
+      const estimate = alternatives?.holdings_based_estimate
+      if (estimate?.feasible && estimate.weighted_stock_change_pct !== null && estimate.weighted_stock_change_pct !== undefined) {
+        return {
+          ...item,
+          estimate_change: estimate.weighted_stock_change_pct,
+          update_time: this.formatMinuteTime(new Date()),
+          status: '持仓估算',
+          data_source: 'holdings_estimate',
+          data_source_display_name: '持仓实时估算',
+          data_source_short_name: 'Holdings',
+          data_source_description: `基于 ${estimate.position_date || '最新披露'} 十大持仓和实时股票行情的加权估算，报价覆盖 ${this.formatPercentRatio(estimate.quoted_weight_coverage)}。`,
+          data_kind: 'holdings_estimate',
+          data_kind_label: '持仓估算',
+          is_realtime: false,
+          data_timestamp: new Date().toISOString()
+        }
+      }
+
+      const reference = alternatives?.reference_symbol_estimate
+      if (reference?.feasible && reference.weighted_stock_change_pct !== null && reference.weighted_stock_change_pct !== undefined) {
+        return {
+          ...item,
+          estimate_change: reference.weighted_stock_change_pct,
+          update_time: this.formatMinuteTime(new Date()),
+          status: '标的估算',
+          data_source: 'reference_symbol_estimate',
+          data_source_display_name: '引用标的估算',
+          data_source_short_name: 'Reference',
+          data_source_description: `持仓穿透不足，使用 ${reference.references?.map(ref => ref.name).join('、') || '参考标的'} 行情估算。`,
+          data_kind: 'reference_symbol_estimate',
+          data_kind_label: '标的估算',
+          is_realtime: false,
+          data_timestamp: new Date().toISOString()
+        }
+      }
+
+      const fallback = alternatives?.fallback_estimate
+      if (!fallback?.feasible || fallback.change_pct === null || fallback.change_pct === undefined) {
+        return item
+      }
+
+      return {
+        ...item,
+        estimate_change: fallback.change_pct,
+        update_time: fallback.update_time || item.update_time,
+        status: '兜底估算',
+        data_source: fallback.source || item.data_source || 'fallback_estimate',
+        data_source_display_name: '净值/行情兜底估算',
+        data_source_short_name: 'Fallback',
+        data_source_description: `持仓穿透不可用，使用${fallback.source === 'tencent' ? '腾讯基金行情' : '最新净值涨跌幅'}作为估算参考。`,
+        data_kind: 'fallback_estimate',
+        data_kind_label: '兜底估算',
+        is_realtime: false,
+        data_timestamp: new Date().toISOString()
+      }
+    })
+  }
+
+  private formatMinuteTime(date: Date): string {
+    const pad = (value: number) => String(value).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }
+
+  private formatPercentRatio(value?: number | null): string {
+    if (value === null || value === undefined || isNaN(Number(value))) return '--'
+    return `${(Number(value) * 100).toFixed(0)}%`
   }
 
   /**

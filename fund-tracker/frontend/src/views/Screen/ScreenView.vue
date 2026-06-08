@@ -432,6 +432,7 @@ async function addToWatchlist(fund: FundTrendResult) {
   .condition-header {
     display: flex;
     align-items: center;
+    align-self: start;
     justify-content: space-between;
     gap: 10px;
     min-width: 0;

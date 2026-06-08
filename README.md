@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-- **fund-tracker/** — 主应用（FastAPI 后端 + Vue 3 前端 + Electron 桌面端）
+- **fund-tracker/** — 主应用（FastAPI 后端 + Vue 3 前端，预留 Tauri 跨端壳）
 - **data-source-test/** — 数据源性能基准测试工具
 
 ## 技术栈
@@ -13,7 +13,7 @@
 |---|---|
 | 后端 | Python 3.11+ / FastAPI / SQLAlchemy |
 | 前端 | Vue 3 / TypeScript / Element Plus / ECharts |
-| 桌面端 | Electron |
+| 运行壳 | Web 优先 / Tauri-ready |
 | 数据库 | SQLite（WAL 模式，零外部依赖） |
 | 缓存 | 内存 LRU 缓存 |
 | 数据源 | efinance + eastmoney 多源降级 + AKShare 备用 |
