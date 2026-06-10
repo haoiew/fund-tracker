@@ -12,6 +12,7 @@ _FUND_CODE_RE = re.compile(r'^[0-9A-Za-z]{1,10}$')
 _IMPORT_FUND_CODE_RE = re.compile(r'^[0-9]{6}$')
 
 TransactionType = Literal['buy', 'sell', 'dividend', 'snapshot']
+ImportMode = Literal['append', 'overwrite', 'rebalance']
 
 
 def _validate_fund_code_value(v: str) -> str:
@@ -169,6 +170,11 @@ class AiRecognizeRequest(BaseModel):
     prompt: Optional[str] = Field(None, description="自定义提示词")
 
 
+class AiRecognizeTransactionRequest(AiRecognizeRequest):
+    """AI识别账户明细/交易记录截图请求"""
+    default_year: Optional[int] = Field(None, ge=2000, le=2100, description="截图缺少年份时使用的年份")
+
+
 class AiConnectionTestRequest(BaseModel):
     """AI接口连通性测试请求"""
     model: str = Field(..., description="AI模型名称")
@@ -215,6 +221,34 @@ class AiRecognizeResponse(BaseModel):
     ai_raw_content: Optional[str] = Field(None, description="AI原始返回内容")
 
 
+class AiRecognizeTransaction(BaseModel):
+    """AI识别出的单条交易记录"""
+    row_index: Optional[int] = Field(None, ge=1, description="截图列表中的行号")
+    fund_code: str = Field(default="", description="基金代码")
+    fund_name: str = Field(default="", description="基金名称")
+    raw_fund_name: str = Field(default="", description="截图中识别到的原始基金名称")
+    transaction_type: TransactionType = Field(..., description="交易类型")
+    trade_date: date = Field(default_factory=date.today, description="交易日期")
+    trade_time: Optional[str] = Field(None, description="交易时间")
+    amount: float = Field(default=0, description="交易金额")
+    order_status: str = Field(default="", description="订单状态")
+    match_status: str = Field(default="pending", description="匹配状态")
+    confidence: int = Field(default=0, ge=0, le=100, description="匹配置信度")
+    match_reason: str = Field(default="", description="匹配原因")
+    warnings: list[str] = Field(default_factory=list, description="风险提示")
+    candidates: list[dict] = Field(default_factory=list, description="候选基金")
+
+
+class AiRecognizeTransactionResponse(BaseModel):
+    """AI交易截图识别响应"""
+    transactions: list[AiRecognizeTransaction] = Field(default_factory=list)
+    expected_count: Optional[int] = Field(None, description="截图中声明的交易总数")
+    total_buy_amount: float = Field(default=0)
+    total_sell_amount: float = Field(default=0)
+    warnings: list[str] = Field(default_factory=list, description="整体识别风险提示")
+    ai_raw_content: Optional[str] = Field(None, description="AI原始返回内容")
+
+
 class PortfolioImportHolding(BaseModel):
     """导入预检条目"""
     row_index: Optional[int] = Field(None, ge=1, description="导入源中的行号")
@@ -244,6 +278,7 @@ class PortfolioImportPreviewRequest(BaseModel):
     """导入预检请求"""
     holdings: list[PortfolioImportHolding] = Field(..., min_length=1, max_length=200)
     strict: bool = Field(default=True, description="严格模式，非明确匹配不允许导入")
+    mode: ImportMode = Field(default="append", description="append新增/overwrite覆盖/rebalance推算调仓")
 
 
 class PortfolioImportPreviewItem(BaseModel):
@@ -266,6 +301,13 @@ class PortfolioImportPreviewItem(BaseModel):
     status: str = Field(..., description="ready/skipped/invalid")
     reason: str = ""
     warnings: list[str] = Field(default_factory=list)
+    diff_type: Optional[str] = Field(None, description="new/unchanged/increase/decrease/remove/adjust")
+    existing_portfolio_id: Optional[int] = None
+    existing_shares: Optional[Decimal] = None
+    existing_cost: Optional[Decimal] = None
+    inferred_amount: Optional[Decimal] = None
+    inferred_shares: Optional[Decimal] = None
+    confidence_score: Optional[int] = None
 
 
 class PortfolioImportPreviewResponse(BaseModel):
@@ -297,3 +339,100 @@ class PortfolioImportConfirmResponse(BaseModel):
     success_count: int
     skipped_count: int
     failed_count: int
+
+
+class PortfolioTransactionImportItem(BaseModel):
+    """交易明细截图导入条目"""
+    row_index: Optional[int] = Field(None, ge=1)
+    fund_code: Optional[str] = Field(None, description="基金代码")
+    fund_name: str = Field(..., min_length=1, max_length=100, description="基金名称")
+    raw_fund_name: Optional[str] = Field(None, max_length=100, description="截图原始基金名称")
+    transaction_type: TransactionType = Field(..., description="交易类型")
+    trade_date: date = Field(default_factory=date.today, description="交易日期")
+    trade_time: Optional[str] = Field(None, max_length=20, description="交易时间")
+    amount: Decimal = Field(..., gt=0, description="交易金额")
+    order_status: Optional[str] = Field(None, max_length=50, description="订单状态")
+    match_status: Optional[str] = Field(None, description="识别匹配状态")
+    confidence: Optional[int] = Field(None, ge=0, le=100, description="识别置信度")
+    match_reason: Optional[str] = Field(None, max_length=100, description="匹配原因")
+
+    @field_validator('fund_code')
+    @classmethod
+    def validate_import_fund_code(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        v = v.strip()
+        if not _IMPORT_FUND_CODE_RE.match(v):
+            raise ValueError('导入基金代码必须是6位数字')
+        return v
+
+
+class PortfolioTransactionImportPreviewRequest(BaseModel):
+    """交易明细导入预检请求"""
+    transactions: list[PortfolioTransactionImportItem] = Field(..., min_length=1, max_length=200)
+    strict: bool = Field(default=True)
+
+
+class PortfolioTransactionImportPreviewItem(PortfolioTransactionImportItem):
+    """交易明细导入预检结果条目"""
+    current_nav: Optional[Decimal] = None
+    estimated_shares: Optional[Decimal] = None
+    status: str = Field(..., description="ready/skipped/invalid")
+    reason: str = ""
+    warnings: list[str] = Field(default_factory=list)
+    existing_portfolio_id: Optional[int] = None
+
+
+class PortfolioTransactionImportPreviewResponse(BaseModel):
+    """交易明细导入预检响应"""
+    items: list[PortfolioTransactionImportPreviewItem]
+    ready_count: int
+    skipped_count: int
+    invalid_count: int
+
+
+class PortfolioTransactionImportConfirmRequest(PortfolioTransactionImportPreviewRequest):
+    """确认导入交易明细请求"""
+    pass
+
+
+class PortfolioTransactionImportConfirmItem(BaseModel):
+    """确认导入交易结果条目"""
+    row_index: Optional[int] = None
+    fund_code: str = ""
+    fund_name: str
+    status: str = Field(..., description="success/skipped/failed")
+    transaction_id: Optional[int] = None
+    portfolio_id: Optional[int] = None
+    error: Optional[str] = None
+
+
+class PortfolioTransactionImportConfirmResponse(BaseModel):
+    """确认导入交易响应"""
+    items: list[PortfolioTransactionImportConfirmItem]
+    success_count: int
+    skipped_count: int
+    failed_count: int
+
+
+class PortfolioRebalanceRecordResponse(BaseModel):
+    """调仓记录响应"""
+    id: int
+    fund_code: str
+    fund_name: str
+    action_type: str
+    trade_date: date
+    before_shares: Decimal
+    after_shares: Decimal
+    before_cost_amount: Decimal
+    after_cost_amount: Decimal
+    before_market_value: Decimal
+    after_market_value: Decimal
+    inferred_shares: Decimal
+    inferred_amount: Decimal
+    confidence: int
+    source: str
+    remark: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

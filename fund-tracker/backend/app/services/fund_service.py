@@ -33,6 +33,11 @@ logger = get_logger("fund_service")
 
 os.environ['TQDM_DISABLE'] = '1'
 
+SCREEN_UNIVERSE_LOCAL = "local"
+SCREEN_UNIVERSE_MARKET = "market"
+MARKET_SCREEN_RESULT_LIMIT = 10
+MARKET_SCREEN_PREFILTER_LIMIT = 300
+
 
 class FundService:
     """基金核心服务单例"""
@@ -738,12 +743,49 @@ class FundService:
         total_chg = np.prod([1 + r for r in changes]) - 1
         return days, abs(total_chg) if direction == 'up' else -abs(total_chg)
 
-    async def _append_realtime_change(self, hist: pd.DataFrame, code: str) -> pd.DataFrame:
-        """将今日实时估值涨跌幅追加到历史数据末尾"""
+    def _extract_alternative_change(self, alternatives: Dict[str, Any]) -> Optional[float]:
+        holdings = alternatives.get("holdings_based_estimate")
+        if holdings and holdings.get("feasible") and holdings.get("weighted_stock_change_pct") is not None:
+            return float(holdings["weighted_stock_change_pct"])
+
+        reference = alternatives.get("reference_symbol_estimate")
+        if reference and reference.get("feasible") and reference.get("weighted_stock_change_pct") is not None:
+            return float(reference["weighted_stock_change_pct"])
+
+        for candidate in alternatives.get("same_name_realtime_candidates") or []:
+            if candidate.get("change_pct") is not None:
+                return float(candidate["change_pct"])
+
+        fallback = alternatives.get("fallback_estimate")
+        if fallback and fallback.get("feasible") and fallback.get("change_pct") is not None:
+            return float(fallback["change_pct"])
+
+        direct = alternatives.get("direct") or {}
+        if direct.get("change_pct") is not None:
+            return float(direct["change_pct"])
+        return None
+
+    async def _get_realtime_screen_change(self, code: str, allow_realtime_proxies: bool = True) -> Optional[float]:
+        rt = await self.get_realtime_data(code)
+        if rt.is_realtime or not allow_realtime_proxies:
+            return float(rt.estimate_change) if rt.estimate_change is not None else None
+
         try:
-            rt = await self.get_realtime_data(code)
-            if rt.estimate_change is not None:
-                today_chg = float(rt.estimate_change) / 100
+            alternatives = await self.get_realtime_alternatives(code, rt.name)
+            change = self._extract_alternative_change(alternatives)
+            if change is not None:
+                return change
+        except Exception as exc:
+            logger.debug(f"获取实时替代估算失败 {code}: {exc}")
+
+        return float(rt.estimate_change) if rt.estimate_change is not None else None
+
+    async def _append_realtime_change(self, hist: pd.DataFrame, code: str, allow_realtime_proxies: bool = True) -> pd.DataFrame:
+        """将今日实时估值或可用替代估算涨跌幅追加到历史数据末尾。"""
+        try:
+            estimate_change = await self._get_realtime_screen_change(code, allow_realtime_proxies)
+            if estimate_change is not None:
+                today_chg = estimate_change / 100
                 today_row = pd.DataFrame({
                     '净值日期': [datetime.now()],
                     '累计净值': [None],
@@ -754,12 +796,30 @@ class FundService:
             pass
         return hist
 
+    def _resolve_screen_codes(self, codes: Optional[List[str]], universe: str, direction: str, days: int, screen_type: str) -> Tuple[List[str], bool, Optional[int]]:
+        if codes is not None:
+            return list(dict.fromkeys([str(code).strip() for code in codes if str(code).strip()])), True, None
+
+        if universe == SCREEN_UNIVERSE_MARKET:
+            ranked_codes = self._get_market_rank_candidates(direction, days, screen_type)
+            market_codes = ranked_codes or self.get_market_fund_codes()[:MARKET_SCREEN_PREFILTER_LIMIT]
+            return market_codes, False, MARKET_SCREEN_RESULT_LIMIT
+
+        return self._fund_list.copy(), True, None
+
     async def screen_funds(self, codes: Optional[List[str]] = None, direction: str = 'up',
                      min_days: int = 2, min_pct: float = 0.03,
                      include_realtime: bool = False,
-                     batch_size: int = 3, delay_between_batches: float = 1.0) -> List[Dict]:
-        if codes is None:
-            codes = self._fund_list
+                     batch_size: int = 3, delay_between_batches: float = 1.0,
+                     universe: str = SCREEN_UNIVERSE_LOCAL, limit: Optional[int] = None) -> List[Dict]:
+        is_market_universe = codes is None and universe == SCREEN_UNIVERSE_MARKET
+        codes, allow_realtime_proxies, default_limit = self._resolve_screen_codes(
+            codes, universe, direction, min_days, "consecutive"
+        )
+        if is_market_universe:
+            batch_size = max(batch_size, 10)
+            delay_between_batches = 0
+        result_limit = limit if limit is not None else default_limit
         results = []
         for i in range(0, len(codes), batch_size):
             batch = codes[i:i + batch_size]
@@ -769,7 +829,7 @@ class FundService:
                     if hist.empty:
                         continue
                     if include_realtime:
-                        hist = await self._append_realtime_change(hist, code)
+                        hist = await self._append_realtime_change(hist, code, allow_realtime_proxies)
                     days, total_chg = self.analyze_trend(hist, direction)
                     if days >= min_days and abs(total_chg) >= min_pct:
                         results.append({'code': code, 'name': self.get_fund_name(code),
@@ -778,7 +838,8 @@ class FundService:
                     pass
             if i + batch_size < len(codes):
                 await asyncio.sleep(delay_between_batches)
-        return sorted(results, key=lambda x: abs(x['pct']), reverse=True)
+        sorted_results = sorted(results, key=lambda x: abs(x['pct']), reverse=True)
+        return sorted_results[:result_limit] if result_limit else sorted_results
 
     async def get_screen_result(self, direction: str = 'up', min_days: Optional[int] = None, min_pct: Optional[float] = None) -> Dict:
         min_days = min_days or (settings.SCREEN_UP["days"] if direction == 'up' else settings.SCREEN_DOWN["days"])
@@ -820,9 +881,16 @@ class FundService:
     async def screen_period(self, codes: Optional[List[str]] = None, direction: str = 'up',
                            period_days: int = 7, min_pct: float = 0.03,
                            include_realtime: bool = False, calendar_days: bool = False,
-                           batch_size: int = 3, delay_between_batches: float = 1.0) -> List[Dict]:
-        if codes is None:
-            codes = self._fund_list
+                           batch_size: int = 3, delay_between_batches: float = 1.0,
+                           universe: str = SCREEN_UNIVERSE_LOCAL, limit: Optional[int] = None) -> List[Dict]:
+        is_market_universe = codes is None and universe == SCREEN_UNIVERSE_MARKET
+        codes, allow_realtime_proxies, default_limit = self._resolve_screen_codes(
+            codes, universe, direction, period_days, "period"
+        )
+        if is_market_universe:
+            batch_size = max(batch_size, 10)
+            delay_between_batches = 0
+        result_limit = limit if limit is not None else default_limit
         results = []
         for i in range(0, len(codes), batch_size):
             batch = codes[i:i + batch_size]
@@ -832,7 +900,7 @@ class FundService:
                     if hist.empty:
                         continue
                     if include_realtime:
-                        hist = await self._append_realtime_change(hist, code)
+                        hist = await self._append_realtime_change(hist, code, allow_realtime_proxies)
                     total_chg = self.calculate_period_change(hist, period_days, calendar_days)
                     if direction == 'up' and total_chg >= min_pct:
                         results.append({'code': code, 'name': self.get_fund_name(code),
@@ -844,7 +912,8 @@ class FundService:
                     pass
             if i + batch_size < len(codes):
                 await asyncio.sleep(delay_between_batches)
-        return sorted(results, key=lambda x: abs(x['pct']), reverse=True)
+        sorted_results = sorted(results, key=lambda x: abs(x['pct']), reverse=True)
+        return sorted_results[:result_limit] if result_limit else sorted_results
 
     async def get_period_screen_result(self, direction: str = 'up', period_days: int = 7, min_pct: float = 0.03) -> Dict:
         cache_key = f"period:{direction}:{period_days}:{min_pct}"
@@ -961,6 +1030,86 @@ class FundService:
         except Exception:
             self._eastmoney_fund_catalog_cache = []
             return []
+
+    def get_market_fund_codes(self) -> List[str]:
+        """获取市场基金代码全集，按基金目录去重。"""
+        codes: List[str] = []
+        seen = set()
+        for item in self._load_eastmoney_fund_catalog():
+            code = str(item.get("code") or "").strip()
+            if code and code not in seen:
+                seen.add(code)
+                codes.append(code)
+        return codes
+
+    @staticmethod
+    def _parse_rank_pct(value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        text = str(value).strip().replace("%", "").replace(",", "")
+        if text in {"", "--", "-"}:
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
+    def _rank_column_for_screen(self, screen_type: str, days: int) -> str:
+        if screen_type == "consecutive":
+            if days <= 1:
+                return "日增长率"
+            if days <= 7:
+                return "近1周"
+            if days <= 30:
+                return "近1月"
+            if days <= 90:
+                return "近3月"
+            return "近6月"
+        if days <= 7:
+            return "近1周"
+        if days <= 30:
+            return "近1月"
+        if days <= 90:
+            return "近3月"
+        return "近6月"
+
+    def _get_market_rank_candidates(self, direction: str, days: int, screen_type: str) -> List[str]:
+        """用全市场排行数据预选候选，避免逐只基金实时扫全市场导致请求超时。"""
+        try:
+            import akshare as ak
+            import sys, io
+            old_stdout = sys.stdout
+            sys.stdout = io.StringIO()
+            try:
+                df = ak.fund_open_fund_rank_em(symbol="全部")
+            finally:
+                sys.stdout = old_stdout
+        except Exception as exc:
+            logger.debug(f"获取全市场基金排行失败: {exc}")
+            return []
+
+        if df is None or df.empty or "基金代码" not in df.columns:
+            return []
+
+        rank_column = self._rank_column_for_screen(screen_type, days)
+        if rank_column not in df.columns:
+            rank_column = "日增长率" if "日增长率" in df.columns else None
+        if not rank_column:
+            return []
+
+        ranked = df.copy()
+        ranked["_screen_pct"] = ranked[rank_column].map(self._parse_rank_pct)
+        ranked = ranked.dropna(subset=["_screen_pct"])
+        if ranked.empty:
+            return []
+
+        if direction == "up":
+            ranked = ranked[ranked["_screen_pct"] > 0].sort_values("_screen_pct", ascending=False)
+        else:
+            ranked = ranked[ranked["_screen_pct"] < 0].sort_values("_screen_pct", ascending=True)
+
+        codes = ranked["基金代码"].astype(str).str.zfill(6).head(MARKET_SCREEN_PREFILTER_LIMIT).tolist()
+        return list(dict.fromkeys(codes))
 
     def _search_from_eastmoney(self, keyword: str, limit: int) -> List[Dict]:
         try:

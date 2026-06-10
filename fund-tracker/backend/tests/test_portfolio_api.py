@@ -345,6 +345,140 @@ def test_import_confirm_creates_ready_items_and_skips_unsafe_items(client):
     assert transactions[0]["source"] == "import"
 
 
+def test_import_confirm_overwrite_updates_existing_position(client):
+    client.post("/api/v1/portfolio", json={
+        "fund_code": "000008",
+        "fund_name": "覆盖基金",
+        "hold_shares": "100",
+        "cost_amount": "100",
+        "cost_nav": "1.0000",
+    })
+
+    resp = client.post("/api/v1/portfolio/import/confirm", json={
+        "mode": "overwrite",
+        "strict": True,
+        "trade_date": "2026-06-07",
+        "holdings": [{
+            "fund_code": "000008",
+            "fund_name": "覆盖基金",
+            "market_value": "300",
+            "holding_return": "30",
+            "match_status": "matched",
+            "confidence": 100,
+        }]
+    })
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["success_count"] == 1
+
+    resp = client.get("/api/v1/portfolio")
+    portfolio = next(item for item in resp.json()["data"] if item["fund_code"] == "000008")
+    assert portfolio["hold_shares"] == "243.0134"
+    assert portfolio["cost_amount"] == "270.00"
+    assert portfolio["cost_nav"] == "1.1111"
+
+
+def test_import_confirm_rebalance_records_inferred_adjustment(client):
+    client.post("/api/v1/portfolio", json={
+        "fund_code": "000009",
+        "fund_name": "调仓基金",
+        "hold_shares": "100",
+        "cost_amount": "100",
+        "cost_nav": "1.0000",
+    })
+
+    resp = client.post("/api/v1/portfolio/import/confirm", json={
+        "mode": "rebalance",
+        "strict": True,
+        "trade_date": "2026-06-08",
+        "holdings": [{
+            "fund_code": "000009",
+            "fund_name": "调仓基金",
+            "market_value": "300",
+            "holding_return": "30",
+            "match_status": "matched",
+            "confidence": 100,
+        }]
+    })
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["success_count"] >= 1
+
+    resp = client.get("/api/v1/portfolio/rebalance-records")
+    assert resp.status_code == 200
+    records = resp.json()["data"]
+    record = next(item for item in records if item["fund_code"] == "000009")
+    assert record["action_type"] == "increase"
+    assert record["inferred_amount"] == "170.00"
+    assert record["trade_date"] == "2026-06-08"
+
+
+def test_ai_recognize_transactions_parses_and_matches(client, monkeypatch):
+    from app.api.v1 import portfolio as portfolio_api
+    from app.services import fund_service as fund_service_module
+
+    service = fund_service_module.get_fund_service()
+    monkeypatch.setattr(service, "search_funds", lambda keyword, limit=12: [{
+        "code": "000010",
+        "name": "招商中证白酒指数C",
+    }])
+
+    async def fake_call_ai_chat_completion(**kwargs):
+        return {
+            "choices": [{
+                "message": {
+                    "content": '{"expected_count":1,"transactions":[{"row_index":1,"raw_fund_name":"转入-招商中证白酒指数C","fund_name":"招商中证白酒指数C","trade_date":"06-02","trade_time":"14:57:07","amount":100,"order_status":"订单完成"}]}'
+                }
+            }]
+        }, 123, 200
+
+    monkeypatch.setattr(portfolio_api, "_call_ai_chat_completion", fake_call_ai_chat_completion)
+
+    resp = client.post("/api/v1/portfolio/ai-recognize-transactions", json={
+        "image_base64": "data:image/png;base64,AA==",
+        "model": "test-model",
+        "base_url": "https://api.example.com/v1",
+        "api_key": "test-key",
+        "default_year": 2026,
+    })
+
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["transactions"][0]["fund_code"] == "000010"
+    assert data["transactions"][0]["transaction_type"] == "buy"
+    assert data["transactions"][0]["trade_date"] == "2026-06-02"
+    assert data["transactions"][0]["order_status"] == "订单完成"
+
+
+def test_transaction_import_confirm_creates_transaction(client):
+    resp = client.post("/api/v1/portfolio/transactions/import/confirm", json={
+        "strict": True,
+        "transactions": [{
+            "fund_code": "000011",
+            "fund_name": "交易导入基金",
+            "transaction_type": "buy",
+            "trade_date": "2026-06-02",
+            "trade_time": "14:57:07",
+            "amount": "123.45",
+            "order_status": "订单完成",
+            "match_status": "matched",
+            "confidence": 100,
+        }]
+    })
+
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["success_count"] == 1
+    portfolio_id = data["items"][0]["portfolio_id"]
+
+    resp = client.get(f"/api/v1/portfolio/{portfolio_id}/transactions")
+    assert resp.status_code == 200
+    transactions = resp.json()["data"]
+    assert len(transactions) == 1
+    assert transactions[0]["transaction_type"] == "buy"
+    assert transactions[0]["source"] == "ai_txn"
+
+
 def test_realtime_alternatives_exposes_fallback_estimate(client, monkeypatch):
     from app.schemas.fund import FundRealtimeData
     from app.services import fund_service as fund_service_module

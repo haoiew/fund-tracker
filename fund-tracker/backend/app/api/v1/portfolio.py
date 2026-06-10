@@ -7,6 +7,7 @@ import json
 import re
 import time
 from difflib import SequenceMatcher
+from datetime import date
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
@@ -16,10 +17,14 @@ from app.db.base import get_db
 from app.schemas.portfolio import (
     PortfolioCreate, PortfolioUpdate, PortfolioResponse, PortfolioProfitResponse,
     AiRecognizeRequest, AiRecognizeResponse, AiRecognizeHolding,
-    AiConnectionTestRequest, AiConnectionTestResponse,
+    AiConnectionTestRequest, AiConnectionTestResponse, AiRecognizeTransactionRequest,
+    AiRecognizeTransactionResponse, AiRecognizeTransaction,
     PortfolioTransactionCreate, PortfolioTransactionResponse,
     PortfolioImportConfirmRequest, PortfolioImportConfirmResponse,
-    PortfolioImportPreviewRequest, PortfolioImportPreviewResponse
+    PortfolioImportPreviewRequest, PortfolioImportPreviewResponse,
+    PortfolioRebalanceRecordResponse, PortfolioTransactionImportConfirmRequest,
+    PortfolioTransactionImportConfirmResponse, PortfolioTransactionImportPreviewRequest,
+    PortfolioTransactionImportPreviewResponse
 )
 from app.schemas.common import ResponseModel
 from app.services.portfolio_service import PortfolioServiceError, portfolio_service
@@ -56,6 +61,20 @@ DEFAULT_AI_RECOGNIZE_PROMPT = (
     'JSON结构：{"expected_count":18,"holdings":[{"row_index":1,"fund_name":"基金名称","raw_fund_name":"截图原始名称","market_value":金额数字,'
     '"daily_return":昨日收益数字,"holding_return":持有收益数字,"holding_return_rate":收益率数字或null}]}。'
     '无法识别的数字填0，无法识别的收益率填null。'
+)
+
+DEFAULT_AI_TRANSACTION_RECOGNIZE_PROMPT = (
+    '你是基金账户明细截图识别器。请从这张“账户明细/交易明细”截图中提取列表里的每一条基金交易，返回严格JSON，不要包含解释、Markdown或代码块。'
+    '不要把顶部交易汇总卡片当成交易记录；只读取下方“交易明细”列表。'
+    '每条记录必须带row_index，从列表第一条交易开始按从上到下编号。'
+    '交易名称通常形如“转入-基金名称”“买入-基金名称”“卖出-基金名称”“转出-基金名称”“分红-基金名称”。'
+    '将转入、买入、申购、定投识别为transaction_type="buy"；将转出、卖出、赎回识别为"sell"；将分红识别为"dividend"。'
+    '基金名称去掉交易动作前缀，但保留A类、C类、QDII、LOF、ETF、FOF等后缀。'
+    '金额列读取为amount，去掉元和逗号，只保留数字；日期时间列读取为trade_date和trade_time。'
+    '如果截图日期没有年份，使用default_year；如果default_year不可用，按当前年份。'
+    '订单状态读取为order_status，例如“订单完成”。'
+    'JSON结构：{"expected_count":9,"transactions":[{"row_index":1,"transaction_type":"buy","fund_name":"南方香港优选股票(QDII-LOF)",'
+    '"raw_fund_name":"转入-南方香港优选股票(QDII-LOF)","trade_date":"2026-06-04","trade_time":"10:09:51","amount":100.00,"order_status":"订单完成"}]}。'
 )
 
 _VISION_TEST_IMAGE_DATA_URL = (
@@ -312,6 +331,63 @@ def _to_float(value, default: float = 0) -> float:
         return default
 
 
+def _normalize_transaction_type(value: str) -> str:
+    text = (value or "").strip().lower()
+    if any(word in text for word in ("sell", "卖出", "赎回", "转出")):
+        return "sell"
+    if any(word in text for word in ("dividend", "分红")):
+        return "dividend"
+    return "buy"
+
+
+def _parse_trade_date(value, default_year: int | None = None) -> date:
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return date.today()
+    text = text.replace("/", "-").replace("年", "-").replace("月", "-").replace("日", "")
+    match = re.search(r"(?:(\d{4})-)?(\d{1,2})-(\d{1,2})", text)
+    if not match:
+        return date.today()
+    year = int(match.group(1) or default_year or date.today().year)
+    month = int(match.group(2))
+    day = int(match.group(3))
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return date.today()
+
+
+def _match_fund_for_ai_item(fund_service, fund_name: str, raw_fund_name: str, warnings: list[str]) -> tuple[str, str, str, int, str, list[dict]]:
+    fund_code = ""
+    match_status = "not_found"
+    confidence = 0
+    match_reason = ""
+    candidates: list[dict] = []
+    is_truncated_name = any(marker in raw_fund_name or marker in fund_name for marker in ("…", "...", "…)", "(..."))
+    if is_truncated_name:
+        warnings.append("基金名称被截断，不能自动导入")
+    try:
+        _search_keyword, search_results = _search_fund_candidates(fund_service, fund_name, limit=12)
+        fund_code, matched_name, match_status, confidence, candidates = _match_fund_candidate(fund_name, search_results)
+        match_reason = candidates[0]["reason"] if candidates else ""
+        if fund_code:
+            fund_name = matched_name
+        if is_truncated_name and match_status == "matched":
+            fund_code = ""
+            fund_name = raw_fund_name
+            match_status = "ambiguous"
+            confidence = min(confidence, 89)
+            match_reason = "truncated_name"
+        if match_status == "ambiguous":
+            warnings.append("基金名称匹配不唯一，需要人工确认")
+    except Exception as e:
+        logger.warning(f"搜索基金代码失败 [{fund_name}]: {e}")
+        warnings.append("基金搜索失败")
+    return fund_code, fund_name, match_status, confidence, match_reason, candidates
+
+
 async def _build_portfolio_summary(db: Session) -> dict:
     """Shared helper for summary and refresh endpoints."""
     from app.services.fund_service import get_fund_service
@@ -388,6 +464,31 @@ async def get_portfolio_transactions(portfolio_id: int, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="持仓不存在")
     transactions = portfolio_service.get_transactions(db, portfolio_id)
     return ResponseModel(data=[portfolio_service.to_transaction_response(t) for t in transactions])
+
+
+@router.get("/rebalance-records", response_model=ResponseModel[List[PortfolioRebalanceRecordResponse]])
+async def get_rebalance_records(limit: int = 200, db: Session = Depends(get_db)):
+    records = portfolio_service.get_rebalance_records(db, limit=limit)
+    return ResponseModel(data=[portfolio_service.to_rebalance_record_response(record) for record in records])
+
+
+@router.post("/transactions/import/preview", response_model=ResponseModel[PortfolioTransactionImportPreviewResponse])
+async def preview_portfolio_transaction_import(
+    request: PortfolioTransactionImportPreviewRequest,
+    db: Session = Depends(get_db),
+):
+    return ResponseModel(data=await portfolio_service.preview_transaction_import(db, request))
+
+
+@router.post("/transactions/import/confirm", response_model=ResponseModel[PortfolioTransactionImportConfirmResponse])
+async def confirm_portfolio_transaction_import(
+    request: PortfolioTransactionImportConfirmRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        return ResponseModel(data=await portfolio_service.confirm_transaction_import(db, request))
+    except PortfolioServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{portfolio_id}", response_model=ResponseModel[PortfolioResponse])
@@ -589,14 +690,12 @@ async def ai_recognize_holding(request: AiRecognizeRequest):
         if not fund_name:
             continue
 
-        # 通过名称搜索基金代码
         fund_code = ""
         match_status = "not_found"
         confidence = 0
         match_reason = ""
         warnings: list[str] = []
         candidates: list[dict] = []
-        is_truncated_name = any(marker in raw_fund_name or marker in fund_name for marker in ("…", "...", "…)", "(..."))
 
         if market_value <= 0:
             match_status = "invalid"
@@ -604,25 +703,14 @@ async def ai_recognize_holding(request: AiRecognizeRequest):
         if market_value > 0 and holding_return >= market_value:
             match_status = "invalid"
             warnings.append("持有收益大于等于市值，反推成本不合理")
-        if is_truncated_name:
-            warnings.append("基金名称被截断，不能自动导入")
 
-        try:
-            if match_status != "invalid":
-                _search_keyword, search_results = _search_fund_candidates(fund_service, fund_name, limit=12)
-                fund_code, fund_name, match_status, confidence, candidates = _match_fund_candidate(fund_name, search_results)
-                match_reason = candidates[0]["reason"] if candidates else ""
-                if is_truncated_name and match_status == "matched":
-                    fund_code = ""
-                    fund_name = raw_fund_name
-                    match_status = "ambiguous"
-                    confidence = min(confidence, 89)
-                    match_reason = "truncated_name"
-                if match_status == "ambiguous":
-                    warnings.append("基金名称匹配不唯一，需要人工确认")
-        except Exception as e:
-            logger.warning(f"搜索基金代码失败 [{fund_name}]: {e}")
-            warnings.append("基金搜索失败")
+        if match_status != "invalid":
+            fund_code, fund_name, match_status, confidence, match_reason, candidates = _match_fund_for_ai_item(
+                fund_service,
+                fund_name,
+                raw_fund_name,
+                warnings,
+            )
 
         holdings.append(AiRecognizeHolding(
             row_index=row_index,
@@ -655,4 +743,143 @@ async def ai_recognize_holding(request: AiRecognizeRequest):
         expected_count=expected_count,
         warnings=response_warnings,
         ai_raw_content=content
+    ))
+
+
+@router.post("/ai-recognize-transactions", response_model=ResponseModel[AiRecognizeTransactionResponse])
+async def ai_recognize_transactions(request: AiRecognizeTransactionRequest):
+    """AI识别账户明细/交易记录截图，并自动匹配基金代码。"""
+    default_year = request.default_year or date.today().year
+    prompt = request.prompt or f"{DEFAULT_AI_TRANSACTION_RECOGNIZE_PROMPT} default_year={default_year}。"
+
+    try:
+        result, latency_ms, _status_code = await _call_ai_chat_completion(
+            base_url=request.base_url,
+            api_key=request.api_key,
+            model=request.model,
+            timeout=_AI_REQUEST_TIMEOUT,
+            max_tokens=4096,
+            temperature=0.1,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": request.image_base64}}
+                ]
+            }],
+        )
+        logger.info(f"AI交易识别接口调用完成: latency={latency_ms}ms model={_normalize_ai_model_id(request.model)}")
+    except HTTPException:
+        raise
+    except httpx.TimeoutException as e:
+        logger.error(f"AI交易截图识别超时: {e}")
+        raise HTTPException(status_code=504, detail=f"AI交易截图识别超时: {str(e)}")
+    except httpx.RequestError as e:
+        logger.error(f"AI交易截图识别失败: {e}")
+        raise HTTPException(status_code=502, detail=f"AI API调用失败: {str(e)}")
+    except Exception as e:
+        logger.error(f"AI交易截图识别失败: {e}")
+        raise HTTPException(status_code=502, detail=f"AI API调用失败: {str(e)}")
+
+    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    if not content:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI返回内容为空: model={_normalize_ai_model_id(request.model)}。请确认该模型支持图片输入。"
+        )
+
+    json_match = re.search(r'\{[\s\S]*\}', content)
+    if not json_match:
+        raise HTTPException(status_code=502, detail="AI返回内容中未找到有效的JSON")
+
+    try:
+        data = json.loads(json_match.group())
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=502, detail=f"AI返回的JSON解析失败: {str(e)}")
+
+    raw_transactions = data.get("transactions", [])
+    if not isinstance(raw_transactions, list):
+        raise HTTPException(status_code=502, detail="AI返回格式不正确，缺少 transactions 数组")
+
+    expected_count = None
+    try:
+        raw_expected_count = data.get("expected_count") or data.get("total_count") or data.get("transactions_count")
+        expected_count = int(raw_expected_count) if raw_expected_count is not None else None
+        if expected_count is not None and expected_count <= 0:
+            expected_count = None
+    except (TypeError, ValueError):
+        expected_count = None
+
+    from app.services.fund_service import get_fund_service
+    fund_service = get_fund_service()
+
+    transactions: list[AiRecognizeTransaction] = []
+    response_warnings: list[str] = []
+    for index, item in enumerate(raw_transactions, start=1):
+        if not isinstance(item, dict):
+            response_warnings.append(f"第 {index} 条AI结果不是对象，已跳过")
+            continue
+        try:
+            row_index = int(item.get("row_index") or index)
+        except (TypeError, ValueError):
+            row_index = index
+
+        raw_fund_name = (item.get("raw_fund_name") or item.get("fund_name") or item.get("name") or "").strip()
+        fund_name = (item.get("fund_name") or raw_fund_name).strip()
+        fund_name = re.sub(r"^(转入|买入|申购|定投|转出|卖出|赎回|分红)\s*[-－—]\s*", "", fund_name).strip()
+        raw_type = item.get("transaction_type") or item.get("type") or raw_fund_name
+        transaction_type = _normalize_transaction_type(str(raw_type))
+        trade_date = _parse_trade_date(item.get("trade_date") or item.get("date") or item.get("time"), default_year)
+        trade_time = str(item.get("trade_time") or "").strip() or None
+        amount = _to_float(item.get("amount") or item.get("money"))
+        order_status = str(item.get("order_status") or item.get("status") or "").strip()
+        warnings: list[str] = []
+        match_status = "not_found"
+        confidence = 0
+        match_reason = ""
+        candidates: list[dict] = []
+        fund_code = ""
+
+        if not fund_name:
+            response_warnings.append(f"第 {index} 条交易缺少基金名称，已跳过")
+            continue
+        if amount <= 0:
+            match_status = "invalid"
+            warnings.append("交易金额为空或小于等于0")
+
+        if match_status != "invalid":
+            fund_code, fund_name, match_status, confidence, match_reason, candidates = _match_fund_for_ai_item(
+                fund_service,
+                fund_name,
+                raw_fund_name,
+                warnings,
+            )
+
+        transactions.append(AiRecognizeTransaction(
+            row_index=row_index,
+            fund_code=fund_code,
+            fund_name=fund_name,
+            raw_fund_name=raw_fund_name,
+            transaction_type=transaction_type,
+            trade_date=trade_date,
+            trade_time=trade_time,
+            amount=amount,
+            order_status=order_status,
+            match_status=match_status,
+            confidence=confidence,
+            match_reason=match_reason,
+            warnings=warnings,
+            candidates=candidates,
+        ))
+
+    if expected_count is not None and len(transactions) != expected_count:
+        response_warnings.append(f"截图声明交易 {expected_count} 条，AI返回 {len(transactions)} 条，请核对是否漏识别")
+
+    return ResponseModel(data=AiRecognizeTransactionResponse(
+        transactions=transactions,
+        expected_count=expected_count,
+        total_buy_amount=sum(t.amount for t in transactions if t.transaction_type == "buy"),
+        total_sell_amount=sum(t.amount for t in transactions if t.transaction_type == "sell"),
+        warnings=response_warnings,
+        ai_raw_content=content,
     ))

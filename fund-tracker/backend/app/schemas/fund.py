@@ -96,6 +96,8 @@ class PeriodScreenRequest(BaseModel):
     min_pct: float = Field(default=0.03, ge=0, le=1, description="最小涨跌幅（小数形式）")
     include_realtime: bool = Field(default=False, description="是否包含今日实时估值")
     calendar_days: bool = Field(default=False, description="是否按自然日计算（默认按交易日）")
+    universe: str = Field(default="local", description="筛选范围: local=传入/本地列表, market=全市场")
+    limit: Optional[int] = Field(default=None, ge=1, le=100, description="返回数量上限")
 
 
 class FundSearchRequest(BaseModel):

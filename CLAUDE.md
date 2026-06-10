@@ -19,7 +19,7 @@ data-source-test/      # Standalone data source benchmarking tool
 
 ### One-click start (Windows)
 ```bash
-fund-tracker/scripts/start.bat   # Launches backend (:8001) + frontend (:5173)
+fund-tracker/scripts/start.bat   # Launches backend (:8001) + frontend (:3000)
 ```
 
 ### Backend
@@ -73,7 +73,7 @@ Frontend (Vue 3)
 ### Backend Architecture (fund-tracker/backend/app/)
 
 - **config.py** — Centralized Settings dataclass, single source of truth for all config
-- **core/data_source.py** — DataSourceManager with strategy chain: efinance (primary batch) -> eastmoney_direct (fallback per-fund, with sub-strategies: tiantian, tencent, lsjz, pingzhongdata). QDII funds prefer Tencent API.
+- **core/data_source.py** — DataSourceManager with strategy chain and comparison metadata: tiantian realtime estimate -> efinance batch supplement -> Tencent/Eastmoney latest NAV fallbacks (`tencent`, `eastmoney_lsjz`, `pingzhongdata`). QDII/HK-themed funds may only expose latest NAV dates; UI distinguishes `实时估值` from `最新净值`.
 - **core/cache.py** — In-memory LRU cache (no Redis dependency)
 - **core/scheduler.py** — APScheduler background tasks
 - **services/** — Business logic: fund_service (data/screen/compare), history_service (NAV persistence), portfolio_service (CRUD + profit calc)
@@ -86,6 +86,8 @@ Frontend (Vue 3)
 - **stores/fundStore.ts / portfolioStore.ts** — Pinia stores
 - **api/request.ts** — Axios instance; note the auto-unwrap interceptor extracts `response.data.data`
 - **views/Home/HomeView.vue** — Main dashboard (largest view component)
+- **views/Portfolio/PortfolioView.vue** — Holdings table plus AI screenshot import workflow: image recognition -> import preview -> confirm import
+- **views/Settings/SettingsView.vue** — App and AI provider settings, including text and image-input connectivity tests
 - **router/index.ts** — 6 routes: Home, Screen, Compare, Portfolio, Settings, About
 
 ### Key Design Decisions

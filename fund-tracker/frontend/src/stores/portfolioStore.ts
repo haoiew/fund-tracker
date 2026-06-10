@@ -112,7 +112,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   const totalValue = computed(() => stats.value?.total_value || 0)
 
   /**
-   * 总盈亏
+   * 持有收益
    */
   const totalProfit = computed(() => stats.value?.total_profit_loss || 0)
 

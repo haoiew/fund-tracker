@@ -7,6 +7,7 @@
 import { reactive, computed } from 'vue'
 import fundApi, { type FundRealtimeData, type RealtimeAlternativeResult } from '@/api/fund'
 import portfolioApi, { type PortfolioItem, type PortfolioStats } from '@/api/portfolio'
+import { deriveEstimateNav } from '@/utils/fundEstimate'
 
 // 数据管理器状态
 interface DataManagerState {
@@ -117,14 +118,34 @@ class DataManager {
         const currentValue = estimateNav * holdShares
         const profitAmount = currentValue - costAmount
         const profitRate = costNav > 0 ? ((estimateNav - costNav) / costNav * 100) : 0
+        const realtimeChangePct = realtime.estimate_change !== null ? Number(realtime.estimate_change) : null
+        const realtimeChangeAmount = realtimeChangePct !== null
+          ? currentValue - (currentValue / (1 + realtimeChangePct / 100))
+          : 0
+        const officialNav = Number(realtime.official_nav ?? (realtime.data_kind === 'latest_nav' ? realtime.estimate_nav : realtime.previous_nav))
+        const officialChangePct = realtime.official_change ?? (realtime.data_kind === 'latest_nav' ? realtime.estimate_change : realtime.daily_growth)
+        const officialValue = Number.isFinite(officialNav) && officialNav > 0 ? officialNav * holdShares : null
+        const officialChangeAmount = officialValue !== null && officialChangePct !== null && officialChangePct !== undefined
+          ? officialValue - (officialValue / (1 + Number(officialChangePct) / 100))
+          : 0
 
         return {
           ...item,
           current_nav: estimateNav,
-          current_change: realtime.estimate_change !== null ? Number(realtime.estimate_change) : null,
+          current_change: realtimeChangePct,
           current_value: currentValue,
           profit_amount: profitAmount,
-          profit_rate: profitRate
+          profit_rate: profitRate,
+          realtime_change_pct: realtimeChangePct,
+          realtime_change_amount: realtimeChangeAmount,
+          official_nav: Number.isFinite(officialNav) && officialNav > 0 ? officialNav : null,
+          official_change_pct: officialChangePct !== null && officialChangePct !== undefined ? Number(officialChangePct) : null,
+          official_change_amount: officialChangeAmount,
+          official_value: officialValue,
+          official_update_time: realtime.official_update_time || (realtime.data_kind === 'latest_nav' ? realtime.update_time : null),
+          data_kind: realtime.data_kind,
+          data_kind_label: realtime.data_kind_label,
+          is_realtime: realtime.is_realtime
         }
       }
 
@@ -140,7 +161,14 @@ class DataManager {
         current_nav: currentNav || null,
         current_value: currentValue || null,
         profit_amount: profitAmount,
-        profit_rate: profitRate
+        profit_rate: profitRate,
+        realtime_change_pct: item.current_change ?? null,
+        realtime_change_amount: item.daily_profit || 0,
+        official_nav: item.current_nav || null,
+        official_change_pct: item.current_change ?? null,
+        official_change_amount: item.daily_profit || 0,
+        official_value: item.current_value || null,
+        official_update_time: null
       }
     })
   })
@@ -213,8 +241,20 @@ class DataManager {
     // 等待所有请求完成
     await Promise.all(promises)
 
+    const targetCodes = this.getRealtimeTargetCodes()
+    if (targetCodes.length > 0) {
+      await this.loadRealtimeData(targetCodes).catch(e => {
+        console.warn('[DataManager] 补充刷新实时数据失败:', e)
+      })
+    }
+
     const elapsed = Date.now() - startTime
     console.log(`[DataManager] ✅ 并行刷新完成，耗时: ${elapsed}ms`)
+  }
+
+  private getRealtimeTargetCodes(): string[] {
+    const portfolioCodes = state.portfolioItems.map(item => item.fund_code).filter(Boolean)
+    return [...new Set([...state.fundList, ...portfolioCodes])]
   }
 
   // ============ 基金列表操作 ============
@@ -274,10 +314,10 @@ class DataManager {
     return false
   }
 
-  private async fetchFundListFromAPI(): Promise<string[]> {
+  private async fetchFundListFromAPI(useDefaultList = false): Promise<string[]> {
     try {
       console.log('[DataManager] 从API获取基金列表...')
-      const data = await fundApi.getDefaultList()
+      const data = useDefaultList ? await fundApi.getDefaultList() : await fundApi.getFundList()
       state.fundList = data
       state.fundListLoaded = true
       state.fundListError = null
@@ -353,7 +393,7 @@ class DataManager {
     state.fundListLoaded = false
 
     // 强制从API获取最新列表
-    const data = await this.fetchFundListFromAPI()
+    const data = await this.fetchFundListFromAPI(true)
 
     // 清空现有实时数据
     state.realtimeData.clear()
@@ -401,7 +441,13 @@ class DataManager {
       cacheStats.hits += uniqueCodes.length
       cacheStats.total += uniqueCodes.length
       console.log(`[DataManager] ✅ 缓存命中: ${uniqueCodes.length} 只基金`)
-      return uniqueCodes.map(code => state.realtimeData.get(code)!)
+      const cachedData = uniqueCodes.map(code => state.realtimeData.get(code)!)
+      const enrichedData = await this.enrichRealtimeAlternatives(cachedData)
+      enrichedData.forEach(item => {
+        state.realtimeData.set(item.code, item)
+      })
+      this.saveRealtimeDataToStorage()
+      return enrichedData
     }
 
     cacheStats.total += uniqueCodes.length
@@ -450,6 +496,7 @@ class DataManager {
           }
 
           console.log('[DataManager] 从本地存储恢复实时数据:', parsed.length, '只基金')
+          this.refreshCachedRealtimeAlternatives(parsed)
           return true
         }
       } catch (e) {
@@ -487,8 +534,32 @@ class DataManager {
     }
   }
 
+  private refreshCachedRealtimeAlternatives(data?: FundRealtimeData[]): void {
+    const cachedData = data || Array.from(state.realtimeData.values())
+    if (cachedData.length === 0) return
+
+    this.enrichRealtimeAlternatives(cachedData)
+      .then(enrichedData => {
+        let changed = false
+        enrichedData.forEach(item => {
+          const previous = state.realtimeData.get(item.code)
+          if (!previous || JSON.stringify(previous) !== JSON.stringify(item)) {
+            state.realtimeData.set(item.code, item)
+            changed = true
+          }
+        })
+        if (changed) {
+          this.saveRealtimeDataToStorage()
+          console.log('[DataManager] 已增强本地实时数据替代估算:', enrichedData.length, '只基金')
+        }
+      })
+      .catch(e => {
+        console.warn('[DataManager] 增强本地实时数据替代估算失败:', e)
+      })
+  }
+
   private async enrichRealtimeAlternatives(data: FundRealtimeData[]): Promise<FundRealtimeData[]> {
-    const nonRealtimeItems = data.filter(item => item.is_realtime === false)
+    const nonRealtimeItems = data.filter(item => item.is_realtime === false && !this.shouldPreferOfficialNav(item))
     if (nonRealtimeItems.length === 0) {
       return data
     }
@@ -510,13 +581,32 @@ class DataManager {
     })
   }
 
+  private shouldPreferOfficialNav(item: FundRealtimeData): boolean {
+    if (item.data_kind !== 'latest_nav' || !item.update_time) return false
+    const now = new Date()
+    if (now.getHours() < 15) return false
+    const today = this.formatDate(now)
+    return item.update_time.includes(today)
+  }
+
   private buildPreferredAlternativeFund(item: FundRealtimeData, alternatives?: RealtimeAlternativeResult): AlternativeFundPatch | null {
     if (!alternatives) return null
+    const officialSnapshot = item.data_kind === 'latest_nav' || item.is_realtime === false
+      ? {
+          official_nav: item.official_nav ?? item.estimate_nav,
+          official_change: item.official_change ?? item.estimate_change,
+          official_update_time: item.official_update_time ?? item.update_time,
+          official_data_kind_label: item.official_data_kind_label ?? item.data_kind_label ?? '最新净值'
+        }
+      : {}
 
       const estimate = alternatives?.holdings_based_estimate
       if (estimate?.feasible && estimate.weighted_stock_change_pct !== null && estimate.weighted_stock_change_pct !== undefined) {
+        const estimateChange = estimate.weighted_stock_change_pct
         return {
-          estimate_change: estimate.weighted_stock_change_pct,
+          ...officialSnapshot,
+          estimate_nav: deriveEstimateNav(item, estimateChange),
+          estimate_change: estimateChange,
           update_time: this.formatMinuteTime(new Date()),
           status: '持仓估算',
           data_source: 'holdings_estimate',
@@ -532,8 +622,11 @@ class DataManager {
 
       const reference = alternatives?.reference_symbol_estimate
       if (reference?.feasible && reference.weighted_stock_change_pct !== null && reference.weighted_stock_change_pct !== undefined) {
+        const estimateChange = reference.weighted_stock_change_pct
         return {
-          estimate_change: reference.weighted_stock_change_pct,
+          ...officialSnapshot,
+          estimate_nav: deriveEstimateNav(item, estimateChange),
+          estimate_change: estimateChange,
           update_time: this.formatMinuteTime(new Date()),
           status: '标的估算',
           data_source: 'reference_symbol_estimate',
@@ -551,8 +644,11 @@ class DataManager {
         return candidate.change_pct !== null && candidate.change_pct !== undefined
       })
       if (realtimeCandidate) {
+        const estimateChange = realtimeCandidate.change_pct as number
         return {
-          estimate_change: realtimeCandidate.change_pct as number,
+          ...officialSnapshot,
+          estimate_nav: deriveEstimateNav(item, estimateChange),
+          estimate_change: estimateChange,
           update_time: realtimeCandidate.update_time || item.update_time,
           status: '相近参考',
           data_source: realtimeCandidate.source,
@@ -571,8 +667,11 @@ class DataManager {
         return null
       }
 
+      const estimateChange = fallback.change_pct
       return {
-        estimate_change: fallback.change_pct,
+        ...officialSnapshot,
+        estimate_nav: deriveEstimateNav(item, estimateChange),
+        estimate_change: estimateChange,
         update_time: fallback.update_time || item.update_time,
         status: '兜底估算',
         data_source: fallback.source || item.data_source || 'fallback_estimate',
@@ -589,6 +688,11 @@ class DataManager {
   private formatMinuteTime(date: Date): string {
     const pad = (value: number) => String(value).padStart(2, '0')
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }
+
+  private formatDate(date: Date): string {
+    const pad = (value: number) => String(value).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
   }
 
   private formatPercentRatio(value?: number | null): string {
@@ -762,17 +866,11 @@ class DataManager {
       // 保存到本地存储
       this.savePortfolioToStorage()
 
-      // 加载缺失的实时数据（仅在已有数据基础上补充）
+      // 持仓基金也参与实时/替代估算刷新，避免自选列表之外的基金停留在旧缓存
       if (state.portfolioItems.length > 0) {
-        const missingCodes = state.portfolioItems
-          .map(item => item.fund_code)
-          .filter(code => !state.realtimeData.has(code))
-
-        if (missingCodes.length > 0) {
-          this.loadRealtimeData(missingCodes).catch(e => {
-            console.warn('[DataManager] 加载持仓基金实时数据失败:', e)
-          })
-        }
+        this.loadRealtimeData(this.getRealtimeTargetCodes()).catch(e => {
+          console.warn('[DataManager] 加载持仓基金实时数据失败:', e)
+        })
       }
 
       console.log('[DataManager] 持仓数据加载完成:', state.portfolioItems.length)
@@ -818,8 +916,9 @@ class DataManager {
     try {
       await this.loadPortfolio(true)
 
-      if (state.fundList.length > 0) {
-        await this.loadRealtimeData(state.fundList, true)
+      const targetCodes = this.getRealtimeTargetCodes()
+      if (targetCodes.length > 0) {
+        await this.loadRealtimeData(targetCodes, true)
       }
 
       console.log('[DataManager] 所有数据刷新完成')

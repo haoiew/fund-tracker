@@ -30,7 +30,7 @@ cd fund-tracker/frontend && npm install && npm run dev
 ```
 
 - 后端: http://127.0.0.1:8001 | API 文档: http://127.0.0.1:8001/docs
-- 前端: http://localhost:5173（自动代理 `/api/*` → 后端）
+- 前端: http://localhost:3000（自动代理 `/api/*` → 后端）
 
 ## 功能
 

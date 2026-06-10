@@ -7,7 +7,7 @@
         </span>
         <div class="page-toolbar__copy">
           <h2 class="page-toolbar__title">条件筛选工作台</h2>
-          <p class="page-toolbar__meta">{{ conditions.length }} 组条件 · {{ includeRealtime ? '纳入实时估值' : '仅历史净值' }} · 并行查询</p>
+          <p class="page-toolbar__meta">{{ conditions.length }} 组条件 · {{ scopeLabel }} · {{ includeRealtime ? '纳入实时估值' : '仅历史净值' }} · 并行查询</p>
         </div>
       </div>
       <div class="page-toolbar__actions">
@@ -22,11 +22,21 @@
           <div class="workbench-panel__title">筛选条件</div>
           <div class="workbench-panel__meta">用统一字段构建连续涨跌或区间累计条件</div>
         </div>
-        <div class="screen-mode">
-          <span class="screen-mode__label">实时估值</span>
-          <el-tooltip content="开启后将今日实时估值纳入涨跌幅计算" placement="top">
-            <el-switch v-model="includeRealtime" active-text="纳入" inactive-text="关闭" />
-          </el-tooltip>
+        <div class="screen-builder-actions">
+          <div class="screen-mode screen-scope">
+            <span class="screen-mode__label">筛选范围</span>
+            <el-radio-group v-model="screenScope" class="scope-segment">
+              <el-radio-button value="watchlist">关注</el-radio-button>
+              <el-radio-button value="portfolio">持仓</el-radio-button>
+              <el-radio-button value="market">全市场</el-radio-button>
+            </el-radio-group>
+          </div>
+          <div class="screen-mode">
+            <span class="screen-mode__label">实时估值</span>
+            <el-tooltip content="开启后将今日实时估值纳入涨跌幅计算；关注和持仓范围会同时纳入可用替代估算" placement="top">
+              <el-switch v-model="includeRealtime" active-text="纳入" inactive-text="关闭" />
+            </el-tooltip>
+          </div>
         </div>
       </div>
 
@@ -173,15 +183,16 @@ defineOptions({
   name: 'ScreenView'
 })
 
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Plus, Close, ArrowUp, ArrowDown, Search } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useFundStore } from '@/stores/fundStore'
 import FundChart from '@/components/Charts/FundChart.vue'
 import ResultTable from './components/ResultTable.vue'
-import { fundApi, type ScreenType, type FundTrendResult } from '@/api/fund'
+import { fundApi, type ScreenType, type ScreenUniverse, type FundTrendResult } from '@/api/fund'
 import { loadAppSettings } from '@/platform/appSettings'
+import { dataManager } from '@/stores/dataManager'
 
 const { t } = useI18n()
 const fundStore = useFundStore()
@@ -201,6 +212,14 @@ interface ResultItem {
   count: number
   funds: FundTrendResult[]
   loading: boolean
+}
+
+type ScreenScope = 'watchlist' | 'portfolio' | 'market'
+
+interface ScreenTarget {
+  codes?: string[]
+  universe: ScreenUniverse
+  limit?: number
 }
 
 function generateId(): string {
@@ -230,9 +249,16 @@ const conditions = ref<ConditionItem[]>([
 const results = ref<ResultItem[]>([])
 const loading = ref(false)
 const includeRealtime = ref(true)
+const screenScope = ref<ScreenScope>('watchlist')
 const chartVisible = ref(false)
 const selectedFund = ref<FundTrendResult | null>(null)
 const selectedChartRange = ref('1W')
+
+const scopeLabel = computed(() => {
+  if (screenScope.value === 'portfolio') return '持仓列表'
+  if (screenScope.value === 'market') return '全市场Top10'
+  return '关注列表'
+})
 
 // 查找基金所属的筛选条件ID
 function findConditionIdByFund(fund: FundTrendResult): string | undefined {
@@ -291,14 +317,37 @@ function getCalendarDaysSetting(): boolean {
   return loadAppSettings().dayCountMode === 'calendar'
 }
 
+async function resolveScreenTarget(): Promise<ScreenTarget | null> {
+  if (screenScope.value === 'market') {
+    return { universe: 'market', limit: 10 }
+  }
+
+  if (screenScope.value === 'portfolio') {
+    await dataManager.loadPortfolio()
+    const codes = [...new Set(dataManager.getState().portfolioItems.map(item => item.fund_code).filter(Boolean))]
+    if (codes.length === 0) {
+      ElMessage.warning('持仓列表为空，请先添加持仓基金')
+      return null
+    }
+    return { codes, universe: 'local' }
+  }
+
+  await fundStore.initFundList()
+  const codes = [...new Set(fundStore.fundList)]
+  if (codes.length === 0) {
+    ElMessage.warning('关注列表为空，请先添加关注基金')
+    return null
+  }
+  return { codes, universe: 'local' }
+}
+
 async function handleScreenAll() {
-  if (fundStore.fundList.length === 0) {
-    ElMessage.warning('基金列表为空，请先加载基金数据')
+  const target = await resolveScreenTarget()
+  if (!target) {
     return
   }
 
   loading.value = true
-  const codes = [...fundStore.fundList]
 
   results.value = conditions.value.map(c => ({
     conditionId: c.id,
@@ -314,10 +363,27 @@ async function handleScreenAll() {
       try {
         const minPct = condition.minPctDisplay / 100
         if (condition.type === 'consecutive') {
-          const result = await fundApi.screen(condition.direction, condition.minDays, minPct, codes, includeRealtime.value)
+          const result = await fundApi.screen(
+            condition.direction,
+            condition.minDays,
+            minPct,
+            target.codes,
+            includeRealtime.value,
+            target.universe,
+            target.limit
+          )
           return { conditionId: condition.id, direction: condition.direction, count: result.count, funds: result.funds, loading: false }
         } else {
-          const result = await fundApi.screenPeriod(condition.direction, condition.periodDays, minPct, codes, includeRealtime.value, calendarDays)
+          const result = await fundApi.screenPeriod(
+            condition.direction,
+            condition.periodDays,
+            minPct,
+            target.codes,
+            includeRealtime.value,
+            calendarDays,
+            target.universe,
+            target.limit
+          )
           return { conditionId: condition.id, direction: condition.direction, count: result.count, funds: result.funds, loading: false }
         }
       } catch {
@@ -330,7 +396,7 @@ async function handleScreenAll() {
     if (totalCount === 0) {
       ElMessage.info('未找到符合条件的基金')
     } else {
-      ElMessage.success(`查询完成，共找到 ${totalCount} 只基金`)
+      ElMessage.success(`查询完成，${scopeLabel.value}共找到 ${totalCount} 只基金`)
     }
   } catch {
     ElMessage.error('筛选失败')
@@ -374,6 +440,15 @@ async function addToWatchlist(fund: FundTrendResult) {
     border-bottom: 1px solid var(--border-light);
   }
 
+  .screen-builder-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
+  }
+
   .screen-mode {
     display: inline-flex;
     align-items: center;
@@ -388,6 +463,20 @@ async function addToWatchlist(fund: FundTrendResult) {
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .scope-segment {
+    :deep(.el-radio-button__inner) {
+      height: 30px;
+      min-width: 58px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+      border-radius: var(--radius-sm) !important;
+      font-size: 12px;
+      font-weight: 800;
+    }
   }
 
   .condition-rule-list {
@@ -606,6 +695,10 @@ async function addToWatchlist(fund: FundTrendResult) {
     .screen-builder-header {
       flex-direction: column;
       align-items: stretch;
+    }
+
+    .screen-builder-actions {
+      justify-content: flex-start;
     }
 
     .condition-controls {

@@ -16,6 +16,10 @@ export interface FundRealtimeData {
   data_kind_label?: string
   is_realtime?: boolean
   data_timestamp?: string
+  official_nav?: number | null
+  official_change?: number | null
+  official_update_time?: string | null
+  official_data_kind_label?: string | null
   // 新增字段
   previous_nav?: number | null
   accumulated_nav?: number | null
@@ -36,6 +40,7 @@ export interface FundTrendResult {
 }
 
 export type ScreenType = 'consecutive' | 'period'
+export type ScreenUniverse = 'local' | 'market'
 
 export interface ScreenCondition {
   id: string
@@ -178,7 +183,9 @@ export const fundApi = {
     minDays: number = 2,
     minPct: number = 0.03,
     codes?: string[],
-    includeRealtime: boolean = false
+    includeRealtime: boolean = false,
+    universe: ScreenUniverse = 'local',
+    limit?: number
   ): Promise<{
     direction: string
     min_days: number
@@ -189,7 +196,11 @@ export const fundApi = {
     const params: Record<string, string | number | boolean> = {
       min_days: minDays,
       min_pct: minPct,
-      include_realtime: includeRealtime
+      include_realtime: includeRealtime,
+      universe
+    }
+    if (limit !== undefined) {
+      params.limit = limit
     }
     if (codes && codes.length > 0) {
       params.codes = codes.join(',')
@@ -204,7 +215,9 @@ export const fundApi = {
     minPct: number = 0.03,
     codes?: string[],
     includeRealtime: boolean = false,
-    calendarDays: boolean = false
+    calendarDays: boolean = false,
+    universe: ScreenUniverse = 'local',
+    limit?: number
   ): Promise<{
     direction: string
     period_days: number
@@ -218,7 +231,9 @@ export const fundApi = {
       min_pct: minPct,
       codes: codes && codes.length > 0 ? codes : undefined,
       include_realtime: includeRealtime,
-      calendar_days: calendarDays
+      calendar_days: calendarDays,
+      universe,
+      limit
     })
   },
 
@@ -266,7 +281,7 @@ export const fundApi = {
       last_nav: number | null
       last_change_pct: number | null
       update_time: string
-      data_kind?: 'realtime_estimate' | 'latest_nav'
+      data_kind?: FundRealtimeData['data_kind']
       data_kind_label?: string
       is_realtime?: boolean
       is_fresh: boolean

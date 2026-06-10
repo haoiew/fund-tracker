@@ -72,8 +72,8 @@ export function exportPortfolioToCSV(items: PortfolioItem[]): void {
     '成本价': item.cost_nav?.toFixed(4) ?? '--',
     '当前净值': item.current_nav?.toFixed(4) ?? '--',
     '当前市值': item.current_value?.toFixed(2) ?? '--',
-    '盈亏金额': item.profit_amount?.toFixed(2) ?? '--',
-    '盈亏比例': item.profit_rate ? `${item.profit_rate > 0 ? '+' : ''}${item.profit_rate.toFixed(2)}%` : '--'
+    '持有收益': item.profit_amount?.toFixed(2) ?? '--',
+    '持有收益率': item.profit_rate ? `${item.profit_rate > 0 ? '+' : ''}${item.profit_rate.toFixed(2)}%` : '--'
   }))
 
   const timestamp = new Date().toISOString().slice(0, 10)

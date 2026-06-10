@@ -79,7 +79,7 @@ export default {
   portfolio: {
     title: '持仓管理',
     totalValue: '总市值',
-    totalProfit: '总盈亏',
+    totalProfit: '持有收益',
     profitRate: '收益率',
     addPosition: '添加持仓',
     myPositions: '我的持仓',
@@ -88,7 +88,7 @@ export default {
     costPrice: '成本价',
     currentNav: '当前净值',
     currentValue: '当前市值',
-    profitAmount: '盈亏金额',
+    profitAmount: '持有收益',
     editPosition: '编辑持仓',
     deleteConfirm: '确定要删除这个持仓吗？',
     addSuccess: '已添加 {name}',

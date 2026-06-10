@@ -66,3 +66,37 @@ class PortfolioTransaction(Base):
 
     def __repr__(self):
         return f"<PortfolioTransaction(fund_code='{self.fund_code}', type='{self.transaction_type}')>"
+
+
+class PortfolioRebalanceRecord(Base):
+    """AI持仓快照推断出的调仓记录。"""
+    __tablename__ = "portfolio_rebalance_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    fund_code = Column(String(10), ForeignKey("funds.code"), nullable=False, index=True)
+    fund_name = Column(String(100), nullable=False, default="")
+    action_type = Column(String(20), nullable=False, comment="add/increase/decrease/remove/adjust")
+    trade_date = Column(Date, nullable=False, index=True)
+
+    before_shares = Column(Numeric(12, 4), default=0)
+    after_shares = Column(Numeric(12, 4), default=0)
+    before_cost_amount = Column(Numeric(12, 2), default=0)
+    after_cost_amount = Column(Numeric(12, 2), default=0)
+    before_market_value = Column(Numeric(12, 2), default=0)
+    after_market_value = Column(Numeric(12, 2), default=0)
+    inferred_shares = Column(Numeric(12, 4), default=0)
+    inferred_amount = Column(Numeric(12, 2), default=0)
+
+    confidence = Column(Integer, default=0)
+    source = Column(String(20), default="ai_snapshot")
+    remark = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), comment="创建时间")
+
+    fund = relationship("Fund")
+
+    __table_args__ = (
+        Index("ix_portfolio_rebalance_fund_date", "fund_code", "trade_date"),
+    )
+
+    def __repr__(self):
+        return f"<PortfolioRebalanceRecord(fund_code='{self.fund_code}', action='{self.action_type}')>"

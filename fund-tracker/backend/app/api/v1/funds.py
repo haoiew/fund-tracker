@@ -84,10 +84,20 @@ class FundScreenRequest(BaseModel):
     min_days: int = 2
     min_pct: float = 0.03
     include_realtime: bool = False
+    universe: str = "local"
+    limit: Optional[int] = None
 
 
 async def _screen_funds(direction: str, request: FundScreenRequest) -> ResponseModel:
-    results = await get_fund_service().screen_funds(request.codes, direction, request.min_days, request.min_pct, include_realtime=request.include_realtime)
+    results = await get_fund_service().screen_funds(
+        request.codes,
+        direction,
+        request.min_days,
+        request.min_pct,
+        include_realtime=request.include_realtime,
+        universe=request.universe,
+        limit=request.limit,
+    )
     return ResponseModel(data={"direction": direction, "min_days": request.min_days, "min_pct": request.min_pct, "count": len(results), "funds": results})
 
 
@@ -102,11 +112,27 @@ async def screen_funds_down(request: FundScreenRequest):
 
 
 @router.get("/screen/{direction}", response_model=ResponseModel[dict])
-async def screen_funds_by_direction(direction: str, min_days: int = Query(2), min_pct: float = Query(0.03), codes: Optional[str] = Query(None), include_realtime: bool = Query(False)):
+async def screen_funds_by_direction(
+    direction: str,
+    min_days: int = Query(2),
+    min_pct: float = Query(0.03),
+    codes: Optional[str] = Query(None),
+    include_realtime: bool = Query(False),
+    universe: str = Query("local"),
+    limit: Optional[int] = Query(None, ge=1, le=100),
+):
     if direction not in ['up', 'down']:
         raise HTTPException(status_code=400, detail="direction must be 'up' or 'down'")
     code_list = codes.split(',') if codes else None
-    results = await get_fund_service().screen_funds(code_list, direction, min_days, min_pct, include_realtime=include_realtime)
+    results = await get_fund_service().screen_funds(
+        code_list,
+        direction,
+        min_days,
+        min_pct,
+        include_realtime=include_realtime,
+        universe=universe,
+        limit=limit,
+    )
     return ResponseModel(data={"direction": direction, "min_days": min_days, "min_pct": min_pct, "count": len(results), "funds": results})
 
 
@@ -116,7 +142,8 @@ async def screen_funds_period(request: PeriodScreenRequest):
         raise HTTPException(status_code=400, detail="direction must be 'up' or 'down'")
     results = await get_fund_service().screen_period(
         request.codes, request.direction, request.period_days, request.min_pct,
-        include_realtime=request.include_realtime, calendar_days=request.calendar_days
+        include_realtime=request.include_realtime, calendar_days=request.calendar_days,
+        universe=request.universe, limit=request.limit
     )
     return ResponseModel(data={
         "direction": request.direction,

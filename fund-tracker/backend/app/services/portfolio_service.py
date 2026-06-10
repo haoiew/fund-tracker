@@ -8,14 +8,18 @@ from typing import List, Optional, Tuple, Dict
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
-from app.models.portfolio import PortfolioTransaction, UserPortfolio
+from app.models.portfolio import PortfolioRebalanceRecord, PortfolioTransaction, UserPortfolio
 from app.models.fund import Fund
 from app.schemas.portfolio import (
     PortfolioCreate, PortfolioUpdate, PortfolioResponse,
     PortfolioSummary, PortfolioProfitDetail, PortfolioProfitResponse,
     PortfolioTransactionCreate, PortfolioTransactionResponse,
     PortfolioImportConfirmItem, PortfolioImportConfirmRequest, PortfolioImportConfirmResponse,
-    PortfolioImportPreviewRequest, PortfolioImportPreviewResponse, PortfolioImportPreviewItem
+    PortfolioImportPreviewRequest, PortfolioImportPreviewResponse, PortfolioImportPreviewItem,
+    PortfolioRebalanceRecordResponse, PortfolioTransactionImportConfirmItem,
+    PortfolioTransactionImportConfirmRequest, PortfolioTransactionImportConfirmResponse,
+    PortfolioTransactionImportPreviewItem, PortfolioTransactionImportPreviewRequest,
+    PortfolioTransactionImportPreviewResponse
 )
 from app.logger import get_logger
 
@@ -449,7 +453,8 @@ class PortfolioService:
             return {}
 
     async def preview_import(self, db: Session, request: PortfolioImportPreviewRequest) -> PortfolioImportPreviewResponse:
-        existing_codes = {code for (code,) in db.query(UserPortfolio.fund_code).all()}
+        existing_map = {p.fund_code: p for p in db.query(UserPortfolio).all()}
+        existing_codes = set(existing_map.keys())
         seen_codes: set[str] = set()
         prepared_items = []
         realtime_codes: list[str] = []
@@ -473,7 +478,7 @@ class PortfolioService:
             elif fund_code in seen_codes:
                 status = "skipped"
                 reason = "导入数据中存在重复基金代码"
-            elif fund_code in existing_codes:
+            elif request.mode == "append" and fund_code in existing_codes:
                 status = "skipped"
                 reason = "该基金已存在于当前持仓"
             elif estimated_cost <= 0:
@@ -534,6 +539,16 @@ class PortfolioService:
                     status = "invalid"
                     reason = "份额或成本净值反推失败"
 
+            existing = existing_map.get(fund_code) if fund_code else None
+            diff = self._build_import_diff(existing, holding.market_value, estimated_cost, estimated_shares)
+            if request.mode == "rebalance" and existing is not None and status == "ready":
+                if diff["diff_type"] == "unchanged":
+                    status = "skipped"
+                    reason = "与当前持仓基本一致，无需记录调仓"
+                elif diff["confidence_score"] < 60:
+                    status = "skipped"
+                    reason = "推断置信度偏低，需要人工核对"
+
             items.append(PortfolioImportPreviewItem(
                 row_index=holding.row_index,
                 fund_code=fund_code,
@@ -553,7 +568,43 @@ class PortfolioService:
                 status=status,
                 reason=reason,
                 warnings=warnings,
+                diff_type=diff["diff_type"],
+                existing_portfolio_id=existing.id if existing is not None else None,
+                existing_shares=self._safe_decimal(existing.hold_shares) if existing is not None else None,
+                existing_cost=self._safe_decimal(existing.cost_amount) if existing is not None else None,
+                inferred_amount=diff["inferred_amount"],
+                inferred_shares=diff["inferred_shares"],
+                confidence_score=diff["confidence_score"],
             ))
+
+        if request.mode == "rebalance":
+            imported_codes = {item.fund_code for item in items if item.fund_code}
+            for fund_code, existing in existing_map.items():
+                if fund_code in imported_codes:
+                    continue
+                items.append(PortfolioImportPreviewItem(
+                    fund_code=fund_code,
+                    fund_name=existing.fund.name if existing.fund else fund_code,
+                    market_value=Decimal('0'),
+                    daily_return=Decimal('0'),
+                    holding_return=Decimal('0'),
+                    estimated_cost=Decimal('0'),
+                    current_nav=None,
+                    estimated_shares=Decimal('0'),
+                    estimated_cost_nav=None,
+                    match_status="matched",
+                    confidence=100,
+                    status="ready",
+                    reason="当前截图中未出现，按清仓处理",
+                    warnings=["推断为清仓，请确认截图是否包含完整持仓列表"],
+                    diff_type="remove",
+                    existing_portfolio_id=existing.id,
+                    existing_shares=self._safe_decimal(existing.hold_shares),
+                    existing_cost=self._safe_decimal(existing.cost_amount),
+                    inferred_amount=-self._safe_decimal(existing.cost_amount),
+                    inferred_shares=-self._safe_decimal(existing.hold_shares),
+                    confidence_score=75,
+                ))
 
         return PortfolioImportPreviewResponse(
             items=items,
@@ -562,10 +613,63 @@ class PortfolioService:
             invalid_count=sum(1 for item in items if item.status == "invalid"),
         )
 
+    def _build_import_diff(
+        self,
+        existing: Optional[UserPortfolio],
+        market_value: Decimal,
+        estimated_cost: Decimal,
+        estimated_shares: Optional[Decimal],
+    ) -> dict:
+        after_shares = self._safe_decimal(estimated_shares)
+        after_cost = self._safe_decimal(estimated_cost)
+        if existing is None:
+            return {
+                "diff_type": "new",
+                "inferred_amount": self._quantize(after_cost, "0.01"),
+                "inferred_shares": self._quantize(after_shares, "0.0001"),
+                "confidence_score": 80,
+            }
+
+        before_shares = self._safe_decimal(existing.hold_shares)
+        before_cost = self._safe_decimal(existing.cost_amount)
+        share_delta = after_shares - before_shares
+        cost_delta = after_cost - before_cost
+        share_tolerance = max(before_shares * Decimal("0.005"), Decimal("0.0001"))
+        cost_tolerance = max(before_cost * Decimal("0.01"), Decimal("1.00"))
+
+        if abs(share_delta) <= share_tolerance and abs(cost_delta) <= cost_tolerance:
+            diff_type = "unchanged"
+            confidence = 95
+        elif before_shares <= 0 and after_shares > 0:
+            diff_type = "new"
+            confidence = 80
+        elif after_shares <= 0:
+            diff_type = "remove"
+            confidence = 75
+        elif share_delta > share_tolerance:
+            diff_type = "increase"
+            confidence = 85
+        elif share_delta < -share_tolerance:
+            diff_type = "decrease"
+            confidence = 85
+        else:
+            diff_type = "adjust"
+            confidence = 65
+
+        if market_value <= 0 and diff_type != "remove":
+            confidence = min(confidence, 50)
+
+        return {
+            "diff_type": diff_type,
+            "inferred_amount": self._quantize(cost_delta, "0.01"),
+            "inferred_shares": self._quantize(share_delta, "0.0001"),
+            "confidence_score": confidence,
+        }
+
     async def confirm_import(self, db: Session, request: PortfolioImportConfirmRequest) -> PortfolioImportConfirmResponse:
         preview = await self.preview_import(
             db,
-            PortfolioImportPreviewRequest(holdings=request.holdings, strict=request.strict)
+            PortfolioImportPreviewRequest(holdings=request.holdings, strict=request.strict, mode=request.mode)
         )
         trade_date = request.trade_date or date.today()
         existing_codes = {code for (code,) in db.query(UserPortfolio.fund_code).all()}
@@ -586,8 +690,10 @@ class PortfolioService:
                         error=item.reason or "预检未通过",
                     ))
                     continue
+                if request.mode == "rebalance" and item.diff_type == "remove":
+                    continue
 
-                if item.fund_code in existing_codes:
+                if request.mode == "append" and item.fund_code in existing_codes:
                     skipped_count += 1
                     results.append(PortfolioImportConfirmItem(
                         row_index=item.row_index,
@@ -615,17 +721,46 @@ class PortfolioService:
                 savepoint = db.begin_nested()
                 try:
                     self._get_or_create_fund(db, item.fund_code, item.fund_name)
-                    db_portfolio = UserPortfolio(
-                        fund_code=item.fund_code,
-                        hold_shares=hold_shares,
-                        cost_amount=cost_amount,
-                        cost_nav=cost_nav,
-                        buy_date=trade_date,
-                        remark="持仓截图导入",
+                    db_portfolio = (
+                        db.query(UserPortfolio)
+                        .filter(UserPortfolio.fund_code == item.fund_code)
+                        .order_by(UserPortfolio.id)
+                        .first()
                     )
-                    db.add(db_portfolio)
+                    existing_before = None
+                    if db_portfolio is not None:
+                        existing_before = {
+                            "shares": self._safe_decimal(db_portfolio.hold_shares),
+                            "cost": self._safe_decimal(db_portfolio.cost_amount),
+                            "market_value": self._safe_decimal(db_portfolio.hold_shares) * self._safe_decimal(item.current_nav),
+                        }
+                        db_portfolio.hold_shares = hold_shares
+                        db_portfolio.cost_amount = cost_amount
+                        db_portfolio.cost_nav = cost_nav
+                        db_portfolio.buy_date = db_portfolio.buy_date or trade_date
+                        db_portfolio.remark = "持仓截图覆盖" if request.mode == "overwrite" else "持仓截图推断调仓"
+                    else:
+                        db_portfolio = UserPortfolio(
+                            fund_code=item.fund_code,
+                            hold_shares=hold_shares,
+                            cost_amount=cost_amount,
+                            cost_nav=cost_nav,
+                            buy_date=trade_date,
+                            remark="持仓截图导入",
+                        )
+                        db.add(db_portfolio)
                     db.flush()
                     self._upsert_snapshot_transaction(db, db_portfolio, source="import")
+                    if request.mode == "rebalance":
+                        before = existing_before or {"shares": Decimal('0'), "cost": Decimal('0'), "market_value": Decimal('0')}
+                        self._create_rebalance_record_from_preview(
+                            db=db,
+                            item=item,
+                            trade_date=trade_date,
+                            before_shares=before["shares"],
+                            before_cost=before["cost"],
+                            before_market_value=before["market_value"],
+                        )
                     savepoint.commit()
                     existing_codes.add(item.fund_code)
                     success_count += 1
@@ -647,6 +782,51 @@ class PortfolioService:
                         error=str(e),
                     ))
 
+            if request.mode == "rebalance":
+                for item in preview.items:
+                    if item.status != "ready" or item.diff_type != "remove" or not item.existing_portfolio_id:
+                        continue
+                    portfolio = self.get_portfolio(db, item.existing_portfolio_id)
+                    if portfolio is None:
+                        continue
+                    savepoint = db.begin_nested()
+                    try:
+                        before_shares = self._safe_decimal(portfolio.hold_shares)
+                        before_cost = self._safe_decimal(portfolio.cost_amount)
+                        before_market_value = before_cost
+                        self._create_rebalance_record_from_preview(
+                            db=db,
+                            item=item,
+                            trade_date=trade_date,
+                            before_shares=before_shares,
+                            before_cost=before_cost,
+                            before_market_value=before_market_value,
+                        )
+                        portfolio.hold_shares = Decimal('0')
+                        portfolio.cost_amount = Decimal('0')
+                        portfolio.cost_nav = None
+                        portfolio.remark = "持仓截图推断清仓"
+                        self._upsert_snapshot_transaction(db, portfolio, source="import")
+                        savepoint.commit()
+                        success_count += 1
+                        results.append(PortfolioImportConfirmItem(
+                            row_index=item.row_index,
+                            fund_code=item.fund_code,
+                            fund_name=item.fund_name,
+                            status="success",
+                            portfolio_id=portfolio.id,
+                        ))
+                    except Exception as e:
+                        savepoint.rollback()
+                        failed_count += 1
+                        results.append(PortfolioImportConfirmItem(
+                            row_index=item.row_index,
+                            fund_code=item.fund_code,
+                            fund_name=item.fund_name,
+                            status="failed",
+                            error=str(e),
+                        ))
+
             if success_count > 0:
                 db.commit()
         except SQLAlchemyError as e:
@@ -654,6 +834,251 @@ class PortfolioService:
             raise PortfolioServiceError(f"批量导入失败: {str(e)}")
 
         return PortfolioImportConfirmResponse(
+            items=results,
+            success_count=success_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count,
+        )
+
+    def _create_rebalance_record_from_preview(
+        self,
+        *,
+        db: Session,
+        item: PortfolioImportPreviewItem,
+        trade_date: date,
+        before_shares: Decimal,
+        before_cost: Decimal,
+        before_market_value: Decimal,
+    ) -> PortfolioRebalanceRecord:
+        action_type = item.diff_type or "adjust"
+        record = PortfolioRebalanceRecord(
+            fund_code=item.fund_code,
+            fund_name=item.fund_name,
+            action_type=action_type,
+            trade_date=trade_date,
+            before_shares=self._quantize(before_shares, "0.0001"),
+            after_shares=self._quantize(self._safe_decimal(item.estimated_shares), "0.0001"),
+            before_cost_amount=self._quantize(before_cost, "0.01"),
+            after_cost_amount=self._quantize(self._safe_decimal(item.estimated_cost), "0.01"),
+            before_market_value=self._quantize(before_market_value, "0.01"),
+            after_market_value=self._quantize(self._safe_decimal(item.market_value), "0.01"),
+            inferred_shares=self._quantize(self._safe_decimal(item.inferred_shares), "0.0001"),
+            inferred_amount=self._quantize(self._safe_decimal(item.inferred_amount), "0.01"),
+            confidence=item.confidence_score or 0,
+            source="ai_snapshot",
+            remark=item.reason or "",
+        )
+        db.add(record)
+        return record
+
+    def get_rebalance_records(self, db: Session, limit: int = 200) -> List[PortfolioRebalanceRecord]:
+        return (
+            db.query(PortfolioRebalanceRecord)
+            .order_by(PortfolioRebalanceRecord.trade_date.desc(), PortfolioRebalanceRecord.id.desc())
+            .limit(limit)
+            .all()
+        )
+
+    def to_rebalance_record_response(self, record: PortfolioRebalanceRecord) -> PortfolioRebalanceRecordResponse:
+        return PortfolioRebalanceRecordResponse(
+            id=record.id,
+            fund_code=record.fund_code,
+            fund_name=record.fund_name or (record.fund.name if record.fund else record.fund_code),
+            action_type=record.action_type,
+            trade_date=record.trade_date,
+            before_shares=self._safe_decimal(record.before_shares),
+            after_shares=self._safe_decimal(record.after_shares),
+            before_cost_amount=self._safe_decimal(record.before_cost_amount),
+            after_cost_amount=self._safe_decimal(record.after_cost_amount),
+            before_market_value=self._safe_decimal(record.before_market_value),
+            after_market_value=self._safe_decimal(record.after_market_value),
+            inferred_shares=self._safe_decimal(record.inferred_shares),
+            inferred_amount=self._safe_decimal(record.inferred_amount),
+            confidence=record.confidence or 0,
+            source=record.source or "ai_snapshot",
+            remark=record.remark,
+            created_at=record.created_at,
+        )
+
+    async def preview_transaction_import(
+        self,
+        db: Session,
+        request: PortfolioTransactionImportPreviewRequest,
+    ) -> PortfolioTransactionImportPreviewResponse:
+        existing_map = {p.fund_code: p for p in db.query(UserPortfolio).all()}
+        realtime_codes: list[str] = []
+        prepared_items = []
+        for txn in request.transactions:
+            fund_code = txn.fund_code or ""
+            status = "ready"
+            reason = ""
+            warnings: list[str] = []
+
+            if not fund_code:
+                status = "skipped"
+                reason = "缺少基金代码"
+            elif request.strict and txn.match_status and txn.match_status != "matched":
+                status = "skipped"
+                reason = f"识别状态为 {txn.match_status}，需要人工确认"
+            elif txn.confidence is not None and txn.confidence < 90:
+                status = "skipped"
+                reason = "基金匹配置信度低于90"
+            elif txn.transaction_type not in {"buy", "sell", "dividend"}:
+                status = "invalid"
+                reason = "交易明细截图只支持买入、卖出和分红流水"
+            elif txn.order_status and "完成" not in txn.order_status and "成功" not in txn.order_status:
+                warnings.append("订单状态不是明确完成，请核对后再导入")
+
+            if txn.transaction_type == "sell" and fund_code and fund_code not in existing_map:
+                status = "skipped"
+                reason = "卖出交易需要已有持仓"
+
+            if fund_code:
+                realtime_codes.append(fund_code)
+            prepared_items.append((txn, fund_code, status, reason, warnings))
+
+        rt_map = await self._fetch_import_realtime_map(realtime_codes)
+        items: list[PortfolioTransactionImportPreviewItem] = []
+        for txn, fund_code, status, reason, warnings in prepared_items:
+            current_nav = None
+            estimated_shares = None
+            rt = rt_map.get(fund_code) if fund_code else None
+            if rt is not None:
+                current_nav_value = self._safe_decimal(getattr(rt, "estimate_nav", None))
+                current_nav = current_nav_value if current_nav_value > 0 else None
+            if current_nav is not None and current_nav > 0:
+                estimated_shares = self._quantize(txn.amount / current_nav, "0.0001")
+            elif status == "ready" and txn.transaction_type in {"buy", "sell"}:
+                status = "invalid"
+                reason = "无法获取有效当前净值，不能反推交易份额"
+
+            existing = existing_map.get(fund_code) if fund_code else None
+            items.append(PortfolioTransactionImportPreviewItem(
+                row_index=txn.row_index,
+                fund_code=fund_code,
+                fund_name=txn.fund_name,
+                raw_fund_name=txn.raw_fund_name,
+                transaction_type=txn.transaction_type,
+                trade_date=txn.trade_date,
+                trade_time=txn.trade_time,
+                amount=txn.amount,
+                order_status=txn.order_status,
+                status=status,
+                reason=reason,
+                warnings=warnings,
+                match_status=txn.match_status,
+                confidence=txn.confidence,
+                match_reason=txn.match_reason,
+                current_nav=current_nav,
+                estimated_shares=estimated_shares,
+                existing_portfolio_id=existing.id if existing is not None else None,
+            ))
+
+        return PortfolioTransactionImportPreviewResponse(
+            items=items,
+            ready_count=sum(1 for item in items if item.status == "ready"),
+            skipped_count=sum(1 for item in items if item.status == "skipped"),
+            invalid_count=sum(1 for item in items if item.status == "invalid"),
+        )
+
+    async def confirm_transaction_import(
+        self,
+        db: Session,
+        request: PortfolioTransactionImportConfirmRequest,
+    ) -> PortfolioTransactionImportConfirmResponse:
+        preview = await self.preview_transaction_import(
+            db,
+            PortfolioTransactionImportPreviewRequest(transactions=request.transactions, strict=request.strict),
+        )
+        results: list[PortfolioTransactionImportConfirmItem] = []
+        success_count = 0
+        skipped_count = 0
+        failed_count = 0
+
+        try:
+            for item in preview.items:
+                if item.status != "ready":
+                    skipped_count += 1
+                    results.append(PortfolioTransactionImportConfirmItem(
+                        row_index=item.row_index,
+                        fund_code=item.fund_code or "",
+                        fund_name=item.fund_name,
+                        status="skipped",
+                        error=item.reason or "预检未通过",
+                    ))
+                    continue
+
+                shares = self._safe_decimal(item.estimated_shares)
+                amount = self._safe_decimal(item.amount)
+                if item.transaction_type in {"buy", "sell"} and shares <= 0:
+                    skipped_count += 1
+                    results.append(PortfolioTransactionImportConfirmItem(
+                        row_index=item.row_index,
+                        fund_code=item.fund_code or "",
+                        fund_name=item.fund_name,
+                        status="skipped",
+                        error="交易份额反推失败",
+                    ))
+                    continue
+
+                savepoint = db.begin_nested()
+                try:
+                    self._get_or_create_fund(db, item.fund_code, item.fund_name)
+                    transaction = PortfolioTransactionCreate(
+                        fund_code=item.fund_code,
+                        transaction_type=item.transaction_type,
+                        trade_date=item.trade_date,
+                        shares=shares if item.transaction_type in {"buy", "sell"} else Decimal('0'),
+                        amount=amount,
+                        nav=item.current_nav,
+                        fee=Decimal('0'),
+                        source="ai_txn",
+                        remark=f"账户明细截图导入{f' {item.trade_time}' if item.trade_time else ''}",
+                    )
+                    portfolio = self._resolve_transaction_portfolio(db, transaction)
+                    txn = PortfolioTransaction(
+                        portfolio_id=portfolio.id,
+                        fund_code=portfolio.fund_code,
+                        transaction_type=transaction.transaction_type,
+                        trade_date=transaction.trade_date,
+                        shares=transaction.shares,
+                        amount=transaction.amount,
+                        nav=transaction.nav,
+                        fee=transaction.fee,
+                        source=transaction.source,
+                        remark=transaction.remark,
+                    )
+                    db.add(txn)
+                    db.flush()
+                    self._recalculate_portfolio_from_transactions(db, portfolio)
+                    savepoint.commit()
+                    success_count += 1
+                    results.append(PortfolioTransactionImportConfirmItem(
+                        row_index=item.row_index,
+                        fund_code=item.fund_code or "",
+                        fund_name=item.fund_name,
+                        status="success",
+                        transaction_id=txn.id,
+                        portfolio_id=portfolio.id,
+                    ))
+                except Exception as e:
+                    savepoint.rollback()
+                    failed_count += 1
+                    results.append(PortfolioTransactionImportConfirmItem(
+                        row_index=item.row_index,
+                        fund_code=item.fund_code or "",
+                        fund_name=item.fund_name,
+                        status="failed",
+                        error=str(e),
+                    ))
+
+            if success_count > 0:
+                db.commit()
+        except SQLAlchemyError as e:
+            db.rollback()
+            raise PortfolioServiceError(f"交易明细导入失败: {str(e)}")
+
+        return PortfolioTransactionImportConfirmResponse(
             items=results,
             success_count=success_count,
             skipped_count=skipped_count,

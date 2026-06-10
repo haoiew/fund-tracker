@@ -76,7 +76,7 @@ export default {
   portfolio: {
     title: 'Portfolio',
     totalValue: 'Total Value',
-    totalProfit: 'Total Profit',
+    totalProfit: 'Holding Return',
     profitRate: 'Return Rate',
     addPosition: 'Add Position',
     myPositions: 'My Positions',
@@ -85,7 +85,7 @@ export default {
     costPrice: 'Cost Price',
     currentNav: 'Current NAV',
     currentValue: 'Current Value',
-    profitAmount: 'Profit/Loss',
+    profitAmount: 'Holding Return',
     editPosition: 'Edit Position',
     deleteConfirm: 'Are you sure to delete this position?',
     addSuccess: 'Added {name}',

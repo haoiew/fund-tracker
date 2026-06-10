@@ -122,6 +122,57 @@ class TestFundTrendAnalysis:
         assert isinstance(results, list)
         assert len(results) == 0
 
+    def test_market_screen_uses_rank_candidates_and_top_limit(self, fund_service, monkeypatch):
+        """全市场筛选使用市场候选，并默认限制 Top10。"""
+        monkeypatch.setattr(fund_service, "_get_market_rank_candidates", lambda direction, days, screen_type: ["000001", "000002"])
+
+        codes, allow_realtime_proxies, result_limit = fund_service._resolve_screen_codes(
+            None, "market", "up", 2, "consecutive"
+        )
+
+        assert codes == ["000001", "000002"]
+        assert allow_realtime_proxies is False
+        assert result_limit == 10
+
+    @pytest.mark.asyncio
+    async def test_append_realtime_change_uses_alternative_estimate(self, fund_service, monkeypatch):
+        """直接实时估值缺失时，筛选实时口径应纳入替代估算。"""
+        async def fake_realtime(code):
+            return FundRealtimeData(
+                code=code,
+                name="测试基金",
+                estimate_change=Decimal("0.10"),
+                update_time="2026-06-10",
+                data_kind="latest_nav",
+                data_kind_label="最新净值",
+                is_realtime=False,
+            )
+
+        async def fake_alternatives(code, name=None):
+            return {
+                "holdings_based_estimate": {
+                    "feasible": True,
+                    "weighted_stock_change_pct": 2.5,
+                },
+                "reference_symbol_estimate": None,
+                "same_name_realtime_candidates": [],
+                "fallback_estimate": None,
+                "direct": {"change_pct": 0.1},
+            }
+
+        monkeypatch.setattr(fund_service, "get_realtime_data", fake_realtime)
+        monkeypatch.setattr(fund_service, "get_realtime_alternatives", fake_alternatives)
+
+        hist = pd.DataFrame([
+            {"净值日期": pd.Timestamp("2026-06-08"), "累计净值": 1.0, "pct_change": 0.01},
+            {"净值日期": pd.Timestamp("2026-06-09"), "累计净值": 1.1, "pct_change": 0.02},
+        ])
+
+        enriched = await fund_service._append_realtime_change(hist, "000001", allow_realtime_proxies=True)
+
+        assert len(enriched) == 3
+        assert enriched.iloc[-1]["pct_change"] == pytest.approx(0.025)
+
     def test_analyze_trend_empty_data(self, fund_service):
         """测试空数据的趋势分析"""
         import pandas as pd
