@@ -389,7 +389,7 @@ def _match_fund_for_ai_item(fund_service, fund_name: str, raw_fund_name: str, wa
     return fund_code, fund_name, match_status, confidence, match_reason, candidates
 
 
-async def _build_portfolio_summary(db: Session, include_quotes: bool = True) -> dict:
+async def _build_portfolio_summary(db: Session, include_quotes: bool = True, refresh: bool = False) -> dict:
     """Shared helper for summary and refresh endpoints."""
     from app.services.fund_service import get_fund_service
     portfolios = portfolio_service.get_all_portfolios(db)
@@ -408,7 +408,7 @@ async def _build_portfolio_summary(db: Session, include_quotes: bool = True) -> 
 
     # Fetch realtime data once for all funds
     codes = [p.fund_code for p in portfolios]
-    rt_list = await get_fund_service().get_realtime_batch(codes)
+    rt_list = await get_fund_service().get_realtime_batch(codes, refresh=refresh)
     rt_map = {code: rt for code, rt in zip(codes, rt_list)}
 
     items = await asyncio.gather(*[portfolio_service.to_response(p, rt_map.get(p.fund_code)) for p in portfolios])
@@ -534,7 +534,7 @@ async def delete_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
 
 @router.post("/refresh", response_model=ResponseModel[dict])
 async def refresh_portfolio(db: Session = Depends(get_db)):
-    return ResponseModel(data=await _build_portfolio_summary(db))
+    return ResponseModel(data=await _build_portfolio_summary(db, refresh=True))
 
 
 @router.post("/ai-connection-test", response_model=ResponseModel[AiConnectionTestResponse])

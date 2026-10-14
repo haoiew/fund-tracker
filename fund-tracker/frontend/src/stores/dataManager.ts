@@ -18,6 +18,7 @@ interface DataManagerState {
 
   realtimeData: Map<string, FundRealtimeData>
   realtimeLoading: boolean
+  realtimeSourcesLoading: boolean
   realtimeLastFetch: number
   realtimeError: string | null
 
@@ -57,6 +58,7 @@ const state = reactive<DataManagerState>({
 
   realtimeData: new Map(),
   realtimeLoading: false,
+  realtimeSourcesLoading: false,
   realtimeLastFetch: 0,
   realtimeError: null,
 
@@ -87,7 +89,15 @@ const cacheStats = {
   total: 0
 }
 
+const SOURCE_PROGRESS_POLL_MS = 300
+const SOURCE_PROGRESS_MAX_MS = 15_000
+
 class DataManager {
+  private realtimeVersion = 0
+  private realtimeVersions = new Map<string, number>()
+  private backgroundRealtimeJobs = new Set<Promise<void>>()
+  private manualQuoteCodes = new Set<string>()
+
   // ============ 计算属性 ============
 
   getFundList = computed(() => state.fundList)
@@ -266,7 +276,7 @@ class DataManager {
 
     const targetCodes = this.getRealtimeTargetCodes()
     if (targetCodes.length > 0) {
-      await this.loadRealtimeData(targetCodes).catch(e => {
+      await this.loadRealtimeData(targetCodes, true).catch(e => {
         console.warn('[DataManager] 补充刷新实时数据失败:', e)
       })
     }
@@ -419,7 +429,8 @@ class DataManager {
     return state.realtimeData.get(code)
   }
 
-  updateRealtimeItem(item: FundRealtimeData): void {
+  updateRealtimeItem(item: FundRealtimeData, manual = false): void {
+    if (manual) this.manualQuoteCodes.add(item.code)
     state.realtimeData.set(item.code, item)
     state.realtimeLastFetch = Date.now()
     this.saveRealtimeDataToStorage()
@@ -514,36 +525,65 @@ class DataManager {
   }
 
   private async fetchRealtimeDataFromAPI(codes: string[]): Promise<FundRealtimeData[]> {
-    const started = Date.now()
-    let providersLoaded = false
-    try {
-      console.log('[DataManager] 从API获取实时数据:', codes.length, '只基金')
-      const data = await fundApi.getRealtimeBatch(codes, 'provider')
-
-      // Render provider results now; one slow inference must not hide real quotes.
-      data.forEach(item => state.realtimeData.set(item.code, item))
-      providersLoaded = true
-      state.realtimeError = null
-      if (state.portfolioLoaded) this.calculatePortfolioStats()
-      console.log(`[DataManager] 直接报价已显示，耗时: ${Date.now() - started}ms`)
-
-      // Auto also owns the after-close, today's-official-NAV rule.
-      const autoCodes = data.filter(item => !item.error &&
-        (item.estimate_nav == null || isOfficialNavDisplayed(item))).map(item => item.code)
-      if (autoCodes.length > 0) {
-        const supplemented = await fundApi.getRealtimeBatch(autoCodes, 'auto')
-        supplemented.forEach(item => state.realtimeData.set(item.code, item))
-      }
-
+    const version = ++this.realtimeVersion
+    codes.forEach(code => {
+      this.realtimeVersions.set(code, version)
+      this.manualQuoteCodes.delete(code) // 下一轮实际刷新恢复自动选价。
+    })
+    const isCurrent = (code: string) => this.realtimeVersions.get(code) === version
+    const apply = (rows: FundRealtimeData[]) => {
+      rows.filter(item => isCurrent(item.code)).forEach(item => {
+        const selected = state.realtimeData.get(item.code)
+        state.realtimeData.set(item.code, this.manualQuoteCodes.has(item.code) && selected
+          ? { ...selected, pending_sources: item.pending_sources, primary_source_complete: item.primary_source_complete }
+          : item)
+      })
       state.realtimeLastFetch = Date.now()
       this.saveRealtimeDataToStorage()
-
-      console.log(`[DataManager] 实时数据加载完成: ${codes.length} 只，耗时: ${Date.now() - started}ms`)
+    }
+    let providersLoaded = false
+    try {
+      // 每轮只在这里强制刷新一次。后续进度读取复用同一后台采集，不重发源请求。
+      let data = await fundApi.getRealtimeBatch(codes, 'provider', true)
+      apply(data)
+      providersLoaded = true
+      state.realtimeError = null
+      const deadline = Date.now() + SOURCE_PROGRESS_MAX_MS
+      while (data.some(item => item.primary_source_complete === false)) {
+        await new Promise(resolve => setTimeout(resolve, SOURCE_PROGRESS_POLL_MS))
+        if (Date.now() >= deadline) throw new Error('新浪采集状态确认超时')
+        data = await fundApi.getRealtimeBatch(codes, 'provider', false)
+        apply(data) // 任何已到达报价立即显示，主源仍未完成时保留主加载状态。
+      }
+      // 新浪成功或明确失败即结束主加载；备用源/推算不能阻塞 initialize/refreshAll。
+      const complete = async () => {
+        while (data.some(item => (item.pending_sources?.length ?? 0) > 0)) {
+          await new Promise(resolve => setTimeout(resolve, SOURCE_PROGRESS_POLL_MS))
+          if (!codes.some(isCurrent)) return
+          if (Date.now() >= deadline) throw new Error('备用源采集状态确认超时')
+          data = await fundApi.getRealtimeBatch(codes, 'provider', false)
+          apply(data)
+        }
+        // 等外部估值确定均不可用后才推算；同日正式净值也由 auto 统一处理。
+        const autoCodes = data.filter(item => isCurrent(item.code) && !item.error &&
+          (item.estimate_nav == null || isOfficialNavDisplayed(item))).map(item => item.code)
+        if (autoCodes.length > 0) apply(await fundApi.getRealtimeBatch(autoCodes, 'auto', false))
+      }
+      const job = complete()
+      this.backgroundRealtimeJobs.add(job)
+      state.realtimeSourcesLoading = true
+      void job.catch(error => {
+        if (!codes.some(isCurrent)) return
+        const detail = error instanceof Error ? error.message : String(error)
+        state.realtimeError = `在线报价已加载，后台补充失败：${detail}`
+      }).finally(() => {
+        this.backgroundRealtimeJobs.delete(job)
+        state.realtimeSourcesLoading = this.backgroundRealtimeJobs.size > 0
+      })
       return codes.map(code => state.realtimeData.get(code)!)
     } catch (e) {
-      console.error('[DataManager] 获取实时数据失败:', e)
       const detail = e instanceof Error ? e.message : String(e)
-      state.realtimeError = `${providersLoaded ? '在线报价已加载，推算补充失败' : '获取在线报价失败'}：${detail}`
+      state.realtimeError = `${providersLoaded ? '部分在线报价已显示，主源状态确认失败' : '获取在线报价失败'}：${detail}`
       throw e
     }
   }

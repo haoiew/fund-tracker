@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
         pass
     try:
         from app.services.fund_service import get_fund_service
-        get_fund_service().close()
+        await get_fund_service().aclose()
     except Exception:
         pass
     logger.info("应用关闭")

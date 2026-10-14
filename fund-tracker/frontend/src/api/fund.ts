@@ -1,5 +1,28 @@
 import { request } from './request'
 
+// Shared backend quality snapshot; it describes semantics, not an accuracy score.
+export interface QuoteQuality {
+  contract_version: string
+  value_source: string | null
+  upstream_family: string | null
+  data_kind: string
+  price_basis: 'unit_nav' | 'provider_estimate' | 'inferred_unit_nav' | 'unavailable'
+  price_unit: string
+  currency: string | null
+  change_unit: string
+  timezone: string
+  source_time: string | null
+  nav_date: string | null
+  nav_source: string | null
+  fetched_at: string | null
+  assessed_at: string
+  availability: 'available' | 'unavailable' | 'unsupported' | 'pending'
+  freshness: 'current_estimate' | 'current_reference' | 'dated_nav' | 'stale' | 'unavailable'
+  nav_age_calendar_days: number | null
+  warnings: Array<{ code: string, message: string }>
+  pending_sources: string[]
+}
+
 // 类型定义
 export interface FundRealtimeData {
   code: string
@@ -12,6 +35,10 @@ export interface FundRealtimeData {
   data_source_display_name?: string
   data_source_short_name?: string
   data_source_description?: string
+  quality?: QuoteQuality | null
+  official_nav_source?: string | null
+  stale_reason?: string | null
+  fund_type?: string | null
   data_kind?: 'realtime_estimate' | 'latest_nav' | 'holdings_estimate' | 'reference_symbol_estimate' | 'fallback_estimate' | 'similar_realtime_reference' | 'unavailable'
   data_kind_label?: string
   is_realtime?: boolean
@@ -20,6 +47,8 @@ export interface FundRealtimeData {
   previous_nav_date?: string | null
   error?: string | null
   data_timestamp?: string
+  pending_sources?: string[]
+  primary_source_complete?: boolean
   official_nav?: number | null
   official_change?: number | null
   official_update_time?: string | null
@@ -178,8 +207,8 @@ export const fundApi = {
   },
 
   // 批量获取实时估值
-  getRealtimeBatch(codes: string[], view: 'auto' | 'provider' | 'nav' = 'auto'): Promise<FundRealtimeData[]> {
-    return request.post('/funds/realtime/batch', codes, { params: { view } })
+  getRealtimeBatch(codes: string[], view: 'auto' | 'provider' | 'nav' = 'auto', refresh = false): Promise<FundRealtimeData[]> {
+    return request.post('/funds/realtime/batch', codes, { params: { view, refresh } })
   },
 
   // 获取基金历史数据
@@ -303,13 +332,18 @@ export const fundApi = {
       data_kind_label?: string
       is_realtime?: boolean
       is_available: boolean
+      is_pending?: boolean
       is_fresh: boolean
       data_timestamp?: string
+      fetch_started_at?: string | null
+      fetch_duration_ms?: number
       error?: string | null
     }>
     best_source: string | null
     best_source_display_name?: string | null
     total_sources: number
+    pending_sources?: string[]
+    primary_source_complete?: boolean
   }> {
     const params: Record<string, string> = {}
     if (name) {

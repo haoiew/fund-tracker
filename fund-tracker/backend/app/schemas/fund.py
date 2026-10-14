@@ -7,6 +7,8 @@ from decimal import Decimal
 from typing import Optional, List
 from pydantic import BaseModel, Field
 
+from app.core.data_contract import QuoteQuality
+
 
 class FundBase(BaseModel):
     """基金基础模型"""
@@ -67,6 +69,7 @@ class FundRealtimeData(BaseModel):
     estimate_change: Optional[Decimal] = Field(None, description="估算涨跌幅(%)")
     update_time: str = Field(default="--", description="估值更新时间")
     status: str = Field(default="获取中", description="数据状态")
+    fund_type: Optional[str] = Field(None, description="源端基金类型；货币基金不进入单位净值计价")
     data_source: str = Field(default="unknown", description="数据来源")
     data_source_display_name: Optional[str] = Field(None, description="数据来源中文名称")
     data_source_short_name: Optional[str] = Field(None, description="数据来源短名称")
@@ -78,11 +81,16 @@ class FundRealtimeData(BaseModel):
     official_nav: Optional[Decimal] = Field(None, description="最新正式单位净值，独立于当前展示值")
     official_change: Optional[Decimal] = Field(None, description="正式净值日增长率(%)")
     official_update_time: Optional[str] = Field(None, description="正式净值日期")
+    official_nav_source: Optional[str] = Field(None, description="正式单位净值的实际来源，独立于估值来源")
+    quality: Optional[QuoteQuality] = Field(None, description="报价口径、来源、时效和限制；不代表准确度评级")
+    stale_reason: Optional[str] = Field(None, description="源端估值的陈旧或口径限制")
     official_data_kind_label: Optional[str] = None
     previous_nav_date: Optional[str] = Field(None, description="估值基础净值日期")
     estimation_details: Optional[dict] = Field(None, description="推测方法、基础日期和行情覆盖")
     error: Optional[str] = Field(None, description="数据不可用或不支持的原因")
     data_timestamp: Optional[str] = Field(None, description="数据获取时间戳")
+    pending_sources: List[str] = Field(default_factory=list, description="本轮仍在后台采集的来源")
+    primary_source_complete: bool = Field(True, description="新浪已返回成功或明确失败，主加载可结束")
     # 新增字段
     previous_nav: Optional[Decimal] = Field(None, description="昨日净值")
     accumulated_nav: Optional[Decimal] = Field(None, description="累计净值")

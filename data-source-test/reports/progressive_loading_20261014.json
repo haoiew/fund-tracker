@@ -1,0 +1,2819 @@
+{
+  "checked_at": "2026-10-14T17:32:24.137352+08:00",
+  "api_base": "http://127.0.0.1:3000/api",
+  "code_count": 18,
+  "holding_count": 18,
+  "rounds": [
+    {
+      "round": 1,
+      "first_response_ms": 68.0,
+      "primary_complete_ms": 68.0,
+      "all_sources_complete_ms": 3844.3,
+      "auto_cached_ms": 6.2,
+      "first_status": {
+        "elapsed_ms": 68.0,
+        "priced_count": 18,
+        "primary_complete_count": 18,
+        "pending_row_count": 18,
+        "pending_sources": [
+          "tiantian",
+          "dayfund",
+          "fund123",
+          "eastmoney_mobile",
+          "tencent",
+          "eastmoney_lsjz",
+          "pingzhongdata"
+        ]
+      },
+      "final_priced_count": 18,
+      "progress": [
+        {
+          "elapsed_ms": 68.0,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 18,
+          "pending_sources": [
+            "tiantian",
+            "dayfund",
+            "fund123",
+            "eastmoney_mobile",
+            "tencent",
+            "eastmoney_lsjz",
+            "pingzhongdata"
+          ]
+        },
+        {
+          "elapsed_ms": 390.8,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 17,
+          "pending_sources": [
+            "fund123",
+            "dayfund",
+            "pingzhongdata",
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 697.9,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 15,
+          "pending_sources": [
+            "fund123",
+            "pingzhongdata",
+            "dayfund",
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 1005.9,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 13,
+          "pending_sources": [
+            "fund123",
+            "pingzhongdata",
+            "eastmoney_lsjz",
+            "dayfund"
+          ]
+        },
+        {
+          "elapsed_ms": 1331.7,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 11,
+          "pending_sources": [
+            "fund123",
+            "pingzhongdata",
+            "dayfund"
+          ]
+        },
+        {
+          "elapsed_ms": 1662.0,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 9,
+          "pending_sources": [
+            "fund123",
+            "pingzhongdata",
+            "dayfund"
+          ]
+        },
+        {
+          "elapsed_ms": 1968.4,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 8,
+          "pending_sources": [
+            "fund123",
+            "pingzhongdata"
+          ]
+        },
+        {
+          "elapsed_ms": 2276.3,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 7,
+          "pending_sources": [
+            "pingzhongdata",
+            "fund123"
+          ]
+        },
+        {
+          "elapsed_ms": 2584.6,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 5,
+          "pending_sources": [
+            "pingzhongdata",
+            "fund123"
+          ]
+        },
+        {
+          "elapsed_ms": 2905.4,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 4,
+          "pending_sources": [
+            "pingzhongdata",
+            "fund123"
+          ]
+        },
+        {
+          "elapsed_ms": 3212.4,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 3,
+          "pending_sources": [
+            "pingzhongdata"
+          ]
+        },
+        {
+          "elapsed_ms": 3537.3,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 1,
+          "pending_sources": [
+            "pingzhongdata"
+          ]
+        },
+        {
+          "elapsed_ms": 3844.3,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 0,
+          "pending_sources": []
+        }
+      ],
+      "initial_comparison": {
+        "code": "012414",
+        "name": "招商中证白酒指数C",
+        "sources": [
+          {
+            "source": "sina",
+            "display_name": "新浪基金估值",
+            "short_name": "新浪",
+            "description": "新浪基金页面使用的 fu 行情；估值与涨跌幅读取其页面脚本指定字段，非基金官方净值，估值精度未验证。公开接口无持续可用性或再分发授权保证。",
+            "upstream_family": "sina",
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 1,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": 0.5236,
+            "estimate_change_pct": -0.4178,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "sina",
+            "last_change_pct": null,
+            "update_time": "2026-10-14 16:03:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.197069+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "sina",
+              "upstream_family": "sina",
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14 16:03:00",
+              "nav_date": "2026-10-13",
+              "nav_source": "sina",
+              "fetched_at": "2026-10-14T17:32:24.197069+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 54.5
+          },
+          {
+            "source": "tiantian",
+            "display_name": "天天基金盘中估值接口",
+            "short_name": "TTFund",
+            "description": "天天基金 H5 FundValuationLast POST 批量接口；部分基金提供盘中估值，未提供估值时保留正式单位净值。只登记一种请求方式。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 2,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.142350+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": "eastmoney",
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:24.142350+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "dayfund",
+            "display_name": "净值估算网",
+            "short_name": "净值估算网",
+            "description": "Dayfund 页面公开估值接口，字段按其自身脚本核对。平台模型估值非官方净值，跨市场时效及精度未完整验证，无 SLA 或再分发授权保证。",
+            "upstream_family": null,
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 3,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.142350+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": null,
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:24.142350+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                },
+                {
+                  "code": "upstream_unverified",
+                  "message": "底层数据供应链未核实，不将该接口计作已证明独立的上游。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "fund123",
+            "display_name": "数米基金",
+            "short_name": "数米",
+            "description": "Fund123 匿名页面使用的分时估值接口；涨跌比例转换为百分数。部分基金无分时点，页面有估值降级标记；无持续开放或再分发授权保证。",
+            "upstream_family": null,
+            "data_kinds": [
+              "realtime_estimate"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "ratio",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 4,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.142350+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": null,
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:24.142350+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                },
+                {
+                  "code": "upstream_unverified",
+                  "message": "底层数据供应链未核实，不将该接口计作已证明独立的上游。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "eastmoney_mobile",
+            "display_name": "东方财富移动端单位净值",
+            "short_name": "Eastmoney",
+            "description": "FundMNFInfo 批量接口，读取 NAV 单位净值和 PDATE 公布日期；不以 ACCNAV 累计净值计价。与天天基金属于同一上游。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 5,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.142350+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": "eastmoney",
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:24.142350+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "tencent",
+            "display_name": "腾讯基金行情",
+            "short_name": "Tencent",
+            "description": "腾讯 jj 基金行情提供最新公布净值，不是场内交易价格或盘中估值。",
+            "upstream_family": "tencent",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 6,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.9793,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "tencent",
+            "last_change_pct": -0.9793,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.213609+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.144350+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "tencent",
+              "upstream_family": "tencent",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "tencent",
+              "fetched_at": "2026-10-14T17:32:24.213609+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 68.5
+          },
+          {
+            "source": "eastmoney_lsjz",
+            "display_name": "东方财富历史净值接口",
+            "short_name": "Eastmoney",
+            "description": "f10/lsjz 的最新单位净值及其净值日期、日增长率。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 7,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.142350+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": "eastmoney",
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:24.142350+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "pingzhongdata",
+            "display_name": "东方财富基金页面数据",
+            "short_name": "Eastmoney",
+            "description": "基金页面 Data_netWorthTrend 的最新单位净值；累计净值与单位净值保持区分。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 8,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.142350+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": "eastmoney",
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:24.142350+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          }
+        ],
+        "best_source": "sina",
+        "best_source_display_name": "新浪基金估值",
+        "total_sources": 2,
+        "realtime_sources": 1,
+        "pending_sources": [
+          "tiantian",
+          "dayfund",
+          "fund123",
+          "eastmoney_mobile",
+          "eastmoney_lsjz",
+          "pingzhongdata"
+        ],
+        "primary_source_complete": true
+      },
+      "final_comparison": {
+        "code": "012414",
+        "name": "招商中证白酒指数C",
+        "sources": [
+          {
+            "source": "sina",
+            "display_name": "新浪基金估值",
+            "short_name": "新浪",
+            "description": "新浪基金页面使用的 fu 行情；估值与涨跌幅读取其页面脚本指定字段，非基金官方净值，估值精度未验证。公开接口无持续可用性或再分发授权保证。",
+            "upstream_family": "sina",
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 1,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": 0.5236,
+            "estimate_change_pct": -0.4178,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "sina",
+            "last_change_pct": null,
+            "update_time": "2026-10-14 16:03:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.197069+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "sina",
+              "upstream_family": "sina",
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14 16:03:00",
+              "nav_date": "2026-10-13",
+              "nav_source": "sina",
+              "fetched_at": "2026-10-14T17:32:24.197069+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 54.5
+          },
+          {
+            "source": "tiantian",
+            "display_name": "天天基金盘中估值接口",
+            "short_name": "TTFund",
+            "description": "天天基金 H5 FundValuationLast POST 批量接口；部分基金提供盘中估值，未提供估值时保留正式单位净值。只登记一种请求方式。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 2,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5236,
+            "estimate_change_pct": -0.41,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "tiantian",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-14 15:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.268299+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "tiantian",
+              "upstream_family": "eastmoney",
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14 15:00",
+              "nav_date": "2026-10-13",
+              "nav_source": "tiantian",
+              "fetched_at": "2026-10-14T17:32:24.268299+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 125.4
+          },
+          {
+            "source": "dayfund",
+            "display_name": "净值估算网",
+            "short_name": "净值估算网",
+            "description": "Dayfund 页面公开估值接口，字段按其自身脚本核对。平台模型估值非官方净值，跨市场时效及精度未完整验证，无 SLA 或再分发授权保证。",
+            "upstream_family": null,
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 3,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5238,
+            "estimate_change_pct": -0.38,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "dayfund",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-14 15:00:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.362536+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "dayfund",
+              "upstream_family": null,
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14 15:00:00",
+              "nav_date": "2026-10-13",
+              "nav_source": "dayfund",
+              "fetched_at": "2026-10-14T17:32:24.362536+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                },
+                {
+                  "code": "upstream_unverified",
+                  "message": "底层数据供应链未核实，不将该接口计作已证明独立的上游。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 218.9
+          },
+          {
+            "source": "fund123",
+            "display_name": "数米基金",
+            "short_name": "数米",
+            "description": "Fund123 匿名页面使用的分时估值接口；涨跌比例转换为百分数。部分基金无分时点，页面有估值降级标记；无持续开放或再分发授权保证。",
+            "upstream_family": null,
+            "data_kinds": [
+              "realtime_estimate"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "ratio",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 4,
+            "name": "招商中证白酒指数证券投资基金C类",
+            "estimate_nav": 0.52373813,
+            "estimate_change_pct": -0.392139,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "2026-10-14T15:00:00+08:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.730315+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.144350+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "fund123",
+              "upstream_family": null,
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14T15:00:00+08:00",
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:24.730315+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                },
+                {
+                  "code": "missing_nav_date",
+                  "message": "未确认估值基准的完整净值日期，不能据此对齐跨日误差。"
+                },
+                {
+                  "code": "upstream_unverified",
+                  "message": "底层数据供应链未核实，不将该接口计作已证明独立的上游。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 586.2
+          },
+          {
+            "source": "eastmoney_mobile",
+            "display_name": "东方财富移动端单位净值",
+            "short_name": "Eastmoney",
+            "description": "FundMNFInfo 批量接口，读取 NAV 单位净值和 PDATE 公布日期；不以 ACCNAV 累计净值计价。与天天基金属于同一上游。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 5,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.98,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "eastmoney_mobile",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.320928+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.144350+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "eastmoney_mobile",
+              "upstream_family": "eastmoney",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "eastmoney_mobile",
+              "fetched_at": "2026-10-14T17:32:24.320928+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 176.6
+          },
+          {
+            "source": "tencent",
+            "display_name": "腾讯基金行情",
+            "short_name": "Tencent",
+            "description": "腾讯 jj 基金行情提供最新公布净值，不是场内交易价格或盘中估值。",
+            "upstream_family": "tencent",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 6,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.9793,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "tencent",
+            "last_change_pct": -0.9793,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.213609+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.144350+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "tencent",
+              "upstream_family": "tencent",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "tencent",
+              "fetched_at": "2026-10-14T17:32:24.213609+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 68.5
+          },
+          {
+            "source": "eastmoney_lsjz",
+            "display_name": "东方财富历史净值接口",
+            "short_name": "Eastmoney",
+            "description": "f10/lsjz 的最新单位净值及其净值日期、日增长率。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 7,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.98,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "eastmoney_lsjz",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.315908+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.145358+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "eastmoney_lsjz",
+              "upstream_family": "eastmoney",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "eastmoney_lsjz",
+              "fetched_at": "2026-10-14T17:32:24.315908+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 170.8
+          },
+          {
+            "source": "pingzhongdata",
+            "display_name": "东方财富基金页面数据",
+            "short_name": "Eastmoney",
+            "description": "基金页面 Data_netWorthTrend 的最新单位净值；累计净值与单位净值保持区分。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 8,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.98,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "pingzhongdata",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:24.289388+08:00",
+            "fetch_started_at": "2026-10-14T17:32:24.146357+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "pingzhongdata",
+              "upstream_family": "eastmoney",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "pingzhongdata",
+              "fetched_at": "2026-10-14T17:32:24.289388+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 143.1
+          }
+        ],
+        "best_source": "sina",
+        "best_source_display_name": "新浪基金估值",
+        "total_sources": 8,
+        "realtime_sources": 4,
+        "pending_sources": [],
+        "primary_source_complete": true
+      },
+      "samples": [
+        {
+          "code": "015916",
+          "selected_source": "sina",
+          "estimate_nav": "1.5317",
+          "estimate_change": "-3.3319",
+          "sources": [
+            {
+              "source": "sina",
+              "priority": 1,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:03:00",
+              "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+              "fetch_duration_ms": 54.5,
+              "error": null
+            },
+            {
+              "source": "tiantian",
+              "priority": 2,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": true,
+              "update_time": "2026-10-13",
+              "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+              "fetch_duration_ms": 125.4,
+              "error": null
+            },
+            {
+              "source": "dayfund",
+              "priority": 3,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:09:00",
+              "fetch_started_at": "2026-10-14T17:32:24.144350+08:00",
+              "fetch_duration_ms": 228.3,
+              "error": null
+            },
+            {
+              "source": "fund123",
+              "priority": 4,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14T15:00:00+08:00",
+              "fetch_started_at": "2026-10-14T17:32:24.144350+08:00",
+              "fetch_duration_ms": 298.7,
+              "error": null
+            }
+          ]
+        },
+        {
+          "code": "018125",
+          "selected_source": "sina",
+          "estimate_nav": "1.6249",
+          "estimate_change": "-3.612",
+          "sources": [
+            {
+              "source": "sina",
+              "priority": 1,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:03:00",
+              "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+              "fetch_duration_ms": 54.5,
+              "error": null
+            },
+            {
+              "source": "tiantian",
+              "priority": 2,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": true,
+              "update_time": "2026-10-13",
+              "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+              "fetch_duration_ms": 125.4,
+              "error": null
+            },
+            {
+              "source": "dayfund",
+              "priority": 3,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:08:00",
+              "fetch_started_at": "2026-10-14T17:32:24.363038+08:00",
+              "fetch_duration_ms": 236.1,
+              "error": null
+            },
+            {
+              "source": "fund123",
+              "priority": 4,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14T15:00:00+08:00",
+              "fetch_started_at": "2026-10-14T17:32:24.443702+08:00",
+              "fetch_duration_ms": 250.2,
+              "error": null
+            }
+          ]
+        },
+        {
+          "code": "012349",
+          "selected_source": "sina",
+          "estimate_nav": "0.5645",
+          "estimate_change": "1.5474",
+          "sources": [
+            {
+              "source": "sina",
+              "priority": 1,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:04:00",
+              "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+              "fetch_duration_ms": 54.5,
+              "error": null
+            },
+            {
+              "source": "tiantian",
+              "priority": 2,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:00",
+              "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+              "fetch_duration_ms": 125.4,
+              "error": null
+            },
+            {
+              "source": "dayfund",
+              "priority": 3,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:09:00",
+              "fetch_started_at": "2026-10-14T17:32:24.599085+08:00",
+              "fetch_duration_ms": 217.6,
+              "error": null
+            },
+            {
+              "source": "fund123",
+              "priority": 4,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": false,
+              "update_time": "--",
+              "fetch_started_at": "2026-10-14T17:32:24.730315+08:00",
+              "fetch_duration_ms": 290.6,
+              "error": "数米无有效估值分时点"
+            }
+          ]
+        },
+        {
+          "code": "017641",
+          "selected_source": "sina",
+          "estimate_nav": "1.7234",
+          "estimate_change": "-0.0183",
+          "sources": [
+            {
+              "source": "sina",
+              "priority": 1,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:04:00",
+              "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+              "fetch_duration_ms": 54.5,
+              "error": null
+            },
+            {
+              "source": "tiantian",
+              "priority": 2,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": true,
+              "update_time": "2026-10-12",
+              "fetch_started_at": "2026-10-14T17:32:24.143351+08:00",
+              "fetch_duration_ms": 125.4,
+              "error": null
+            },
+            {
+              "source": "dayfund",
+              "priority": 3,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": true,
+              "update_time": "2026-10-12",
+              "fetch_started_at": "2026-10-14T17:32:24.601835+08:00",
+              "fetch_duration_ms": 77.7,
+              "error": null
+            },
+            {
+              "source": "fund123",
+              "priority": 4,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": false,
+              "update_time": "--",
+              "fetch_started_at": "2026-10-14T17:32:24.974013+08:00",
+              "fetch_duration_ms": 295.6,
+              "error": "数米无有效估值分时点"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "first_response_ms": 26.2,
+      "primary_complete_ms": 26.2,
+      "all_sources_complete_ms": 4409.0,
+      "auto_cached_ms": 23.8,
+      "first_status": {
+        "elapsed_ms": 26.2,
+        "priced_count": 18,
+        "primary_complete_count": 18,
+        "pending_row_count": 18,
+        "pending_sources": [
+          "tiantian",
+          "dayfund",
+          "fund123",
+          "eastmoney_mobile",
+          "tencent",
+          "eastmoney_lsjz",
+          "pingzhongdata"
+        ]
+      },
+      "final_priced_count": 18,
+      "progress": [
+        {
+          "elapsed_ms": 26.2,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 18,
+          "pending_sources": [
+            "tiantian",
+            "dayfund",
+            "fund123",
+            "eastmoney_mobile",
+            "tencent",
+            "eastmoney_lsjz",
+            "pingzhongdata"
+          ]
+        },
+        {
+          "elapsed_ms": 360.5,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 18,
+          "pending_sources": [
+            "eastmoney_mobile",
+            "pingzhongdata",
+            "eastmoney_lsjz",
+            "fund123"
+          ]
+        },
+        {
+          "elapsed_ms": 692.1,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 12,
+          "pending_sources": [
+            "pingzhongdata",
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 999.6,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 12,
+          "pending_sources": [
+            "pingzhongdata",
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 1323.5,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 12,
+          "pending_sources": [
+            "pingzhongdata",
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 1640.2,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 12,
+          "pending_sources": [
+            "pingzhongdata",
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 1947.1,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 11,
+          "pending_sources": [
+            "pingzhongdata",
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 2254.6,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 11,
+          "pending_sources": [
+            "pingzhongdata",
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 2561.9,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 11,
+          "pending_sources": [
+            "pingzhongdata",
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 2870.2,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 10,
+          "pending_sources": [
+            "eastmoney_lsjz",
+            "pingzhongdata"
+          ]
+        },
+        {
+          "elapsed_ms": 3177.6,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 10,
+          "pending_sources": [
+            "eastmoney_lsjz",
+            "pingzhongdata"
+          ]
+        },
+        {
+          "elapsed_ms": 3485.2,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 10,
+          "pending_sources": [
+            "eastmoney_lsjz",
+            "pingzhongdata"
+          ]
+        },
+        {
+          "elapsed_ms": 3793.1,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 10,
+          "pending_sources": [
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 4101.3,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 10,
+          "pending_sources": [
+            "eastmoney_lsjz"
+          ]
+        },
+        {
+          "elapsed_ms": 4409.0,
+          "priced_count": 18,
+          "primary_complete_count": 18,
+          "pending_row_count": 0,
+          "pending_sources": []
+        }
+      ],
+      "initial_comparison": {
+        "code": "012414",
+        "name": "招商中证白酒指数C",
+        "sources": [
+          {
+            "source": "sina",
+            "display_name": "新浪基金估值",
+            "short_name": "新浪",
+            "description": "新浪基金页面使用的 fu 行情；估值与涨跌幅读取其页面脚本指定字段，非基金官方净值，估值精度未验证。公开接口无持续可用性或再分发授权保证。",
+            "upstream_family": "sina",
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 1,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": 0.5236,
+            "estimate_change_pct": -0.4178,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "sina",
+            "last_change_pct": null,
+            "update_time": "2026-10-14 16:03:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.042049+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "sina",
+              "upstream_family": "sina",
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14 16:03:00",
+              "nav_date": "2026-10-13",
+              "nav_source": "sina",
+              "fetched_at": "2026-10-14T17:32:28.042049+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 16.6
+          },
+          {
+            "source": "tiantian",
+            "display_name": "天天基金盘中估值接口",
+            "short_name": "TTFund",
+            "description": "天天基金 H5 FundValuationLast POST 批量接口；部分基金提供盘中估值，未提供估值时保留正式单位净值。只登记一种请求方式。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 2,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.024858+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": "eastmoney",
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:28.024858+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "dayfund",
+            "display_name": "净值估算网",
+            "short_name": "净值估算网",
+            "description": "Dayfund 页面公开估值接口，字段按其自身脚本核对。平台模型估值非官方净值，跨市场时效及精度未完整验证，无 SLA 或再分发授权保证。",
+            "upstream_family": null,
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 3,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.024858+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": null,
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:28.024858+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                },
+                {
+                  "code": "upstream_unverified",
+                  "message": "底层数据供应链未核实，不将该接口计作已证明独立的上游。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "fund123",
+            "display_name": "数米基金",
+            "short_name": "数米",
+            "description": "Fund123 匿名页面使用的分时估值接口；涨跌比例转换为百分数。部分基金无分时点，页面有估值降级标记；无持续开放或再分发授权保证。",
+            "upstream_family": null,
+            "data_kinds": [
+              "realtime_estimate"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "ratio",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 4,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.024858+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": null,
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:28.024858+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                },
+                {
+                  "code": "upstream_unverified",
+                  "message": "底层数据供应链未核实，不将该接口计作已证明独立的上游。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "eastmoney_mobile",
+            "display_name": "东方财富移动端单位净值",
+            "short_name": "Eastmoney",
+            "description": "FundMNFInfo 批量接口，读取 NAV 单位净值和 PDATE 公布日期；不以 ACCNAV 累计净值计价。与天天基金属于同一上游。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 5,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.024858+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": "eastmoney",
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:28.024858+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "tencent",
+            "display_name": "腾讯基金行情",
+            "short_name": "Tencent",
+            "description": "腾讯 jj 基金行情提供最新公布净值，不是场内交易价格或盘中估值。",
+            "upstream_family": "tencent",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 6,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.9793,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "tencent",
+            "last_change_pct": -0.9793,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.048975+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "tencent",
+              "upstream_family": "tencent",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "tencent",
+              "fetched_at": "2026-10-14T17:32:28.048975+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 22.9
+          },
+          {
+            "source": "eastmoney_lsjz",
+            "display_name": "东方财富历史净值接口",
+            "short_name": "Eastmoney",
+            "description": "f10/lsjz 的最新单位净值及其净值日期、日增长率。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 7,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.024858+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": "eastmoney",
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:28.024858+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          },
+          {
+            "source": "pingzhongdata",
+            "display_name": "东方财富基金页面数据",
+            "short_name": "Eastmoney",
+            "description": "基金页面 Data_netWorthTrend 的最新单位净值；累计净值与单位净值保持区分。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 8,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": null,
+            "estimate_change_pct": null,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "--",
+            "data_kind": "unavailable",
+            "data_kind_label": "采集中",
+            "is_available": false,
+            "is_realtime": false,
+            "is_pending": true,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.024858+08:00",
+            "fetch_started_at": null,
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": null,
+              "upstream_family": "eastmoney",
+              "data_kind": "unavailable",
+              "price_basis": "unavailable",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": null,
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:28.024858+08:00",
+              "availability": "unavailable",
+              "freshness": "unavailable",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "missing_value",
+                  "message": "当前没有可用报价；空值不是零收益或成本价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 0.0
+          }
+        ],
+        "best_source": "sina",
+        "best_source_display_name": "新浪基金估值",
+        "total_sources": 2,
+        "realtime_sources": 1,
+        "pending_sources": [
+          "tiantian",
+          "dayfund",
+          "fund123",
+          "eastmoney_mobile",
+          "eastmoney_lsjz",
+          "pingzhongdata"
+        ],
+        "primary_source_complete": true
+      },
+      "final_comparison": {
+        "code": "012414",
+        "name": "招商中证白酒指数C",
+        "sources": [
+          {
+            "source": "sina",
+            "display_name": "新浪基金估值",
+            "short_name": "新浪",
+            "description": "新浪基金页面使用的 fu 行情；估值与涨跌幅读取其页面脚本指定字段，非基金官方净值，估值精度未验证。公开接口无持续可用性或再分发授权保证。",
+            "upstream_family": "sina",
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 1,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": 0.5236,
+            "estimate_change_pct": -0.4178,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "sina",
+            "last_change_pct": null,
+            "update_time": "2026-10-14 16:03:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.042049+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "sina",
+              "upstream_family": "sina",
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14 16:03:00",
+              "nav_date": "2026-10-13",
+              "nav_source": "sina",
+              "fetched_at": "2026-10-14T17:32:28.042049+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 16.6
+          },
+          {
+            "source": "tiantian",
+            "display_name": "天天基金盘中估值接口",
+            "short_name": "TTFund",
+            "description": "天天基金 H5 FundValuationLast POST 批量接口；部分基金提供盘中估值，未提供估值时保留正式单位净值。只登记一种请求方式。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 2,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5236,
+            "estimate_change_pct": -0.41,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "tiantian",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-14 15:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.073514+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "tiantian",
+              "upstream_family": "eastmoney",
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14 15:00",
+              "nav_date": "2026-10-13",
+              "nav_source": "tiantian",
+              "fetched_at": "2026-10-14T17:32:28.073514+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 47.8
+          },
+          {
+            "source": "dayfund",
+            "display_name": "净值估算网",
+            "short_name": "净值估算网",
+            "description": "Dayfund 页面公开估值接口，字段按其自身脚本核对。平台模型估值非官方净值，跨市场时效及精度未完整验证，无 SLA 或再分发授权保证。",
+            "upstream_family": null,
+            "data_kinds": [
+              "realtime_estimate",
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 3,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5238,
+            "estimate_change_pct": -0.38,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "dayfund",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-14 15:00:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.054744+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "dayfund",
+              "upstream_family": null,
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14 15:00:00",
+              "nav_date": "2026-10-13",
+              "nav_source": "dayfund",
+              "fetched_at": "2026-10-14T17:32:28.054744+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                },
+                {
+                  "code": "upstream_unverified",
+                  "message": "底层数据供应链未核实，不将该接口计作已证明独立的上游。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 29.0
+          },
+          {
+            "source": "fund123",
+            "display_name": "数米基金",
+            "short_name": "数米",
+            "description": "Fund123 匿名页面使用的分时估值接口；涨跌比例转换为百分数。部分基金无分时点，页面有估值降级标记；无持续开放或再分发授权保证。",
+            "upstream_family": null,
+            "data_kinds": [
+              "realtime_estimate"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "ratio",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 4,
+            "name": "招商中证白酒指数证券投资基金C类",
+            "estimate_nav": 0.52373813,
+            "estimate_change_pct": -0.392139,
+            "last_nav": null,
+            "last_nav_date": null,
+            "last_nav_source": null,
+            "last_change_pct": null,
+            "update_time": "2026-10-14T15:00:00+08:00",
+            "data_kind": "realtime_estimate",
+            "data_kind_label": "实时估值",
+            "is_available": true,
+            "is_realtime": true,
+            "is_pending": false,
+            "is_fresh": true,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.110639+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "fund123",
+              "upstream_family": null,
+              "data_kind": "realtime_estimate",
+              "price_basis": "provider_estimate",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-14T15:00:00+08:00",
+              "nav_date": null,
+              "nav_source": null,
+              "fetched_at": "2026-10-14T17:32:28.110639+08:00",
+              "availability": "available",
+              "freshness": "current_estimate",
+              "nav_age_calendar_days": null,
+              "warnings": [
+                {
+                  "code": "provider_estimate",
+                  "message": "平台模型估值，非基金管理人确认的正式净值；准确度未经保证。"
+                },
+                {
+                  "code": "missing_nav_date",
+                  "message": "未确认估值基准的完整净值日期，不能据此对齐跨日误差。"
+                },
+                {
+                  "code": "upstream_unverified",
+                  "message": "底层数据供应链未核实，不将该接口计作已证明独立的上游。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 84.6
+          },
+          {
+            "source": "eastmoney_mobile",
+            "display_name": "东方财富移动端单位净值",
+            "short_name": "Eastmoney",
+            "description": "FundMNFInfo 批量接口，读取 NAV 单位净值和 PDATE 公布日期；不以 ACCNAV 累计净值计价。与天天基金属于同一上游。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": true,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 5,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.98,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "eastmoney_mobile",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.433905+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "eastmoney_mobile",
+              "upstream_family": "eastmoney",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "eastmoney_mobile",
+              "fetched_at": "2026-10-14T17:32:28.433905+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 408.1
+          },
+          {
+            "source": "tencent",
+            "display_name": "腾讯基金行情",
+            "short_name": "Tencent",
+            "description": "腾讯 jj 基金行情提供最新公布净值，不是场内交易价格或盘中估值。",
+            "upstream_family": "tencent",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 6,
+            "name": "招商中证白酒指数C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.9793,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "tencent",
+            "last_change_pct": -0.9793,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.048975+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "tencent",
+              "upstream_family": "tencent",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "tencent",
+              "fetched_at": "2026-10-14T17:32:28.048975+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 22.9
+          },
+          {
+            "source": "eastmoney_lsjz",
+            "display_name": "东方财富历史净值接口",
+            "short_name": "Eastmoney",
+            "description": "f10/lsjz 的最新单位净值及其净值日期、日增长率。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 7,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.98,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "eastmoney_lsjz",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.316958+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "eastmoney_lsjz",
+              "upstream_family": "eastmoney",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "eastmoney_lsjz",
+              "fetched_at": "2026-10-14T17:32:28.316958+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 291.0
+          },
+          {
+            "source": "pingzhongdata",
+            "display_name": "东方财富基金页面数据",
+            "short_name": "Eastmoney",
+            "description": "基金页面 Data_netWorthTrend 的最新单位净值；累计净值与单位净值保持区分。",
+            "upstream_family": "eastmoney",
+            "data_kinds": [
+              "latest_nav"
+            ],
+            "supports_batch": false,
+            "price_unit": "per_share",
+            "change_unit": "percent",
+            "native_change_unit": "percent",
+            "timezone": "Asia/Shanghai",
+            "requires_credentials": false,
+            "priority": 8,
+            "name": "招商中证白酒指数(LOF)C",
+            "estimate_nav": 0.5258,
+            "estimate_change_pct": -0.98,
+            "last_nav": 0.5258,
+            "last_nav_date": "2026-10-13",
+            "last_nav_source": "pingzhongdata",
+            "last_change_pct": -0.98,
+            "update_time": "2026-10-13",
+            "data_kind": "latest_nav",
+            "data_kind_label": "最新净值",
+            "is_available": true,
+            "is_realtime": false,
+            "is_pending": false,
+            "is_fresh": false,
+            "error": null,
+            "stale_reason": null,
+            "data_timestamp": "2026-10-14T17:32:28.350747+08:00",
+            "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+            "quality": {
+              "contract_version": "1.0",
+              "value_source": "pingzhongdata",
+              "upstream_family": "eastmoney",
+              "data_kind": "latest_nav",
+              "price_basis": "unit_nav",
+              "price_unit": "per_share",
+              "currency": null,
+              "change_unit": "percent",
+              "timezone": "Asia/Shanghai",
+              "source_time": "2026-10-13",
+              "nav_date": "2026-10-13",
+              "nav_source": "pingzhongdata",
+              "fetched_at": "2026-10-14T17:32:28.350747+08:00",
+              "availability": "available",
+              "freshness": "dated_nav",
+              "nav_age_calendar_days": 1,
+              "warnings": [
+                {
+                  "code": "dated_nav",
+                  "message": "正式单位净值对应所列净值日，不是盘中估值或场内成交价。"
+                }
+              ]
+            },
+            "fetch_duration_ms": 324.9
+          }
+        ],
+        "best_source": "sina",
+        "best_source_display_name": "新浪基金估值",
+        "total_sources": 8,
+        "realtime_sources": 4,
+        "pending_sources": [],
+        "primary_source_complete": true
+      },
+      "samples": [
+        {
+          "code": "015916",
+          "selected_source": "sina",
+          "estimate_nav": "1.5317",
+          "estimate_change": "-3.3319",
+          "sources": [
+            {
+              "source": "sina",
+              "priority": 1,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:03:00",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 16.6,
+              "error": null
+            },
+            {
+              "source": "tiantian",
+              "priority": 2,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": true,
+              "update_time": "2026-10-13",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 47.8,
+              "error": null
+            },
+            {
+              "source": "dayfund",
+              "priority": 3,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:09:00",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 28.9,
+              "error": null
+            },
+            {
+              "source": "fund123",
+              "priority": 4,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14T15:00:00+08:00",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 79.1,
+              "error": null
+            }
+          ]
+        },
+        {
+          "code": "018125",
+          "selected_source": "sina",
+          "estimate_nav": "1.6249",
+          "estimate_change": "-3.612",
+          "sources": [
+            {
+              "source": "sina",
+              "priority": 1,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:03:00",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 16.6,
+              "error": null
+            },
+            {
+              "source": "tiantian",
+              "priority": 2,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": true,
+              "update_time": "2026-10-13",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 47.8,
+              "error": null
+            },
+            {
+              "source": "dayfund",
+              "priority": 3,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:08:00",
+              "fetch_started_at": "2026-10-14T17:32:28.054744+08:00",
+              "fetch_duration_ms": 23.7,
+              "error": null
+            },
+            {
+              "source": "fund123",
+              "priority": 4,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14T15:00:00+08:00",
+              "fetch_started_at": "2026-10-14T17:32:28.105208+08:00",
+              "fetch_duration_ms": 78.0,
+              "error": null
+            }
+          ]
+        },
+        {
+          "code": "012349",
+          "selected_source": "sina",
+          "estimate_nav": "0.5645",
+          "estimate_change": "1.5474",
+          "sources": [
+            {
+              "source": "sina",
+              "priority": 1,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:04:00",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 16.6,
+              "error": null
+            },
+            {
+              "source": "tiantian",
+              "priority": 2,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:00",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 47.8,
+              "error": null
+            },
+            {
+              "source": "dayfund",
+              "priority": 3,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:09:00",
+              "fetch_started_at": "2026-10-14T17:32:28.079091+08:00",
+              "fetch_duration_ms": 57.0,
+              "error": null
+            },
+            {
+              "source": "fund123",
+              "priority": 4,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": false,
+              "update_time": "--",
+              "fetch_started_at": "2026-10-14T17:32:28.162572+08:00",
+              "fetch_duration_ms": 60.3,
+              "error": "数米无有效估值分时点"
+            }
+          ]
+        },
+        {
+          "code": "017641",
+          "selected_source": "sina",
+          "estimate_nav": "1.7234",
+          "estimate_change": "-0.0183",
+          "sources": [
+            {
+              "source": "sina",
+              "priority": 1,
+              "is_pending": false,
+              "is_realtime": true,
+              "is_available": true,
+              "update_time": "2026-10-14 16:04:00",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 16.6,
+              "error": null
+            },
+            {
+              "source": "tiantian",
+              "priority": 2,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": true,
+              "update_time": "2026-10-12",
+              "fetch_started_at": "2026-10-14T17:32:28.025857+08:00",
+              "fetch_duration_ms": 47.8,
+              "error": null
+            },
+            {
+              "source": "dayfund",
+              "priority": 3,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": true,
+              "update_time": "2026-10-12",
+              "fetch_started_at": "2026-10-14T17:32:28.080580+08:00",
+              "fetch_duration_ms": 55.3,
+              "error": null
+            },
+            {
+              "source": "fund123",
+              "priority": 4,
+              "is_pending": false,
+              "is_realtime": false,
+              "is_available": false,
+              "update_time": "--",
+              "fetch_started_at": "2026-10-14T17:32:28.183068+08:00",
+              "fetch_duration_ms": 60.3,
+              "error": "数米无有效估值分时点"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "manual_nav": [
+    {
+      "code": "015916",
+      "estimate_nav": "1.5845",
+      "update_time": "2026-10-13",
+      "data_kind": "latest_nav",
+      "pending_sources": []
+    },
+    {
+      "code": "018125",
+      "estimate_nav": "1.6858",
+      "update_time": "2026-10-13",
+      "data_kind": "latest_nav",
+      "pending_sources": []
+    }
+  ],
+  "vite_serves_progressive_client": true
+}

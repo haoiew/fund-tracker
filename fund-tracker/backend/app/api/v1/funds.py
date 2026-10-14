@@ -11,6 +11,7 @@ from app.schemas.fund import (
     FundRealtimeData, FundSearchRequest, FundCompareRequest, FundCompareMultiRequest, PeriodScreenRequest
 )
 from app.schemas.common import ResponseModel
+from app.core.data_contract import get_provider_catalog
 from app.schemas.portfolio import _validate_fund_code_value
 from app.services.fund_service import get_fund_service
 from app.services.history_service import get_history_service
@@ -23,6 +24,12 @@ logger = get_logger("api.funds")
 @router.get("/list", response_model=ResponseModel[List[str]])
 async def get_fund_list():
     return ResponseModel(data=get_fund_service().get_fund_list())
+
+
+@router.get("/providers", response_model=ResponseModel[dict])
+async def get_fund_providers():
+    """Static contract/capabilities; no provider request or credentials are exposed."""
+    return ResponseModel(data=get_provider_catalog())
 
 
 @router.post("/list/add", response_model=ResponseModel[dict])
@@ -38,16 +45,16 @@ async def remove_fund(code: str):
 
 
 @router.get("/realtime/{code}", response_model=ResponseModel[FundRealtimeData])
-async def get_fund_realtime(code: str, view: Literal["auto", "provider", "nav"] = Query("auto")):
+async def get_fund_realtime(code: str, view: Literal["auto", "provider", "nav"] = Query("auto"), refresh: bool = Query(False)):
     code = _validate_fund_code_value(code)
-    data = await get_fund_service().get_realtime_data(code, view=view)
+    data = await get_fund_service().get_realtime_data(code, view=view, refresh=refresh)
     return ResponseModel(data=data)
 
 
 @router.post("/realtime/batch", response_model=ResponseModel[List[FundRealtimeData]])
-async def get_funds_realtime(codes: List[str], view: Literal["auto", "provider", "nav"] = Query("auto")):
+async def get_funds_realtime(codes: List[str], view: Literal["auto", "provider", "nav"] = Query("auto"), refresh: bool = Query(False)):
     unique_codes = list(dict.fromkeys(_validate_fund_code_value(code) for code in codes))
-    results = await get_fund_service().get_realtime_batch(unique_codes, view=view)
+    results = await get_fund_service().get_realtime_batch(unique_codes, view=view, refresh=refresh)
     return ResponseModel(data=results)
 
 

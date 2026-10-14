@@ -32,10 +32,12 @@ class Settings:
         "http://127.0.0.1:3000", "http://127.0.0.1:5173",
         "http://localhost:5174", "http://127.0.0.1:5174",
         "tauri://localhost", "https://tauri.localhost",
+        "http://tauri.localhost",
     ])
 
     # 数据库（SQLite only）
     DB_PATH: str = "data/fundtracker.db"
+    DATA_DIR: str = ""  # Empty on desktop; the Android shell supplies its private files directory.
 
     # 基金数据
     FUND_FILE_PATH: str = "funds.txt"
@@ -50,6 +52,8 @@ class Settings:
 
     # 数据源请求
     REQUEST_TIMEOUT: int = 5
+    SOURCE_BATCH_TIMEOUT: int = 8  # 整个来源本轮的时间预算，包含排队和匿名页面初始化。
+    SOURCE_SINGLE_CONCURRENCY: int = 2  # 各单基金接口独立限并发，不把超时乘以基金数量。
     HOLDINGS_REQUEST_INTERVAL: float = 0.25  # Local F10 request spacing, not a provider SLA.
     HOLDINGS_RATE_LIMIT_COOLDOWN: int = 60
     ESTIMATE_MAX_AGE_SECONDS: int = 900
@@ -80,6 +84,7 @@ class Settings:
     HISTORY_CACHE_DAYS: int = 730
 
     def __post_init__(self):
+        self.DATA_DIR = os.getenv("FUND_TRACKER_DATA_DIR", self.DATA_DIR)
         self.DEBUG = os.getenv("DEBUG", "false").lower() == "true" or self.DEBUG
         self.HOST = os.getenv("HOST", self.HOST)
         self.PORT = int(os.getenv("PORT", str(self.PORT)))
@@ -90,17 +95,21 @@ class Settings:
             self.CORS_ORIGINS = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
 
         # Ensure DB directory exists once at init time
-        db_path = _backend_dir / self.DB_PATH
+        db_path = self.runtime_dir / self.DB_PATH
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
     @property
+    def runtime_dir(self) -> Path:
+        return Path(self.DATA_DIR).expanduser().resolve() if self.DATA_DIR else _backend_dir
+
+    @property
     def database_url(self) -> str:
-        db_path = _backend_dir / self.DB_PATH
+        db_path = self.runtime_dir / self.DB_PATH
         return f"sqlite:///{db_path.as_posix()}"
 
     @property
     def fund_file_abs_path(self) -> str:
-        return str(_backend_dir / self.FUND_FILE_PATH)
+        return str(self.runtime_dir / self.FUND_FILE_PATH)
 
 
 # 全局单例

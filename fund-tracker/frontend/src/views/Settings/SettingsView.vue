@@ -89,9 +89,10 @@
             <div class="setting-row">
               <div>
                 <span>{{ $t('settings.apiUrl') }}</span>
-                <small>留空自动选择；Web 开发的默认本机地址使用 /api 同源代理，自定义地址仍生效</small>
+                <small v-if="runtimeInfo.isAndroidShell">独立安卓版使用内置本地服务，无需配置服务器</small>
+                <small v-else>留空自动选择；Web 开发的默认本机地址使用 /api 同源代理，自定义地址仍生效</small>
               </div>
-              <el-input v-model="settings.apiUrl" placeholder="留空自动选择，或填写自定义 API 地址" />
+              <el-input v-if="!runtimeInfo.isAndroidShell" v-model="settings.apiUrl" placeholder="留空自动选择，或填写自定义 API 地址" />
             </div>
 
             <div class="setting-row">
@@ -272,6 +273,7 @@ import {
   type AppSettings
 } from '@/platform/appSettings'
 import portfolioApi from '@/api/portfolio'
+import { runtimeInfo } from '@/platform/runtime'
 
 const { locale, t } = useI18n()
 const themeStore = useThemeStore()

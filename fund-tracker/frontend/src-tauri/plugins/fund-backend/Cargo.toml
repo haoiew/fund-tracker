@@ -1,0 +1,16 @@
+[package]
+name = "tauri-plugin-fund-backend"
+version = "0.1.0"
+authors = [ "Fund Tracker" ]
+description = "Private Android API runtime and document exports"
+edition = "2024"
+rust-version = "1.90"
+exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
+links = "tauri-plugin-fund-backend"
+
+[dependencies]
+tauri = { version = "2.12.3" }
+serde = "1.0"
+
+[build-dependencies]
+tauri-plugin = { version = "2.7.1", features = ["build"] }

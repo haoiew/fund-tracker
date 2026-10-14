@@ -13,13 +13,29 @@ const signedPercent = (value: number | string | null | undefined): string => {
   return formatted === '--' ? '--' : `${Number(value) > 0 ? '+' : ''}${formatted}%`
 }
 
+async function saveTextFile(filename: string, mimeType: string, content: string): Promise<boolean> {
+  if (typeof window !== 'undefined' && window.__TAURI__ && /Android/i.test(navigator.userAgent)) {
+    const { saveAndroidFile } = await import('../platform/android')
+    return saveAndroidFile(filename, mimeType, content)
+  }
+  const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(link.href)
+  return true
+}
+
 /**
  * 导出数据为CSV格式
  */
-export function exportToCSV(data: Record<string, unknown>[], filename: string): void {
+export async function exportToCSV(data: Record<string, unknown>[], filename: string): Promise<boolean> {
   if (data.length === 0 || !data[0]) {
     console.warn('没有数据可导出')
-    return
+    return false
   }
 
   // 获取表头
@@ -44,22 +60,13 @@ export function exportToCSV(data: Record<string, unknown>[], filename: string): 
 
   // 添加BOM以支持中文
   const BOM = '\uFEFF'
-  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
-
-  // 创建下载链接
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = `${filename}.csv`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(link.href)
+  return saveTextFile(`${filename}.csv`, 'text/csv', BOM + csvContent)
 }
 
 /**
  * 导出基金数据为CSV
  */
-export function exportFundsToCSV(funds: FundRealtimeData[]): void {
+export function exportFundsToCSV(funds: FundRealtimeData[]): Promise<boolean> {
   const data = funds.map(fund => ({
     '基金代码': fund.code,
     '基金名称': fund.name,
@@ -70,13 +77,13 @@ export function exportFundsToCSV(funds: FundRealtimeData[]): void {
   }))
 
   const timestamp = new Date().toISOString().slice(0, 10)
-  exportToCSV(data, `基金数据_${timestamp}`)
+  return exportToCSV(data, `基金数据_${timestamp}`)
 }
 
 /**
  * 导出持仓数据为CSV
  */
-export function exportPortfolioToCSV(items: PortfolioItem[]): void {
+export function exportPortfolioToCSV(items: PortfolioItem[]): Promise<boolean> {
   const data = items.map(item => ({
     '基金代码': item.fund_code,
     '基金名称': item.fund_name,
@@ -89,23 +96,15 @@ export function exportPortfolioToCSV(items: PortfolioItem[]): void {
   }))
 
   const timestamp = new Date().toISOString().slice(0, 10)
-  exportToCSV(data, `持仓数据_${timestamp}`)
+  return exportToCSV(data, `持仓数据_${timestamp}`)
 }
 
 /**
  * 导出数据为JSON格式
  */
-export function exportToJSON(data: unknown, filename: string): void {
+export function exportToJSON(data: unknown, filename: string): Promise<boolean> {
   const jsonContent = JSON.stringify(data, null, 2)
-  const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' })
-
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = `${filename}.json`
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(link.href)
+  return saveTextFile(`${filename}.json`, 'application/json', jsonContent)
 }
 
 /**

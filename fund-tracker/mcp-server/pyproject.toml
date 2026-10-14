@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fund-tracker-mcp"
+version = "0.1.0"
+description = "Desktop-only, read-only stdio MCP adapter for Fund Tracker's local HTTP API"
+requires-python = ">=3.11"
+dependencies = ["mcp==2.3.0", "httpx>=0.28,<0.29"]
+
+[project.scripts]
+fund-tracker-mcp = "fund_tracker_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["fund_tracker_mcp*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --tb=short"

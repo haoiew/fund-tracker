@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.core import data_contract
 from app.core import data_source
 
 
@@ -17,7 +18,7 @@ SINA_MEDICINE = (
 @pytest.fixture
 def now(monkeypatch):
     stamp = datetime(2026, 10, 14, 14, 5, tzinfo=data_source.SHANGHAI)
-    monkeypatch.setattr(data_source, "shanghai_now", lambda: stamp)
+    monkeypatch.setattr(data_contract, "shanghai_now", lambda: stamp)
     return stamp
 
 
@@ -97,8 +98,8 @@ def test_sina_batches_and_handles_timeout_without_losing_codes(monkeypatch, now)
 
 
 @pytest.mark.asyncio
-async def test_manager_prefers_tiantian_then_sina_in_one_missing_code_batch(monkeypatch, now):
-    manager = data_source.DataSourceManager()
+async def test_manager_queries_sina_for_all_codes_and_preserves_nav_when_estimate_missing(monkeypatch, now, source_manager):
+    manager = source_manager
     calls = []
     primary = [
         data_source.FundDataResult(code="012414", nav=.5266, source="tiantian", data_kind="realtime_estimate",
@@ -122,20 +123,20 @@ async def test_manager_prefers_tiantian_then_sina_in_one_missing_code_batch(monk
 
     monkeypatch.setattr(manager._sina, "fetch_batch", sina)
     rows = await manager.fetch_batch(["012414", "015916", "018125", "000198"])
-    assert calls == [["015916", "018125"]]
+    assert calls == [["012414", "015916", "018125", "000198"]]
     assert [r.source for r in rows] == ["tiantian", "sina", "tiantian", "tiantian"]
     assert rows[1].daily_change == -1.07  # Keep the authoritative NAV metadata.
     assert rows[2].nav == 1.6858  # Failed estimate cannot discard valid unit NAV.
 
 
 @pytest.mark.asyncio
-async def test_manager_keeps_newer_official_nav_for_after_close_selection(monkeypatch, now):
+async def test_manager_keeps_newer_official_nav_for_after_close_selection(monkeypatch, now, source_manager):
     from app.core.quote_policy import select_quote
     from app.services.fund_service import FundService
 
     now = now.replace(hour=16)
-    monkeypatch.setattr(data_source, "shanghai_now", lambda: now)
-    manager = data_source.DataSourceManager()
+    monkeypatch.setattr(data_contract, "shanghai_now", lambda: now)
+    manager = source_manager
     primary = data_source.FundDataResult(code="015916", nav=1.55, source="tiantian", data_kind="latest_nav",
                                         update_time="2026-10-14", previous_nav=1.55,
                                         previous_nav_date="2026-10-14", daily_change=-2.17)
@@ -153,8 +154,8 @@ async def test_manager_keeps_newer_official_nav_for_after_close_selection(monkey
 
 
 @pytest.mark.asyncio
-async def test_manager_rejects_same_date_unit_nav_conflict(monkeypatch, now):
-    manager = data_source.DataSourceManager()
+async def test_manager_rejects_same_date_unit_nav_conflict(monkeypatch, now, source_manager):
+    manager = source_manager
     primary = data_source.FundDataResult(code="015916", nav=1.5845, source="tiantian", data_kind="latest_nav",
                                         update_time="2026-10-13", previous_nav=1.5845, previous_nav_date="2026-10-13")
     wrong = data_source.FundDataResult(code="015916", nav=1.05, source="sina", data_kind="realtime_estimate",
@@ -167,17 +168,22 @@ async def test_manager_rejects_same_date_unit_nav_conflict(monkeypatch, now):
 
 
 @pytest.mark.asyncio
-async def test_current_tiantian_does_not_request_sina(monkeypatch, now):
-    manager = data_source.DataSourceManager()
+async def test_current_tiantian_still_requests_sina_and_uses_its_priority(monkeypatch, now, source_manager):
+    manager = source_manager
     primary = data_source.FundDataResult(code="012414", nav=.5266, source="tiantian", data_kind="realtime_estimate",
                                         update_time="2026-10-14 14:00")
     monkeypatch.setattr(manager._eastmoney, "fetch_tiantian_batch", lambda codes: [primary])
 
-    def unexpected(codes):
-        raise AssertionError("No needless backup request for a current primary estimate")
+    calls = []
 
-    monkeypatch.setattr(manager._sina, "fetch_batch", unexpected)
-    assert (await manager.fetch_batch(["012414"]))[0] is primary
+    def sina(codes):
+        calls.append(codes)
+        return [data_source.FundDataResult(code=code, nav=.5267, source="sina", data_kind="realtime_estimate",
+                                           update_time="2026-10-14 14:00") for code in codes]
+
+    monkeypatch.setattr(manager._sina, "fetch_batch", sina)
+    assert (await manager.fetch_batch(["012414"]))[0].source == "sina"
+    assert calls == [["012414"]]
 
 
 @pytest.mark.asyncio
@@ -186,7 +192,7 @@ async def test_source_comparison_exposes_realtime_coverage_not_just_nav_availabi
 
     service = FundService()
 
-    async def compare(code):
+    async def compare(code, wait_all=True):
         return {"sources": [{"source": "sina", "name": "基金"}], "best_source": "sina",
                 "best_source_display_name": "新浪基金估值", "total_sources": 6, "realtime_sources": 1}
 
@@ -196,14 +202,14 @@ async def test_source_comparison_exposes_realtime_coverage_not_just_nav_availabi
 
 
 @pytest.mark.asyncio
-async def test_source_comparison_rejects_conflicting_sina_like_default_selection(monkeypatch, now):
-    manager = data_source.DataSourceManager()
+async def test_source_comparison_rejects_conflicting_sina_like_default_selection(monkeypatch, now, source_manager):
+    manager = source_manager
     primary = data_source.FundDataResult(code="015916", nav=1.5845, source="tiantian", data_kind="latest_nav",
                                         update_time="2026-10-13", previous_nav=1.5845, previous_nav_date="2026-10-13")
     wrong = data_source.FundDataResult(code="015916", nav=1.05, source="sina", data_kind="realtime_estimate",
                                       update_time="2026-10-14 14:00", previous_nav=1.1, previous_nav_date="2026-10-13")
     fail = lambda code: data_source.FundDataResult(code=code, source="unknown", error="test unavailable")
-    monkeypatch.setattr(manager._eastmoney, "_try_tiantian", lambda code: primary)
+    monkeypatch.setattr(manager._eastmoney, "fetch_tiantian_batch", lambda codes: [primary])
     monkeypatch.setattr(manager._sina, "fetch_batch", lambda codes: [wrong])
     monkeypatch.setattr(manager._eastmoney, "fetch_mobile_batch", lambda codes: [fail(c) for c in codes])
     for method in ("_try_tencent", "_try_eastmoney_lsjz", "_try_pingzhongdata"):

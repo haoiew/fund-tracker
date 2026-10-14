@@ -1,0 +1,9 @@
+name: fund-tracker-mcp
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - mcp=2.3.0
+  - httpx>=0.28,<0.29
+  - pytest
+  - pytest-asyncio

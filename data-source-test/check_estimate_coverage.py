@@ -28,11 +28,12 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "fund-tracker" / "backend"))
 from app.core.data_source import EastmoneyDirectAdapter, SinaFundAdapter, shanghai_now  # noqa: E402
 
 
-def probe_tiantian(adapter, codes):
+def probe_tiantian(adapter, codes, method="POST"):
     start = time.perf_counter()
     try:
-        response = adapter.session.get(adapter.TIANTIAN_URLS[0],
-                                       params={"FCODES": ",".join(codes), "FIELDS": adapter.FIELDS}, timeout=(3, 5))
+        fields = {"FCODES": ",".join(codes), "FIELDS": adapter.FIELDS}
+        response = adapter.session.request(method, adapter.TIANTIAN_URL,
+                                           **{"data" if method == "POST" else "params": fields}, timeout=(3, 5))
         response.raise_for_status()
         payload = response.json()
         if payload.get("success") is not True or not isinstance(payload.get("data"), list):
@@ -132,7 +133,7 @@ async def main(args):
         mapping = await asyncio.to_thread(verify_sina_mapping, sina)
         rounds = []
         for index in range(args.rounds):
-            # 核查器为了同一时刻对照并发取两源；生产按天天缺估值再取新浪。
+            # 与生产一样并发取源；此脚本只保留天天和新浪的原始字段专项核查。
             checked_at = shanghai_now().isoformat()
             tt, sn = await asyncio.gather(asyncio.to_thread(probe_tiantian, tiantian, codes),
                                          asyncio.to_thread(probe_sina, sina, codes))

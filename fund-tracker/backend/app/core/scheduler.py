@@ -79,7 +79,7 @@ class SchedulerService:
             service = get_fund_service()
             codes = service.get_fund_codes()
             if codes:
-                await service.get_realtime_batch(codes)
+                await service.get_realtime_batch(codes, refresh=True)
                 logger.info(f"定时刷新 {len(codes)} 只基金完成")
         except Exception as e:
             logger.error(f"定时刷新失败: {e}")
@@ -106,7 +106,7 @@ class SchedulerService:
         service = get_fund_service()
         if not codes:
             codes = service.get_fund_codes()
-        result = await service.get_realtime_batch(codes)
+        result = await service.get_realtime_batch(codes, refresh=True)
         return {
             'success': True,
             'refreshed': sum(row.estimate_nav is not None for row in result),

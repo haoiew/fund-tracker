@@ -28,3 +28,8 @@ test('quote time is compact and consistent in Shanghai, without inventing a NAV 
   assert.equal(formatQuoteTime('--'), '--')
   assert.equal(formatQuoteTime('not a timestamp'), '--')
 })
+
+
+test('a pending backup is blue and is not misreported as an upstream failure', () => {
+  assert.deepEqual(getQuoteBadge({ estimate_nav: null, pending_sources: ['dayfund'], error: null }), { label: '补充中', type: 'primary' })
+})

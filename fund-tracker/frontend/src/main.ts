@@ -7,6 +7,7 @@ import VueECharts from 'vue-echarts'
 import App from './App.vue'
 import router from './router'
 import i18n from './i18n'
+import { runtimeInfo } from './platform/runtime'
 
 // 样式
 import 'element-plus/dist/index.css'
@@ -29,4 +30,26 @@ app.use(router)
 app.use(ElementPlus)
 app.use(i18n)
 
-app.mount('#app')
+async function bootstrap(): Promise<void> {
+  if (runtimeInfo.isAndroidShell) {
+    const root = document.getElementById('app')!
+    const status = document.createElement('div')
+    status.className = 'native-startup'
+    status.textContent = '正在打开基金跟踪器…首次启动需要解压本地组件，请稍候。'
+    root.replaceChildren(status)
+    try {
+      const { startEmbeddedBackend } = await import('./platform/android')
+      await startEmbeddedBackend()
+    } catch (error) {
+      status.textContent = error instanceof Error ? error.message : String(error)
+      const retry = document.createElement('button')
+      retry.textContent = '重新打开'
+      retry.onclick = () => window.location.reload()
+      status.appendChild(retry)
+      return
+    }
+  }
+  app.mount('#app')
+}
+
+void bootstrap()

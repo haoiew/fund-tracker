@@ -150,10 +150,11 @@ class TestFundTrendAnalysis:
     async def test_append_realtime_change_uses_alternative_estimate(self, fund_service, monkeypatch):
         """筛选消费后端已选择且具有真实行情时刻的推测值。"""
         from datetime import datetime, timezone, timedelta
+        from app.core import data_contract
         from app.core import data_source
         from app.services import fund_service as service_module
         now = datetime(2026, 10, 13, 14, 30, tzinfo=timezone(timedelta(hours=8)))
-        monkeypatch.setattr(data_source, "shanghai_now", lambda: now)
+        monkeypatch.setattr(data_contract, "shanghai_now", lambda: now)
         monkeypatch.setattr(service_module, "shanghai_now", lambda: now)
         async def fake_realtime(code):
             return FundRealtimeData(

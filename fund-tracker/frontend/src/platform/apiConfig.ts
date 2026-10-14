@@ -1,8 +1,11 @@
 import { runtimeInfo } from './runtime'
 import { chooseApiBaseUrl } from './apiDefaults'
 import { loadConfiguredApiUrl } from './appSettings'
+import { getEmbeddedApiBaseUrl } from './embeddedConnection'
 
 export function resolveApiBaseUrl(): string {
+  const embedded = getEmbeddedApiBaseUrl()
+  if (embedded) return embedded
   const configured = import.meta.env.VITE_API_BASE_URL?.trim()
   const stored = loadConfiguredApiUrl()
   const shellMode = import.meta.env.MODE

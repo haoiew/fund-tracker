@@ -105,6 +105,27 @@ def test_data_source_metadata_classifies_realtime_and_latest_nav():
     assert _classify_data_kind("eastmoney_lsjz", "2026-06-05") == ("latest_nav", "最新净值")
 
 
+def test_realtime_api_passes_explicit_refresh_to_the_source_snapshot(client, monkeypatch):
+    from types import SimpleNamespace
+    import app.api.v1.funds as funds_api
+    from app.schemas.fund import FundRealtimeData
+
+    calls = []
+
+    async def single(code, view="auto", refresh=False):
+        calls.append((code, view, refresh))
+        return FundRealtimeData(code=code, name="测试基金")
+
+    async def batch(codes, view="auto", refresh=False):
+        calls.append((codes, view, refresh))
+        return [FundRealtimeData(code=code, name="测试基金") for code in codes]
+
+    monkeypatch.setattr(funds_api, "get_fund_service", lambda: SimpleNamespace(get_realtime_data=single, get_realtime_batch=batch))
+    assert client.get("/api/v1/funds/realtime/012414?view=provider&refresh=true").status_code == 200
+    assert client.post("/api/v1/funds/realtime/batch?refresh=true", json=["015916", "015916"]).status_code == 200
+    assert calls == [("012414", "provider", True), (["015916"], "auto", True)]
+
+
 @pytest.mark.integration
 def test_fund_endpoints_integration(client):
     resp = client.get("/api/v1/funds/realtime/000001")

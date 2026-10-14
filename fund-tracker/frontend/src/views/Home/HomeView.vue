@@ -11,6 +11,7 @@
         </div>
       </div>
       <div class="page-toolbar__actions">
+        <el-tag v-if="sourcesLoading && !fundStore.loading" type="primary" size="small">后台补充中</el-tag>
         <el-button :icon="Refresh" @click="refreshData" :loading="isRefreshing">
           {{ $t('home.refresh') }}
         </el-button>
@@ -205,7 +206,7 @@
             <el-option label="基金代码顺序" value="code" />
           </el-select>
         </div>
-        <div class="fund-record-list" :class="{ 'is-pending': fundStore.loading && compactFunds.length === 0 }" v-loading="fundStore.loading">
+        <div class="fund-record-list" :class="{ 'is-pending': fundStore.loading && compactFunds.length === 0 }" v-loading="fundStore.loading && compactFunds.length === 0">
           <FundRecordCard v-for="row in compactFunds" :key="row.code" :name="row.name" :code="row.code" :metrics="getCompactFundMetrics(row)">
             <template #selection>
               <el-checkbox :model-value="selectedFunds.some(fund => fund.code === row.code)" :aria-label="`选择 ${row.name}`" @change="toggleCompactSelection(row)" />
@@ -237,7 +238,7 @@
                 <div v-if="dataSourceData" class="fund-record-list">
                   <FundRecordCard v-for="source in dataSourceData.sources" :key="source.source" :name="getSourceRowName(source)" :metrics="getCompactSourceMetrics(source)">
                     <template #badges>
-                      <el-tag :type="source.is_available ? 'success' : 'warning'" size="small">{{ source.is_available ? '可用' : '不可用' }}</el-tag>
+                      <el-tag :type="source.is_pending ? 'primary' : source.is_available ? 'success' : 'warning'" size="small">{{ source.is_pending ? '采集中' : source.is_available ? '可用' : '不可用' }}</el-tag>
                     </template>
                     <template #meta>{{ getSourceRowMeta(source) }}<p>{{ source.error || source.description }}</p></template>
                     <template #actions>
@@ -331,6 +332,7 @@
                     <span>数据来源</span>
                     <strong>{{ getFundDataSourceName(row) }}</strong>
                     <small v-if="row.data_source_description">{{ row.data_source_description }}</small>
+                    <small v-if="row.quality">{{ getQuoteQualityText(row.quality) }}</small>
                   </div>
                   <div>
                     <span>行情类型</span>
@@ -384,6 +386,7 @@
                         <strong>{{ getSourceRowName(sourceRow) }}</strong>
                         <small>{{ getSourceRowMeta(sourceRow) }}</small>
                         <em v-if="sourceRow.description">{{ sourceRow.description }}</em>
+                        <em v-if="sourceRow.quality">{{ getQuoteQualityText(sourceRow.quality) }}</em>
                       </div>
                     </template>
                   </el-table-column>
@@ -411,7 +414,8 @@
                   </el-table-column>
                   <el-table-column prop="is_available" label="状态" width="96" align="center">
                     <template #default="{ row: sourceRow }">
-                      <el-tooltip v-if="!sourceRow.is_available" :content="sourceRow.error || '数据源当前不可用'" placement="top">
+                      <el-tag v-if="sourceRow.is_pending" type="primary" size="small">采集中</el-tag>
+                      <el-tooltip v-else-if="!sourceRow.is_available" :content="sourceRow.error || '数据源当前不可用'" placement="top">
                         <el-tag type="warning" size="small">不可用</el-tag>
                       </el-tooltip>
                       <el-tag v-else type="success" size="small">可用</el-tag>
@@ -662,7 +666,7 @@ import { useCompactLayout } from '@/composables/useCompactLayout'
 import { exportFundsToCSV } from '@/utils/export'
 import { deriveEstimateNav } from '@/utils/fundEstimate'
 import { shanghaiDate, summarizePortfolioDay } from '@/utils/portfolioValuation'
-import { getQuoteBadge, formatQuoteTime as formatDateTime } from '@/utils/quotePresentation'
+import { getQuoteBadge, getQuoteQualityText, formatQuoteTime as formatDateTime } from '@/utils/quotePresentation'
 import fundApi, { type FundRealtimeData, type FundSearchItem, type RealtimeAlternativeResult } from '@/api/fund'
 
 const { t } = useI18n()
@@ -720,6 +724,9 @@ interface DataSourceComparisonItem {
   display_name?: string
   short_name?: string
   description?: string
+  quality?: FundRealtimeData['quality']
+  last_nav_source?: string | null
+  stale_reason?: string | null
   priority: number
   name?: string | null
   estimate_nav: number | null
@@ -732,6 +739,7 @@ interface DataSourceComparisonItem {
   data_kind_label?: string
   is_realtime?: boolean
   is_available: boolean
+  is_pending?: boolean
   is_fresh: boolean
   data_timestamp?: string
   error?: string | null
@@ -746,6 +754,7 @@ const dataSourceData = ref<{
   total_sources: number
   realtime_sources?: number
 } | null>(null)
+const sourcesLoading = computed(() => dataManager.getState().realtimeSourcesLoading)
 const currentDataSourceFund = ref<FundRealtimeData | null>(null)
 const realtimeAlternatives = ref<RealtimeAlternativeResult | null>(null)
 
@@ -855,6 +864,8 @@ const getChangeTone = (val: number | string | null) => {
 const DATA_SOURCE_FALLBACK_NAMES: Record<string, string> = {
   tiantian: '天天基金盘中估值接口',
   sina: '新浪基金估值',
+  dayfund: '净值估算网',
+  fund123: '数米基金',
   eastmoney_mobile: '东方财富移动端单位净值',
   efinance: 'EFinance 批量基金行情接口',
   tencent: '腾讯基金行情',
@@ -865,6 +876,8 @@ const DATA_SOURCE_FALLBACK_NAMES: Record<string, string> = {
 const DATA_SOURCE_SHORT_NAMES: Record<string, string> = {
   tiantian: 'TTFund',
   sina: '新浪',
+  dayfund: '净值估算网',
+  fund123: '数米',
   eastmoney_mobile: 'Eastmoney',
   efinance: 'EFinance',
   tencent: 'Tencent',
@@ -1110,7 +1123,7 @@ const refreshData = async () => {
   isRefreshing.value = true
   try {
     await dataManager.refreshAll()
-    ElMessage.success('数据已更新')
+    ElMessage.success(sourcesLoading.value ? '在线数据已更新，备用源继续补充' : '数据已更新')
   } catch {
     ElMessage.error('刷新失败，请检查后端服务是否运行')
   } finally {
@@ -1150,14 +1163,17 @@ const getTableRowClassName = ({ row }: { row: FundRealtimeData }) => {
 }
 
 // 导出数据
-const exportData = () => {
+const exportData = async () => {
   const data = fundStore.realtimeData
   if (data.length === 0) {
     ElMessage.warning(t('home.noDataToExport'))
     return
   }
-  exportFundsToCSV(data)
-  ElMessage.success(t('home.exportSuccess'))
+  try {
+    if (await exportFundsToCSV(data)) ElMessage.success(t('home.exportSuccess'))
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '导出失败')
+  }
 }
 
 // 检查基金是否已在持仓中
@@ -1290,6 +1306,9 @@ const selectDataSource = (source: string) => {
     data_source_display_name: selectedSource.display_name,
     data_source_short_name: selectedSource.short_name,
     data_source_description: selectedSource.description,
+    quality: selectedSource.quality ?? null,
+    official_nav_source: selectedSource.last_nav_source ?? null,
+    stale_reason: selectedSource.stale_reason ?? null,
     data_kind: selectedSource.data_kind,
     data_kind_label: selectedSource.data_kind_label,
     is_realtime: selectedSource.is_realtime,
@@ -1301,7 +1320,7 @@ const selectDataSource = (source: string) => {
     data_timestamp: selectedSource.data_timestamp || fund.data_timestamp
   }
 
-  dataManager.updateRealtimeItem(updatedFund)
+  dataManager.updateRealtimeItem(updatedFund, true)
   currentDataSourceFund.value = updatedFund
   ElMessage.success(`当前行已采用 ${getDataSourceDisplayName(selectedSource.source, selectedSource.display_name)} 数据`)
 }
@@ -1325,10 +1344,11 @@ const selectHoldingEstimate = () => {
     data_kind: 'holdings_estimate' as const,
     data_kind_label: '持仓估算',
     is_realtime: false,
+    quality: null, // Manual reference changes must not inherit the previous provider quality.
     data_timestamp: new Date().toISOString()
   }
 
-  dataManager.updateRealtimeItem(updatedFund)
+  dataManager.updateRealtimeItem(updatedFund, true)
   currentDataSourceFund.value = updatedFund
   ElMessage.success('当前行已采用持仓估算涨跌幅')
 }
@@ -1352,10 +1372,11 @@ const selectReferenceEstimate = () => {
     data_kind: 'reference_symbol_estimate' as const,
     data_kind_label: '标的估算',
     is_realtime: false,
+    quality: null, // Manual reference changes must not inherit the previous provider quality.
     data_timestamp: new Date().toISOString()
   }
 
-  dataManager.updateRealtimeItem(updatedFund)
+  dataManager.updateRealtimeItem(updatedFund, true)
   currentDataSourceFund.value = updatedFund
   ElMessage.success('当前行已采用引用标的估算涨跌幅')
 }
@@ -1382,46 +1403,68 @@ const applyCandidateRealtime = (candidate: RealtimeAlternativeResult['same_name_
     data_kind: 'similar_realtime_reference' as const,
     data_kind_label: '相近参考',
     is_realtime: false,
+    quality: null, // Manual reference changes must not inherit the previous provider quality.
     data_timestamp: new Date().toISOString()
   }
 
-  dataManager.updateRealtimeItem(updatedFund)
+  dataManager.updateRealtimeItem(updatedFund, true)
   currentDataSourceFund.value = updatedFund
   ElMessage.success(`当前行已采用 ${candidate.code} 相近基金参考`)
 }
 
+let dataSourceRequestVersion = 0
+const loadDataSourceComparison = async (fund: FundRealtimeData, keepVisible = false) => {
+  const version = ++dataSourceRequestVersion
+  currentDataSourceFund.value = fund
+  const needAlternatives = fund.is_realtime === false && !(fund.pending_sources?.length)
+  if (!keepVisible) {
+    dataSourceData.value = null
+    realtimeAlternatives.value = null
+    dataSourceLoading.value = true
+  }
+  alternativesLoading.value = needAlternatives
+  try {
+    const [result, alternatives] = await Promise.all([
+      fundApi.getDataSources(fund.code, fund.name),
+      needAlternatives ? fundApi.getRealtimeAlternatives(fund.code, fund.name) : Promise.resolve(null)
+    ])
+    if (version !== dataSourceRequestVersion) return
+    dataSourceData.value = result
+    realtimeAlternatives.value = alternatives
+  } catch (error) {
+    if (version === dataSourceRequestVersion) {
+      console.error('获取数据源对比失败:', error)
+      ElMessage.error('获取数据源对比失败')
+    }
+  } finally {
+    if (version === dataSourceRequestVersion) {
+      dataSourceLoading.value = false
+      alternativesLoading.value = false
+    }
+  }
+}
+
+// 已打开的来源面板跟随本轮后台快照更新，不保留刷新前的对比结果。
+watch(() => {
+  const code = currentDataSourceFund.value?.code
+  const fund = code ? dataManager.getRealtimeData(code) : undefined
+  return fund ? `${code}|${fund.data_timestamp}|${fund.pending_sources?.join(',')}|${fund.official_update_time}` : ''
+}, (next, previous) => {
+  const fund = currentDataSourceFund.value
+  if (!previous || !next || !fund || expandedPanelMode.value !== 'dataSource' || !isFundExpanded(fund)) return
+  const updated = dataManager.getRealtimeData(fund.code)
+  if (updated) void loadDataSourceComparison(updated, true)
+})
+
 // 显示数据源菜单
 const showDataSourceMenu = async (fund: FundRealtimeData) => {
-  console.log('点击状态标签，基金:', fund.code, fund.name)
   if (isFundExpanded(fund) && expandedPanelMode.value === 'dataSource') {
     collapseFundDetail()
     return
   }
-
-  currentDataSourceFund.value = fund
   expandedPanelMode.value = 'dataSource'
   expandedRowKeys.value = [fund.code]
-  dataSourceData.value = null
-  realtimeAlternatives.value = null
-  dataSourceLoading.value = true
-  alternativesLoading.value = fund.is_realtime === false
-  
-  try {
-    console.log('正在获取数据源对比...')
-    const [result, alternatives] = await Promise.all([
-      fundApi.getDataSources(fund.code, fund.name),
-      fund.is_realtime === false ? fundApi.getRealtimeAlternatives(fund.code, fund.name) : Promise.resolve(null)
-    ])
-    console.log('数据源对比结果:', result)
-    dataSourceData.value = result
-    realtimeAlternatives.value = alternatives
-  } catch (error) {
-    console.error('获取数据源对比失败:', error)
-    ElMessage.error('获取数据源对比失败')
-  } finally {
-    dataSourceLoading.value = false
-    alternativesLoading.value = false
-  }
+  await loadDataSourceComparison(fund)
 }
 
 onMounted(() => {

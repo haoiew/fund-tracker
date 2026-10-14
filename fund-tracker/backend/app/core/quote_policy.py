@@ -3,7 +3,8 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Optional
 
-from app.core.data_source import is_current_estimate, shanghai_now
+from app.core.data_contract import is_current_estimate
+from app.core.data_source import shanghai_now
 from app.schemas.fund import FundRealtimeData
 
 
@@ -74,6 +75,6 @@ def select_quote(
     return direct.model_copy(update={
         **official, "estimate_nav": None, "estimate_change": None,
         "update_time": "--", "data_kind": "unavailable", "data_kind_label": "暂无可用估值",
-        "status": direct.error or "暂无可用估值", "is_realtime": False,
+        "status": "补充中" if direct.pending_sources else direct.error or "暂无可用估值", "is_realtime": False,
         "is_inferred": False, "estimation_details": None,
     })

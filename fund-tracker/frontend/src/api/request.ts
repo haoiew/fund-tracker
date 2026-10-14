@@ -1,5 +1,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse, AxiosError } from 'axios'
 import { resolveApiBaseUrl } from '@/platform/apiConfig'
+import { getEmbeddedAccessToken } from '@/platform/embeddedConnection'
 
 // 重试配置
 const RETRY_CONFIG = {
@@ -149,6 +150,9 @@ service.interceptors.request.use(
   (config) => {
     // 让设置页保存的 API 地址在下一次请求即时生效；Web 开发仍默认走 Vite 代理。
     config.baseURL = resolveApiBaseUrl()
+    const localToken = getEmbeddedAccessToken(config.baseURL, config.url)
+    if (localToken) config.headers.set('X-Fund-Tracker-Token', localToken)
+    else config.headers.delete('X-Fund-Tracker-Token')
 
     // 只在开发环境打印日志
     if (import.meta.env.DEV) {

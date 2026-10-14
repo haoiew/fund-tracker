@@ -66,14 +66,14 @@ Frontend (Vue 3)
   -> Vite proxy (/api/* -> http://127.0.0.1:8001/api/v1/)
   -> FastAPI routes (api/v1/)
   -> Service layer (services/)
-  -> DataSourceManager (core/data_source.py) with strategy chain
+  -> DataSourceManager (core/data_source.py) with concurrent progressive snapshots
   -> SQLite + In-memory LRU cache
 ```
 
 ### Backend Architecture (fund-tracker/backend/app/)
 
 - **config.py** — Centralized Settings dataclass, single source of truth for all config
-- **core/data_source.py** — Shared single/batch path: Tiantian H5 estimates -> Sina estimates for missing current quotes -> unit-NAV fallbacks. Sina field mapping follows its own page script; literal commas in quote URLs matter. Preserve NAV dates separately, price with NAV rather than ACCNAV, and exclude money-market yields. Several NAV endpoints share Eastmoney upstream; endpoint count is not realtime coverage.
+- **core/data_source.py** — Starts all estimate/NAV sources concurrently and publishes shared progressive snapshots. Select valid estimates in priority order: Sina -> Tiantian POST -> Dayfund -> Fund123; never register GET/POST as separate providers. UI main loading ends when Sina is complete, even if failed; pending backups continue. `refresh=true` bypasses completed cache; progress reads reuse it. Contract/capabilities and pure normalization live in **core/data_contract.py** and **core/provider_normalizers.py**, re-exported for compatibility. Preserve actual source time, separate NAV/ACCNAV, and exclude money-market yields. Endpoint count is not independent realtime coverage.
 - **core/quote_policy.py** — Authoritative `auto/provider/nav` selection: current provider estimate first, then dated holdings/reference inference; auto official NAV only after Shanghai close and today's publication. Keep missing quotes null and inference explicitly labeled.
 - **core/history_data.py** — Normalize unit NAV, actual accumulated NAV, Shanghai dates and provider daily growth; comparison uses chained daily returns with an explicit return basis.
 - **core/cache.py** — In-memory LRU cache (no Redis dependency)

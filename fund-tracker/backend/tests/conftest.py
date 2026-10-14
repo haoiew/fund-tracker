@@ -57,7 +57,7 @@ def app_and_engine(tmp_path_factory):
     def fake_get_fund_name(code: str) -> str:
         return f"基金{code}"
 
-    async def fake_get_realtime_data(code: str, view: str = "auto") -> FundRealtimeData:
+    async def fake_get_realtime_data(code: str, view: str = "auto", refresh: bool = False) -> FundRealtimeData:
         return FundRealtimeData(
             code=code,
             name=f"基金{code}",
@@ -66,7 +66,7 @@ def app_and_engine(tmp_path_factory):
             status="ok",
         )
 
-    async def fake_get_realtime_batch(codes: list[str], view: str = "auto") -> list[FundRealtimeData]:
+    async def fake_get_realtime_batch(codes: list[str], view: str = "auto", refresh: bool = False) -> list[FundRealtimeData]:
         return [await fake_get_realtime_data(code) for code in codes]
 
     _original_get_fund_service = fund_service_module.get_fund_service
@@ -120,3 +120,29 @@ def client(app_and_engine, db_session):
         yield c
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def source_manager(monkeypatch):
+    """Isolated source tests never reach live providers, including newly added ones."""
+    from app.core import data_source
+
+    manager = data_source.DataSourceManager()
+    manager._cache.invalidate_pattern("source_snapshot:")
+
+    def unavailable(code, source):
+        return data_source.FundDataResult(code=code, source=source, error="test unavailable")
+
+    monkeypatch.setattr(manager._sina, "fetch_batch", lambda codes: [unavailable(c, "sina") for c in codes])
+    monkeypatch.setattr(manager._eastmoney, "fetch_tiantian_batch", lambda codes: [unavailable(c, "tiantian") for c in codes])
+    monkeypatch.setattr(manager._eastmoney, "fetch_mobile_batch", lambda codes: [unavailable(c, "eastmoney_mobile") for c in codes])
+    for source, owner, method in [
+        ("tencent", manager._eastmoney, "_try_tencent"),
+        ("eastmoney_lsjz", manager._eastmoney, "_try_eastmoney_lsjz"),
+        ("pingzhongdata", manager._eastmoney, "_try_pingzhongdata"),
+        ("dayfund", manager._dayfund, "fetch_single"), ("fund123", manager._fund123, "fetch_single"),
+    ]:
+        monkeypatch.setattr(owner, method, lambda code, s=source: unavailable(code, s))
+    yield manager
+    manager._cache.invalidate_pattern("source_snapshot:")
+    manager.close()

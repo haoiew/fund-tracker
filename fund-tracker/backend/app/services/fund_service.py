@@ -25,8 +25,9 @@ import requests
 
 from app.config import settings
 from app.core.cache import get_cache
-from app.core.data_source import classify_data_kind, get_data_source, get_data_source_metadata, FundDataResult, is_current_estimate, shanghai_now, SHANGHAI
+from app.core.data_source import ESTIMATE_SOURCES, classify_data_kind, get_data_source, get_data_source_metadata, FundDataResult, is_current_estimate, shanghai_now, SHANGHAI
 from app.core.quote_policy import select_quote
+from app.core.data_contract import describe_quote_quality
 from app.core.history_data import parse_pingzhong_history, parse_lsjz_history, calculate_period_returns
 from app.schemas.fund import FundRealtimeData
 from app.logger import get_logger
@@ -440,6 +441,8 @@ class FundService:
                 data_kind=data_kind,
                 data_kind_label=data_kind_label,
                 is_realtime=is_realtime,
+                pending_sources=result.pending_sources,
+                primary_source_complete=result.primary_source_complete,
                 data_timestamp=result.fetched_at,
                 previous_nav=Decimal(str(result.previous_nav)) if result.previous_nav is not None else None,
                 previous_nav_date=result.previous_nav_date,
@@ -450,6 +453,9 @@ class FundService:
                     if result.daily_change is not None or (data_kind == "latest_nav" and result.change_pct is not None) else None,
                 official_update_time=result.previous_nav_date or (result.update_time if data_kind == "latest_nav" else None),
                 official_data_kind_label="正式单位净值",
+                official_nav_source=result.previous_nav_source or (source if data_kind == "latest_nav" else None),
+                stale_reason=result.stale_reason,
+                fund_type=result.fund_type,
             )
             if resolved_name and resolved_name != code:
                 self._fund_names_cache[code] = resolved_name
@@ -458,7 +464,9 @@ class FundService:
 
         return FundRealtimeData(
             code=code, name=name,
-            status='获取失败',
+            status='补充中' if result.pending_sources else '获取失败',
+            pending_sources=result.pending_sources,
+            primary_source_complete=result.primary_source_complete,
             data_source=source,
             data_source_display_name=metadata.get("display_name"),
             data_source_short_name=metadata.get("short_name"),
@@ -468,40 +476,41 @@ class FundService:
             is_realtime=False,
             error=result.error,
             data_timestamp=result.fetched_at,
+            stale_reason=result.stale_reason,
+            fund_type=result.fund_type,
         )
 
-    async def _get_direct_realtime_data(self, code: str) -> FundRealtimeData:
+    async def _get_direct_realtime_data(self, code: str, refresh: bool = False) -> FundRealtimeData:
         """数据源直接提供的报价，独立于展示策略和推测值。"""
-        cache_key = f"direct_quote:{code}"
-        cached = self.cache.get(cache_key)
-        if cached and isinstance(cached, FundRealtimeData):
-            return cached
-
-        name = self._fund_names_cache.get(code, code)
-        result = await self._data_source.fetch_single(code)
-        rt = await asyncio.to_thread(self._build_realtime_response, code, name, result)
-
-        self.cache.set(cache_key, rt, settings.REALTIME_CACHE_TTL)
-        return rt
+        return (await self._get_direct_realtime_batch([code], refresh=refresh))[0]
 
     async def _select_display_quote(self, direct: FundRealtimeData, view: str = "auto") -> FundRealtimeData:
         selected = select_quote(direct, view=view)
-        if view == "auto" and selected.data_kind == "unavailable" and direct.official_nav is not None and not direct.error:
+        if (view == "auto" and selected.data_kind == "unavailable" and direct.official_nav is not None and not direct.error
+                and not any(source in ESTIMATE_SOURCES for source in direct.pending_sources)):
             alternatives = await self.get_realtime_alternatives(direct.code, direct.name, include_candidates=False)
             selected = select_quote(direct, alternatives)
-        return selected
+        quality = describe_quote_quality(
+            source=selected.data_source, data_kind=selected.data_kind, source_time=selected.update_time,
+            nav_date=selected.official_update_time, nav_source=selected.official_nav_source,
+            fetched_at=selected.data_timestamp, available=selected.estimate_nav is not None,
+            is_realtime=selected.is_realtime, is_inferred=selected.is_inferred,
+            error=selected.error, stale_reason=selected.stale_reason, fund_type=selected.fund_type,
+            pending_sources=selected.pending_sources,
+        )
+        return selected.model_copy(update={"quality": quality})
 
-    async def get_realtime_data(self, code: str, view: str = "auto") -> FundRealtimeData:
-        return await self._select_display_quote(await self._get_direct_realtime_data(code), view)
+    async def get_realtime_data(self, code: str, view: str = "auto", refresh: bool = False) -> FundRealtimeData:
+        return await self._select_display_quote(await self._get_direct_realtime_data(code, refresh=refresh), view)
 
     async def get_data_source_comparison(self, code: str, name: Optional[str] = None) -> Dict[str, Any]:
         """获取单只基金各数据源的实时估值对比。"""
-        comparison = await self._data_source.compare_sources(code)
+        comparison = await self._data_source.compare_sources(code, wait_all=False)
         resolved_name = (
             name
             or next((item.get("name") for item in comparison["sources"] if item.get("name")), None)
             or self._fund_names_cache.get(code)
-            or self.get_fund_name(code)
+            or (code if comparison.get("pending_sources") else self.get_fund_name(code))
         )
 
         return {
@@ -512,6 +521,8 @@ class FundService:
             "best_source_display_name": comparison.get("best_source_display_name"),
             "total_sources": comparison["total_sources"],
             "realtime_sources": comparison["realtime_sources"],
+            "pending_sources": comparison.get("pending_sources", []),
+            "primary_source_complete": comparison.get("primary_source_complete", True),
         }
 
     async def get_realtime_alternatives(self, code: str, name: Optional[str] = None, include_candidates: bool = True) -> Dict[str, Any]:
@@ -601,37 +612,17 @@ class FundService:
         self.cache.set(cache_key, result, settings.REALTIME_CACHE_TTL)
         return result
 
-    async def _get_direct_realtime_batch(self, codes: List[str]) -> List[FundRealtimeData]:
-        """批量获取实时数据"""
-        if not codes:
-            return []
+    async def _get_direct_realtime_batch(self, codes: List[str], refresh: bool = False) -> List[FundRealtimeData]:
+        """选价和来源对比只缓存同一份源快照，避免两套报价缓存互相覆盖。"""
+        ds_results = await self._data_source.fetch_batch(codes, refresh=refresh, wait_all=False)
+        if refresh:
+            for code in dict.fromkeys(codes):
+                self.cache.invalidate_pattern(f"quote_alternatives:{code}:")
+        return [await asyncio.to_thread(self._build_realtime_response, row.code,
+                                       self._fund_names_cache.get(row.code, row.code), row) for row in ds_results]
 
-        results = []
-        uncached_codes = []
-        uncached_indices = []
-
-        for i, code in enumerate(codes):
-            cached = self.cache.get(f"direct_quote:{code}")
-            if cached and isinstance(cached, FundRealtimeData):
-                results.append(cached)
-            else:
-                results.append(None)
-                uncached_codes.append(code)
-                uncached_indices.append(i)
-
-        if uncached_codes:
-            ds_results = await self._data_source.fetch_batch(uncached_codes)
-            for idx, result in zip(uncached_indices, ds_results):
-                code = codes[idx]
-                name = self._fund_names_cache.get(code, code)
-                rt = await asyncio.to_thread(self._build_realtime_response, code, name, result)
-                results[idx] = rt
-                self.cache.set(f"direct_quote:{code}", rt, settings.REALTIME_CACHE_TTL)
-
-        return results
-
-    async def get_realtime_batch(self, codes: List[str], view: str = "auto") -> List[FundRealtimeData]:
-        direct = await self._get_direct_realtime_batch(codes)
+    async def get_realtime_batch(self, codes: List[str], view: str = "auto", refresh: bool = False) -> List[FundRealtimeData]:
+        direct = await self._get_direct_realtime_batch(codes, refresh=refresh)
         limiter = asyncio.Semaphore(4)
 
         async def choose(row):
@@ -721,8 +712,7 @@ class FundService:
             return cached
 
         try:
-            import akshare as ak
-            df = ak.stock_zh_index_daily(symbol=symbol)
+            df = self._get_index_daily(symbol)
             df['date'] = pd.to_datetime(df['date'])
             df = df.sort_values('date')
             period_returns = calculate_period_returns(df['date'], df['close'])
@@ -749,6 +739,33 @@ class FundService:
         except Exception as e:
             logger.error(f"获取基准指数失败 {symbol}: {e}")
             return {"dates": [], "values": [], "changes": []}
+
+    def _get_index_daily(self, symbol: str) -> pd.DataFrame:
+        """Read real index closes directly, without a desktop-only SDK dependency."""
+        match = re.fullmatch(r"(sh|sz)(\d{6})", symbol)
+        if not match:
+            raise ValueError("Invalid index symbol")
+        market, code = match.groups()
+        response = self.session.get(
+            "https://push2his.eastmoney.com/api/qt/stock/kline/get",
+            params={"secid": f"{1 if market == 'sh' else 0}.{code}", "klt": "101", "fqt": "0",
+                    "beg": "0", "end": "20500101", "lmt": "10000",
+                    "fields1": "f1,f2,f3,f4,f5,f6", "fields2": "f51,f52,f53"},
+            timeout=settings.REQUEST_TIMEOUT,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        data = payload.get("data") or {}
+        rows = []
+        for line in data.get("klines") or []:
+            fields = line.split(",")
+            if len(fields) >= 3:
+                rows.append({"date": fields[0], "close": fields[2]})
+        frame = pd.DataFrame(rows, columns=["date", "close"])
+        frame["date"] = pd.to_datetime(frame["date"], errors="coerce")
+        frame["close"] = pd.to_numeric(frame["close"], errors="coerce")
+        frame = frame.dropna().drop_duplicates("date", keep="last")
+        return frame[frame["close"] > 0].sort_values("date")
 
     def get_compare_data(self, codes: List[str], range_str: str = "1M", include_benchmark: bool = True) -> Dict[str, Any]:
         result = {"funds": [], "benchmarks": [], "range": range_str}
@@ -1121,14 +1138,7 @@ class FundService:
     def _get_market_rank_candidates(self, direction: str, days: int, screen_type: str) -> List[str]:
         """用全市场排行数据预选候选，避免逐只基金实时扫全市场导致请求超时。"""
         try:
-            import akshare as ak
-            import sys, io
-            old_stdout = sys.stdout
-            sys.stdout = io.StringIO()
-            try:
-                df = ak.fund_open_fund_rank_em(symbol="全部")
-            finally:
-                sys.stdout = old_stdout
+            df = self._get_market_rank_data()
         except Exception as exc:
             logger.debug(f"获取全市场基金排行失败: {exc}")
             return []
@@ -1156,6 +1166,34 @@ class FundService:
         codes = ranked["基金代码"].astype(str).str.zfill(6).head(MARKET_SCREEN_PREFILTER_LIMIT).tolist()
         return list(dict.fromkeys(codes))
 
+    def _get_market_rank_data(self) -> pd.DataFrame:
+        """The provider's ranking is a candidate filter, not a substitute for NAV history."""
+        today = shanghai_now().date()
+        response = self.session.get(
+            "https://fund.eastmoney.com/data/rankhandler.aspx",
+            params={"op": "ph", "dt": "kf", "ft": "all", "rs": "", "gs": "0", "sc": "1nzf",
+                    "st": "desc", "sd": str(today - timedelta(days=365)), "ed": str(today),
+                    "qdii": "", "tabSubtype": ",,,,,", "pi": "1", "pn": "30000", "dx": "1"},
+            headers={"Referer": "https://fund.eastmoney.com/"}, timeout=max(settings.REQUEST_TIMEOUT, 15),
+        )
+        response.raise_for_status()
+        # Decode the JSON array only; never execute the surrounding JavaScript.
+        match = re.search(r"\bdatas\s*:\s*", response.text)
+        if not match:
+            raise ValueError("Fund ranking response has no data array")
+        data, _ = json.JSONDecoder().raw_decode(response.text[match.end():])
+        if not isinstance(data, list):
+            raise ValueError("Invalid fund ranking data")
+        columns = {"基金代码": 0, "日增长率": 6, "近1周": 7, "近1月": 8, "近3月": 9, "近6月": 10}
+        rows = []
+        for line in data:
+            if not isinstance(line, str):
+                continue
+            fields = line.split(",")
+            if len(fields) >= 11 and re.fullmatch(r"\d{6}", fields[0]):
+                rows.append({column: fields[index] for column, index in columns.items()})
+        return pd.DataFrame(rows, columns=list(columns))
+
     def _search_from_eastmoney(self, keyword: str, limit: int) -> List[Dict]:
         try:
             data = self._load_eastmoney_fund_catalog()
@@ -1175,6 +1213,10 @@ class FundService:
             'names_cache_size': len(self._fund_names_cache),
             'cache_stats': self.cache.get_stats()
         }
+
+    async def aclose(self):
+        await self._data_source.wait_for_pending()
+        self.close()
 
     def close(self):
         """Clean up resources on shutdown."""

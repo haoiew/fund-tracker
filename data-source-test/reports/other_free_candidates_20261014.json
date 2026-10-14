@@ -1,0 +1,69 @@
+{
+  "checked_at": "2026-10-14T15:18:18.857365+08:00",
+  "howbuy": {
+    "script": "https://static.howbuy.com/js/www/funddetail/fundDetailJS.js?v=3ead03b",
+    "endpoint": "https://www.howbuy.com/fund/ajax/gmfund/valuation/valuationnav.htm",
+    "method": "POST",
+    "cases": [
+      {
+        "code": "012414",
+        "http_status": 200,
+        "body_bytes": 0,
+        "body": "",
+        "duration_ms": 82.82
+      },
+      {
+        "code": "015916",
+        "http_status": 200,
+        "body_bytes": 0,
+        "body": "",
+        "duration_ms": 56.18
+      },
+      {
+        "code": "018125",
+        "http_status": 200,
+        "body_bytes": 0,
+        "body": "",
+        "duration_ms": 56.01
+      }
+    ]
+  },
+  "retired_paths": [
+    {
+      "name": "tencent_intraday",
+      "url": "https://web.ifzq.gtimg.cn/fund/newfund/fundSsgz/getSsgz?app=web&symbol=jj161725",
+      "http_status": 200,
+      "duration_ms": 115.99,
+      "business_code": 21,
+      "message": "interface offline"
+    },
+    {
+      "name": "danjuan_estimate",
+      "url": "https://danjuanfunds.com/djapi/fund/estimate-nav/161725",
+      "http_status": 200,
+      "duration_ms": 259.25,
+      "business_code": 0,
+      "items": 0
+    },
+    {
+      "name": "legacy_fundgz",
+      "url": "https://fundgz.1234567.com.cn/js/161725.js",
+      "http_status": 200,
+      "duration_ms": 94.65,
+      "has_jsonpgz": false,
+      "content_type": "text/html"
+    }
+  ],
+  "ths_web": {
+    "url": "https://fund.10jqka.com.cn/data/jjgz/",
+    "http_status": 200,
+    "sha256": "c96a6f6c919d56e57a30175fd89139af530e2381aafdba063599f832e08d917a",
+    "sample_rows": {
+      "012414": [],
+      "015916": [],
+      "018125": []
+    },
+    "notice_url": "https://mams.10jqka.com.cn/new/server/html/107610.html",
+    "scope": "公开网页检查；不代表其 App 或授权产品不可用"
+  }
+}
