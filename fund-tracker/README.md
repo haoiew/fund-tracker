@@ -13,7 +13,7 @@
 - **基金筛选**: 连续涨跌趋势筛选
 - **基金对比**: 多基金多周期对比，含基准指数
 - **可视化图表**: ECharts 丰富的图表展示历史走势
-- **轻量跨端**: Web 优先，保留 Tauri 桌面与 Android 容器潜力
+- **轻量跨端**: Web 优先，提供内置 Python 后端与数据库的独立 Android APK
 
 加载采用本地持仓先返回、源端估值先显示、推算随后补充。空关注列表和持仓列表分别管理；部分基金没有有效估值时仍显示 `--`，不以旧净值补齐。详见[加载耗时、限流与截图问题核查](docs/LOADING_DIAGNOSTICS_20261014.md)。
 
@@ -24,12 +24,16 @@
 | 层级 | 技术 |
 |------|------|
 | 前端 | Vue 3 + TypeScript + Element Plus + ECharts |
-| 运行壳 | Web 优先 / Tauri-ready |
+| 运行壳 | Web 优先 / Tauri 2 Android + Chaquopy 内置 Python |
 | 后端 | FastAPI + SQLAlchemy |
 | 数据库 | SQLite（零外部依赖） |
-| 数据源 | 新浪 + 天天 POST + Dayfund + Fund123；东方财富/腾讯正式净值；AKShare 用于部分搜索与指数查询 |
+| 数据源 | 新浪 + 天天 POST + Dayfund + Fund123；东方财富/腾讯正式净值；指数与排行直连接口，桌面保留可选 AKShare 搜索回退 |
 
 ## 快速开始
+
+### 安卓独立版
+
+安装 `dist/android/fund-tracker-3.0.0-universal.apk` 后直接运行，无需电脑后端或手机端 Python / Termux。支持 ARM64 与 x86_64，实时行情仍需要网络。打包、签名和数据存储说明见 [安卓独立安装包](docs/ANDROID_STANDALONE.md)。
 
 ### 环境要求
 

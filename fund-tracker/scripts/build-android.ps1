@@ -14,7 +14,7 @@ $project = Split-Path $PSScriptRoot -Parent
 $frontend = Join-Path $project 'frontend'
 $native = Join-Path $frontend 'src-tauri'
 $wheels = Join-Path $native 'plugins/fund-backend/android/wheels'
-$environmentNames = @('JAVA_HOME','ANDROID_HOME','NDK_HOME','FUND_TRACKER_BUILD_PYTHON','PATH','JAVA_TOOL_OPTIONS','CARGO_HTTP_PROXY','PYTHONUTF8')
+$environmentNames = @('JAVA_HOME','ANDROID_HOME','NDK_HOME','FUND_TRACKER_BUILD_PYTHON','PATH','JAVA_TOOL_OPTIONS','CARGO_HTTP_PROXY','PYTHONUTF8','RUSTFLAGS','WRY_ANDROID_PACKAGE','TAURI_ANDROID_PACKAGE_UNESCAPED','WRY_ANDROID_LIBRARY','TAURI_ANDROID_PROJECT_PATH','WRY_ANDROID_KOTLIN_FILES_OUT_DIR','CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER','CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER','FUND_TRACKER_SIGNING_PASSWORD')
 $oldEnvironment = @{}
 foreach ($name in $environmentNames) { $oldEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 
@@ -50,8 +50,35 @@ try {
     try {
         & npm.cmd run type-check
         Assert-Exit 'Frontend type check'
-        & npx.cmd tauri android build --apk --target aarch64 x86_64 --ci
-        Assert-Exit 'Standalone APK build'
+        & npm.cmd run tauri:build:web
+        Assert-Exit 'Bundled frontend build'
+        # Tauri's default CLI requires Windows symlink privileges. Compile the same real libraries,
+        # then copy them instead; no developer mode, system privileges or remote backend is needed.
+        $env:WRY_ANDROID_PACKAGE = 'com.fundtracker.app'
+        $env:TAURI_ANDROID_PACKAGE_UNESCAPED = 'com.fundtracker.app'
+        $env:WRY_ANDROID_LIBRARY = 'fund_tracker_lib'
+        $env:TAURI_ANDROID_PROJECT_PATH = Join-Path $native 'gen/android'
+        $env:WRY_ANDROID_KOTLIN_FILES_OUT_DIR = Join-Path $env:TAURI_ANDROID_PROJECT_PATH 'app/src/main/java/com/fundtracker/app/generated'
+        $env:RUSTFLAGS = '-C link-arg=-Wl,-z,max-page-size=16384'
+        $targets = @(@('aarch64-linux-android','arm64-v8a'), @('x86_64-linux-android','x86_64'))
+        foreach ($target in $targets) {
+            $linkerName = 'CARGO_TARGET_' + $target[0].ToUpper().Replace('-', '_') + '_LINKER'
+            [Environment]::SetEnvironmentVariable($linkerName, (Join-Path $ndk "toolchains/llvm/prebuilt/windows-x86_64/bin/$($target[0])24-clang.cmd"), 'Process')
+            & cargo.exe build --manifest-path (Join-Path $native 'Cargo.toml') --lib --release --target $target[0] --features tauri/custom-protocol --locked
+            Assert-Exit "Android $($target[1]) native build"
+            $dest = Join-Path $env:TAURI_ANDROID_PROJECT_PATH "app/src/main/jniLibs/$($target[1])"
+            New-Item -ItemType Directory -Force $dest | Out-Null
+            Copy-Item -LiteralPath (Join-Path $native "target/$($target[0])/release/libfund_tracker_lib.so") -Destination (Join-Path $dest 'libfund_tracker_lib.so') -Force
+        }
+        Push-Location $env:TAURI_ANDROID_PROJECT_PATH
+        try {
+            [IO.File]::WriteAllText((Join-Path $env:TAURI_ANDROID_PROJECT_PATH 'local.properties'), 'sdk.dir=' + $SdkRoot.Replace('\','/') + [Environment]::NewLine)
+            [IO.File]::WriteAllText((Join-Path $env:TAURI_ANDROID_PROJECT_PATH 'app/tauri.properties'), "tauri.android.versionName=3.0.0`ntauri.android.versionCode=3000000`n")
+            $pathHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($native))).Substring(0,12)
+            $pythonBuild = Join-Path $env:USERPROFILE ".cache/fund-tracker/python-build/$pathHash"
+            & ./gradlew.bat :app:assembleUniversalRelease '-PabiList=arm64-v8a,x86_64' '-ParchList=arm64,x86_64' '-PtargetList=aarch64,x86_64' "-PfundTrackerPythonBuildDir=$pythonBuild" -x :app:rustBuildArm64Release -x :app:rustBuildX86_64Release --no-configuration-cache --no-watch-fs --console=plain
+            Assert-Exit 'Standalone APK assembly'
+        } finally { Pop-Location }
     } finally { Pop-Location }
 
     # A stable private signing key allows subsequent versions to update without losing app data.
@@ -81,7 +108,7 @@ try {
     $buildTools = Join-Path $SdkRoot 'build-tools/37.0.0'
     & (Join-Path $buildTools 'zipalign.exe') -f -P 16 4 $apks[0].FullName $aligned
     Assert-Exit '16 KB APK alignment'
-    & (Join-Path $buildTools 'apksigner.bat') sign --ks $key --ks-key-alias fund-tracker --ks-pass env:FUND_TRACKER_SIGNING_PASSWORD --key-pass env:FUND_TRACKER_SIGNING_PASSWORD --out $apk $aligned
+    & (Join-Path $buildTools 'apksigner.bat') sign --v4-signing-enabled false --ks $key --ks-key-alias fund-tracker --ks-pass env:FUND_TRACKER_SIGNING_PASSWORD --key-pass env:FUND_TRACKER_SIGNING_PASSWORD --out $apk $aligned
     Assert-Exit 'APK signing'
     & (Join-Path $buildTools 'apksigner.bat') verify --verbose $apk
     Assert-Exit 'APK signature verification'
@@ -90,6 +117,5 @@ try {
     [IO.File]::WriteAllText((Join-Path $output 'SHA256SUMS.txt'), "$hash  $([IO.Path]::GetFileName($apk))" + [Environment]::NewLine)
     Write-Output "Signed standalone APK: $apk"
 } finally {
-    Remove-Item Env:FUND_TRACKER_SIGNING_PASSWORD -ErrorAction SilentlyContinue
     foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $oldEnvironment[$name], 'Process') }
 }

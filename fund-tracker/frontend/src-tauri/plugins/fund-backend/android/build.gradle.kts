@@ -6,6 +6,11 @@ plugins {
     id("com.chaquo.python") version "17.1.0"
 }
 
+// Keep Python's directory moves away from Windows workspace indexers and long source paths.
+providers.gradleProperty("fundTrackerPythonBuildDir").orNull?.let {
+    layout.buildDirectory.set(file(it))
+}
+
 android {
     namespace = "com.fundtracker.backend"
     compileSdk = 37
@@ -41,4 +46,7 @@ chaquopy {
 tasks.configureEach {
     if (name.contains("Python")) dependsOn(syncBackendSources)
 }
-dependencies { implementation(project(":tauri-android")) }
+dependencies {
+    implementation(project(":tauri-android"))
+    implementation("androidx.activity:activity-ktx:1.10.1")
+}

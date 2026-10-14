@@ -1068,7 +1068,7 @@ class FundService:
         if self._eastmoney_fund_catalog_cache is not None:
             return self._eastmoney_fund_catalog_cache
         try:
-            url = "http://fund.eastmoney.com/js/fundcode_search.js"
+            url = "https://fund.eastmoney.com/js/fundcode_search.js"
             resp = self.session.get(url, timeout=10)
             if resp.status_code != 200:
                 self._eastmoney_fund_catalog_cache = []
