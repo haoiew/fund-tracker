@@ -1,5 +1,3 @@
-import { DEFAULT_NATIVE_API_BASE } from './apiDefaults'
-
 export const SETTINGS_STORAGE_KEY = 'fund-tracker-settings'
 
 export type ColorModeSetting = 'red-up-green-down' | 'green-up-red-down'
@@ -73,7 +71,7 @@ JSON 结构：
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   language: 'zh-CN',
-  apiUrl: DEFAULT_NATIVE_API_BASE,
+  apiUrl: '', // Auto: web proxy or the native shell's local backend.
   autoRefresh: false,
   refreshInterval: 60,
   colorMode: 'red-up-green-down',

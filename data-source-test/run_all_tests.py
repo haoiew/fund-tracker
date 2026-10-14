@@ -2,6 +2,7 @@
 """
 数据源测试主运行脚本
 运行所有测试并生成JSON结果
+旧适配器混合成交价/净值/累计净值；当前生产核查请用 check_availability.py。
 """
 import os
 import sys
@@ -155,6 +156,7 @@ def main():
     """主函数"""
     print("=" * 60)
     print("基金数据源综合测试")
+    print("注意：旧库级基准混合数据口径，不代表实时估值覆盖；生产核查请使用 check_availability.py。")
     print(f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
@@ -206,6 +208,7 @@ def main():
     all_results = {
         "run_id": datetime.now().strftime('%Y%m%d_%H%M%S'),
         "timestamp": datetime.now().isoformat(),
+        "interpretation_warning": "旧库级基准混合成交价/净值/累计净值，不能用于证明实时估值或 NAV 准确性；当前核查见 check_availability.py。",
         "fund_codes": fund_codes,
         "fund_count": len(fund_codes),
         "sources": {}

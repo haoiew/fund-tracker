@@ -1,6 +1,6 @@
 # 基金跟踪器 Fund Tracker v3.0
 
-> 本地化的跨端基金跟踪与分析工具，零外部依赖
+> 本地化的跨端基金跟踪与分析工具，无外部数据库/缓存服务依赖；联网数据仍依赖上游服务
 
 ## 项目概述
 
@@ -16,7 +16,7 @@
 | 运行壳 | Web 优先 / Tauri-ready |
 | 数据库 | SQLite（WAL 模式，零外部依赖） |
 | 缓存 | 内存 LRU 缓存 |
-| 数据源 | efinance + eastmoney 多源降级 + AKShare 备用 |
+| 数据源 | 天天 H5 → 新浪估值备用；东方财富/腾讯正式单位净值；必要时显式本地推算 |
 
 ## 快速开始
 
@@ -25,7 +25,10 @@
 fund-tracker/scripts/start.bat
 
 # 手动启动
-cd fund-tracker/backend && pip install -r requirements.txt && python -m app.main
+conda activate fund-tracker
+cd fund-tracker/backend
+python -m app.main
+# 在另一终端，从仓库根目录启动前端
 cd fund-tracker/frontend && npm install && npm run dev
 ```
 
@@ -34,7 +37,7 @@ cd fund-tracker/frontend && npm install && npm run dev
 
 ## 功能
 
-- 实时估值查询（多数据源自动降级）
+- 估值查询：优先源端估值，缺失时显式推测；当日收盘且正式净值已公布才自动切换净值
 - 历史净值数据与本地持久化
 - 持仓管理与实时盈亏计算
 - 连续涨跌趋势筛选
@@ -47,6 +50,8 @@ cd fund-tracker/frontend && npm install && npm run dev
 cd fund-tracker/backend && pytest
 cd fund-tracker/frontend && npm run lint && npm run build
 ```
+
+最新新浪估值备用源、界面与实际加载核查见[10-14 实时估值报告](fund-tracker/docs/ESTIMATE_FALLBACK_20261014.md)；架构、开源候选与模型中立规划见[改进方案](fund-tracker/docs/DATA_SOURCE_AND_AGENT_PLAN_20261013.md)。样本可用不代表全市场覆盖、估值精度或持续服务保证。
 
 ## 许可
 

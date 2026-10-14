@@ -49,7 +49,7 @@ export default {
     loading: 'Loading fund data...',
     loadingSub: 'First load may take 10-30 seconds',
     noData: 'No fund data',
-    loadDefault: 'Load Default Funds'
+    loadDefault: 'Add Watchlist Fund'
   },
   screen: {
     title: 'Screen',

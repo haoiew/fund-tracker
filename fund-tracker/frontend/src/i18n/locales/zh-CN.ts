@@ -49,7 +49,7 @@ export default {
     loading: '正在获取基金数据...',
     loadingSub: '首次加载可能需要 10-30 秒',
     noData: '暂无基金数据',
-    loadDefault: '加载默认基金'
+    loadDefault: '添加关注基金'
   },
   screen: {
     title: '基金筛选',

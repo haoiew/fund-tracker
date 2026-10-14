@@ -2,7 +2,7 @@
 """
 基金API - 使用新FundService
 """
-from typing import List, Optional
+from typing import List, Optional, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 import asyncio
@@ -14,7 +14,6 @@ from app.schemas.common import ResponseModel
 from app.schemas.portfolio import _validate_fund_code_value
 from app.services.fund_service import get_fund_service
 from app.services.history_service import get_history_service
-from app.config import settings
 from app.logger import get_logger
 
 router = APIRouter()
@@ -39,16 +38,16 @@ async def remove_fund(code: str):
 
 
 @router.get("/realtime/{code}", response_model=ResponseModel[FundRealtimeData])
-async def get_fund_realtime(code: str):
+async def get_fund_realtime(code: str, view: Literal["auto", "provider", "nav"] = Query("auto")):
     code = _validate_fund_code_value(code)
-    data = await get_fund_service().get_realtime_data(code)
+    data = await get_fund_service().get_realtime_data(code, view=view)
     return ResponseModel(data=data)
 
 
 @router.post("/realtime/batch", response_model=ResponseModel[List[FundRealtimeData]])
-async def get_funds_realtime(codes: List[str]):
-    unique_codes = list(set(codes))
-    results = await get_fund_service().get_realtime_batch(unique_codes)
+async def get_funds_realtime(codes: List[str], view: Literal["auto", "provider", "nav"] = Query("auto")):
+    unique_codes = list(dict.fromkeys(_validate_fund_code_value(code) for code in codes))
+    results = await get_fund_service().get_realtime_batch(unique_codes, view=view)
     return ResponseModel(data=results)
 
 
@@ -75,7 +74,7 @@ async def get_fund_history(code: str, range: str = Query("3M")):
 
 @router.post("/search", response_model=ResponseModel[List[dict]])
 async def search_funds(request: FundSearchRequest):
-    results = get_fund_service().search_funds(request.keyword, request.limit)
+    results = await asyncio.to_thread(get_fund_service().search_funds, request.keyword, request.limit)
     return ResponseModel(data=results)
 
 
@@ -166,11 +165,6 @@ async def compare_funds_multi(request: FundCompareMultiRequest):
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(None, get_fund_service().get_compare_data_multi, request.codes, request.ranges, request.include_benchmark)
     return ResponseModel(data=result)
-
-
-@router.get("/default-list", response_model=ResponseModel[List[str]])
-async def get_default_fund_list():
-    return ResponseModel(data=settings.DEFAULT_FUNDS)
 
 
 @router.get("/cache/stats", response_model=ResponseModel[dict])

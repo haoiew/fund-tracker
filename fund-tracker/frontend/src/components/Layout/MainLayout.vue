@@ -18,6 +18,8 @@
           :to="`/${item.path}`"
           class="nav-item"
           :class="{ active: isActiveRoute(item.path) }"
+          :aria-current="isActiveRoute(item.path) ? 'page' : undefined"
+          :title="String(item.meta?.title || '')"
         >
           <span class="nav-icon">
             <el-icon size="18">
@@ -203,13 +205,16 @@ onMounted(() => {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
   background: var(--bg-app-shell);
   color: var(--text-primary);
 }
 
 .app-sidebar {
+  min-width: 0;
   position: sticky;
   top: 0;
   height: 100vh;
@@ -261,6 +266,7 @@ onMounted(() => {
 }
 
 .sidebar-nav {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -391,6 +397,7 @@ onMounted(() => {
 }
 
 .topbar {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -538,33 +545,57 @@ onMounted(() => {
 
 @media (max-width: 960px) {
   .app-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .app-sidebar {
+    grid-row: 2;
     position: relative;
     height: auto;
-    flex-direction: row;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 16px;
+    padding: 6px max(12px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    border-top: 1px solid var(--border-light);
+    border-right: 0;
+    border-bottom: 0;
   }
 
   .sidebar-brand {
-    padding: 0;
+    display: none;
   }
 
   .sidebar-nav {
-    flex-direction: row;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     padding: 0;
-    gap: 8px;
+    gap: 4px;
   }
 
   .nav-item {
-    min-width: 168px;
-    flex: 0 0 auto;
+    min-width: 0;
+    min-height: 52px;
+    padding: 5px 2px;
+    gap: 4px;
+    transform: none;
+  }
+
+  .nav-icon {
+    width: 24px;
+    height: 20px;
+    background: transparent;
+  }
+
+  .nav-copy {
+    display: flex;
+    align-items: center;
+  }
+
+  .nav-title {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .nav-subtitle {
+    display: none;
   }
 
   .sidebar-footer {
@@ -572,17 +603,50 @@ onMounted(() => {
   }
 
   .app-main {
-    padding: 0 12px 12px;
+    grid-row: 1;
+    padding: 0 12px;
   }
 
   .topbar {
-    padding-inline: 6px;
-    flex-direction: column;
-    align-items: stretch;
+    min-height: 44px;
+    padding: 5px 0;
+    gap: 8px;
+  }
+
+  .topbar-separator,
+  .topbar-subtitle {
+    display: none;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .status-chip {
+    min-height: 34px;
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .status-label {
+    font-size: 12px;
+  }
+
+  .icon-button {
+    width: 36px;
+    height: 36px;
   }
 
   .content-shell {
-    padding: 0 6px 12px;
+    padding: 0 0 12px;
+    scrollbar-gutter: stable;
+  }
+
+  .nav-item:focus-visible,
+  .icon-button:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
   }
 }
 </style>

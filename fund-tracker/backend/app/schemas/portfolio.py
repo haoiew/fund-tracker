@@ -76,6 +76,15 @@ class PortfolioResponse(PortfolioBase):
     profit_amount: Optional[Decimal] = Field(None, description="盈亏金额")
     profit_rate: Optional[Decimal] = Field(None, description="收益率(%)")
     transaction_count: int = Field(default=0, description="关联交易流水数量")
+    daily_profit: Optional[Decimal] = None
+    official_nav: Optional[Decimal] = None
+    official_change_pct: Optional[Decimal] = None
+    official_update_time: Optional[str] = None
+    data_kind: Optional[str] = None
+    data_kind_label: Optional[str] = None
+    is_realtime: bool = False
+    is_inferred: bool = False
+    quote_as_of: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -136,9 +145,10 @@ class PortfolioTransactionResponse(PortfolioTransactionBase):
 class PortfolioSummary(BaseModel):
     """持仓汇总"""
     total_cost: Decimal = Field(default=Decimal('0'), description="总投入")
-    total_value: Decimal = Field(default=Decimal('0'), description="总市值")
-    total_profit: Decimal = Field(default=Decimal('0'), description="总盈亏")
-    total_profit_rate: Decimal = Field(default=Decimal('0'), description="总收益率(%)")
+    total_value: Optional[Decimal] = Field(default=Decimal('0'), description="总市值；有未估值持仓时为空")
+    total_profit: Optional[Decimal] = Field(default=Decimal('0'), description="总盈亏；有未估值持仓时为空")
+    total_profit_rate: Optional[Decimal] = Field(default=Decimal('0'), description="总收益率(%)")
+    unpriced_codes: list[str] = Field(default_factory=list)
     fund_count: int = Field(default=0, description="持仓数量")
     up_count: int = Field(default=0, description="上涨数量")
     down_count: int = Field(default=0, description="下跌数量")
@@ -149,9 +159,9 @@ class PortfolioProfitDetail(BaseModel):
     fund_code: str
     fund_name: str
     cost_amount: Decimal
-    current_value: Decimal
-    profit_amount: Decimal
-    profit_rate: Decimal
+    current_value: Optional[Decimal]
+    profit_amount: Optional[Decimal]
+    profit_rate: Optional[Decimal]
     daily_profit: Optional[Decimal] = Field(None, description="当日收益")
 
 

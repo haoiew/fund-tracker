@@ -42,7 +42,7 @@ npm run tauri:build:web          # Build frontend assets for future Tauri shell
 ### Testing
 ```bash
 cd fund-tracker/backend && pytest                    # Backend tests
-cd fund-tracker/backend && pytest tests/test_fund.py # Run single test file
+cd fund-tracker/backend && pytest tests/test_fund_service.py # Run single test file
 cd fund-tracker/backend && pytest -m "not slow"      # Skip slow tests
 cd fund-tracker/backend && pytest -k "test_name"     # Run tests matching pattern
 cd data-source-test && python run_all_tests.py       # Data source comparison
@@ -73,7 +73,9 @@ Frontend (Vue 3)
 ### Backend Architecture (fund-tracker/backend/app/)
 
 - **config.py** — Centralized Settings dataclass, single source of truth for all config
-- **core/data_source.py** — DataSourceManager with strategy chain and comparison metadata: tiantian realtime estimate -> efinance batch supplement -> Tencent/Eastmoney latest NAV fallbacks (`tencent`, `eastmoney_lsjz`, `pingzhongdata`). QDII/HK-themed funds may only expose latest NAV dates; UI distinguishes `实时估值` from `最新净值`.
+- **core/data_source.py** — Shared single/batch path: Tiantian H5 estimates -> Sina estimates for missing current quotes -> unit-NAV fallbacks. Sina field mapping follows its own page script; literal commas in quote URLs matter. Preserve NAV dates separately, price with NAV rather than ACCNAV, and exclude money-market yields. Several NAV endpoints share Eastmoney upstream; endpoint count is not realtime coverage.
+- **core/quote_policy.py** — Authoritative `auto/provider/nav` selection: current provider estimate first, then dated holdings/reference inference; auto official NAV only after Shanghai close and today's publication. Keep missing quotes null and inference explicitly labeled.
+- **core/history_data.py** — Normalize unit NAV, actual accumulated NAV, Shanghai dates and provider daily growth; comparison uses chained daily returns with an explicit return basis.
 - **core/cache.py** — In-memory LRU cache (no Redis dependency)
 - **core/scheduler.py** — APScheduler background tasks
 - **services/** — Business logic: fund_service (data/screen/compare), history_service (NAV persistence), portfolio_service (CRUD + profit calc)
@@ -101,6 +103,8 @@ Frontend (Vue 3)
 ### data-source-test/
 
 Standalone benchmarking project for evaluating data source providers (akshare, efinance, tushare, eastmoney). Each adapter implements `sources/base.py`. Tests cover feasibility, stability, accuracy, timeliness, and batch performance.
+
+For realtime coverage or Sina changes, consult `fund-tracker/docs/ESTIMATE_FALLBACK_20261014.md` and run `data-source-test/check_estimate_coverage.py`. Broader NAV/history checks use `check_availability.py`; agent/skill planning is in `fund-tracker/docs/DATA_SOURCE_AND_AGENT_PLAN_20261013.md`. Legacy benchmark scores mix price/NAV/accumulated-NAV semantics. Third-party code transplantation and framework adoption require the user's decision.
 
 ## Environment Notes
 

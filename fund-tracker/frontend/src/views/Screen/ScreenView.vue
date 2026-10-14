@@ -66,6 +66,7 @@
                 size="small"
                 text
                 class="condition-remove"
+                aria-label="移除筛选条件"
                 @click="removeCondition(condition.id)"
               >
                 <el-icon><Close /></el-icon>
@@ -691,7 +692,7 @@ async function addToWatchlist(fund: FundTrendResult) {
     }
   }
 
-  @media (max-width: 720px) {
+  @media (max-width: 960px) {
     .screen-builder-header {
       flex-direction: column;
       align-items: stretch;
@@ -702,7 +703,60 @@ async function addToWatchlist(fund: FundTrendResult) {
     }
 
     .condition-controls {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .condition-rule {
+      padding: 10px 10px 10px 12px;
+      gap: 8px;
+    }
+
+    .condition-controls {
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+
+    .condition-remove {
+      min-width: 36px;
+      min-height: 36px;
+    }
+
+    .screen-results .result-section {
+      padding: 10px;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .screen-builder-header {
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+    }
+
+    .screen-builder-actions {
+      gap: 6px;
+    }
+
+    .screen-mode {
+      width: 100%;
+      justify-content: space-between;
+      padding: 4px 8px;
+    }
+
+    .condition-title small {
+      display: inline;
+      margin-left: 8px;
+    }
+
+    :deep(.el-select__wrapper),
+    :deep(.el-input__wrapper),
+    .direction-segment :deep(.el-radio-button__inner) {
+      min-height: 36px;
+    }
+
+    .direction-segment :deep(.el-radio-button__inner) {
+      padding-inline: 8px;
     }
   }
 }

@@ -1,6 +1,41 @@
 <template>
   <div class="result-table">
+    <template v-if="isCompact">
+      <div class="compact-list-toolbar">
+        <span>{{ data.length }} 只基金</span>
+        <el-select v-model="compactSort" size="small" aria-label="筛选结果排序">
+          <el-option label="涨跌幅从高到低" value="pct-desc" />
+          <el-option label="涨跌幅从低到高" value="pct-asc" />
+          <el-option label="天数从高到低" value="days-desc" />
+          <el-option label="基金代码顺序" value="code" />
+        </el-select>
+      </div>
+      <div class="fund-record-list" :class="{ 'is-pending': loading && data.length === 0 }" v-loading="loading">
+        <FundRecordCard v-for="row in compactFunds" :key="row.code" :name="row.name" :code="row.code" :metrics="[
+          { key: 'days', label: screenType === 'period' ? '统计天数' : '连续天数', value: `${row.days} 天` },
+          { key: 'pct', label: '累计涨跌幅', value: formatChange(row.pct), className: getChangeClass(row.pct) }
+        ]">
+          <template #actions>
+            <el-button size="small" @click="toggleCompactHistory(row)">{{ expandedRows.includes(row.code) ? '收起历史' : '近期净值' }}</el-button>
+            <el-button size="small" type="primary" @click="emit('view', row)">图表</el-button>
+            <el-button size="small" type="success" @click="emit('add', row)">关注</el-button>
+          </template>
+          <template v-if="expandedRows.includes(row.code)">
+            <div class="compact-history" v-loading="loadingHistoryMap[row.code]">
+              <div class="compact-history__row compact-history__header"><span>日期</span><span>净值</span><span>涨跌幅</span></div>
+              <div v-for="item in getHistoryRows(row.code)" :key="item.date" class="compact-history__row">
+                <span>{{ item.date }}</span><span>{{ item.nav.toFixed(4) }}</span><span :class="getChangeClass(item.change_pct)">{{ formatChange(item.change_pct) }}</span>
+              </div>
+              <el-empty v-if="!loadingHistoryMap[row.code] && !getHistoryRows(row.code).length" description="暂无历史数据" :image-size="60" />
+              <el-button size="small" :loading="loadingHistoryMap[row.code]" @click="loadMoreHistory(row)">加载更多历史数据</el-button>
+            </div>
+            <div :ref="el => setChartElement(row.code, el)" class="compact-mini-chart"></div>
+          </template>
+        </FundRecordCard>
+      </div>
+    </template>
     <el-table 
+      v-else
       :data="data" 
       v-loading="loading" 
       stripe 
@@ -56,7 +91,7 @@
               
               <!-- 右侧：图表 -->
               <div class="detail-right">
-                <div ref="chartRef" class="mini-chart" :id="`chart-${row.code}`"></div>
+                <div :ref="el => setChartElement(row.code, el)" class="mini-chart"></div>
               </div>
             </div>
           </div>
@@ -97,11 +132,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, nextTick } from 'vue'
+import { ref, reactive, nextTick, computed, watch, onMounted, onActivated, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { fundApi, type FundTrendResult, type ScreenType } from '@/api/fund'
+import FundRecordCard from '@/components/Funds/FundRecordCard.vue'
+import { useCompactLayout } from '@/composables/useCompactLayout'
 
 interface Props {
   data: FundTrendResult[]
@@ -122,6 +159,13 @@ interface TooltipPoint {
 }
 
 const props = defineProps<Props>()
+const isCompact = useCompactLayout()
+const compactSort = ref(props.direction === 'up' ? 'pct-desc' : 'pct-asc')
+const compactFunds = computed(() => [...props.data].sort((a, b) => {
+  if (compactSort.value === 'code') return a.code.localeCompare(b.code)
+  if (compactSort.value === 'days-desc') return b.days - a.days
+  return compactSort.value === 'pct-asc' ? a.pct - b.pct : b.pct - a.pct
+}))
 
 const emit = defineEmits<{
   view: [fund: FundTrendResult]
@@ -140,6 +184,49 @@ const loadingHistoryMap = reactive<Record<string, boolean>>({})
 
 // 图表实例
 const chartInstances = reactive<Record<string, echarts.ECharts | null>>({})
+const chartElements = new Map<string, HTMLElement>()
+const setChartElement = (code: string, element: unknown) => {
+  if (!(element instanceof HTMLElement)) {
+    chartElements.delete(code)
+    return
+  }
+  const previous = chartElements.get(code)
+  chartElements.set(code, element)
+  if (previous !== element && expandedRows.value.includes(code) && historyData[code]?.length) {
+    nextTick(() => {
+      if (chartElements.get(code) === element) renderChart(code)
+    })
+  }
+}
+
+const disposeCharts = () => {
+  for (const code of Object.keys(chartInstances)) {
+    chartInstances[code]?.dispose()
+    chartInstances[code] = null
+  }
+}
+
+watch(isCompact, disposeCharts)
+
+const resizeCharts = () => {
+  for (const code of Object.keys(chartInstances)) {
+    if (chartElements.get(code)?.clientWidth) chartInstances[code]?.resize()
+  }
+}
+
+onMounted(() => window.addEventListener('resize', resizeCharts))
+onActivated(() => nextTick(resizeCharts))
+onUnmounted(() => {
+  window.removeEventListener('resize', resizeCharts)
+  disposeCharts()
+})
+
+const toggleCompactHistory = (row: FundTrendResult) => {
+  const nextRows = expandedRows.value.includes(row.code)
+    ? expandedRows.value.filter(code => code !== row.code)
+    : [...expandedRows.value, row.code]
+  return handleExpandChange(row, props.data.filter(item => nextRows.includes(item.code)))
+}
 
 // 处理展开/收起
 const handleExpandChange = async (row: FundTrendResult, expandedRowsList: FundTrendResult[]) => {
@@ -176,7 +263,7 @@ const handleExpandChange = async (row: FundTrendResult, expandedRowsList: FundTr
 
 // 渲染迷你图表
 const renderChart = (code: string) => {
-  const chartDom = document.getElementById(`chart-${code}`)
+  const chartDom = chartElements.get(code)
   if (!chartDom) return
   
   // 销毁旧实例
@@ -360,6 +447,34 @@ const formatChange = (value: number | null | undefined) => {
 
 <style scoped lang="scss">
 .result-table {
+  .compact-history {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .compact-history__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-light);
+
+    span:not(:first-child) {
+      text-align: right;
+    }
+  }
+
+  .compact-history__header {
+    color: var(--text-secondary);
+    font-weight: 700;
+  }
+
+  .compact-mini-chart {
+    width: 100%;
+    height: 220px;
+    margin-top: 10px;
+  }
+
   .fund-detail-panel {
     padding: 16px;
     background: var(--bg-page);

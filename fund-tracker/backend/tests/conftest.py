@@ -31,6 +31,16 @@ def app_and_engine(tmp_path_factory):
         poolclass=StaticPool,
     )
     Base.metadata.create_all(bind=test_engine)
+    # Lifespan and history use module-bound engines/sessions, not get_db overrides.
+    # Isolate those paths as well so ordinary pytest never opens the user database.
+    from app.db import base as database_module
+    from app.services import history_service as history_module
+    patcher = pytest.MonkeyPatch()
+    testing_session = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+    patcher.setattr(app_main, "engine", test_engine)
+    patcher.setattr(database_module, "engine", test_engine)
+    patcher.setattr(database_module, "SessionLocal", testing_session)
+    patcher.setattr(history_module, "SessionLocal", testing_session)
 
     settings.PRELOAD_ENABLED = False
 
@@ -47,7 +57,7 @@ def app_and_engine(tmp_path_factory):
     def fake_get_fund_name(code: str) -> str:
         return f"基金{code}"
 
-    async def fake_get_realtime_data(code: str) -> FundRealtimeData:
+    async def fake_get_realtime_data(code: str, view: str = "auto") -> FundRealtimeData:
         return FundRealtimeData(
             code=code,
             name=f"基金{code}",
@@ -56,7 +66,7 @@ def app_and_engine(tmp_path_factory):
             status="ok",
         )
 
-    async def fake_get_realtime_batch(codes: list[str]) -> list[FundRealtimeData]:
+    async def fake_get_realtime_batch(codes: list[str], view: str = "auto") -> list[FundRealtimeData]:
         return [await fake_get_realtime_data(code) for code in codes]
 
     _original_get_fund_service = fund_service_module.get_fund_service
@@ -70,7 +80,11 @@ def app_and_engine(tmp_path_factory):
 
     fund_service_module.get_fund_service = _patched_get_fund_service
 
-    yield app_main.app, test_engine
+    try:
+        yield app_main.app, test_engine
+    finally:
+        patcher.undo()
+        test_engine.dispose()
 
 
 @pytest.fixture(scope="function")

@@ -9,22 +9,24 @@ export interface PortfolioItem {
   cost_amount: number  // 投入金额
   cost_nav?: number    // 成本净值
   buy_date?: string
-  current_nav?: number // 当前净值
+  current_nav?: number | null // 当前净值
   current_change?: number | null
-  current_value?: number // 当前市值
-  profit_amount?: number // 持有收益
-  profit_rate?: number   // 收益率
-  daily_profit?: number  // 当日收益
+  current_value?: number | null // 当前市值
+  profit_amount?: number | null // 持有收益
+  profit_rate?: number | null   // 收益率
+  daily_profit?: number | null  // 当日收益
   realtime_change_pct?: number | null
-  realtime_change_amount?: number
+  realtime_change_amount?: number | null
   official_nav?: number | null
   official_change_pct?: number | null
-  official_change_amount?: number
+  official_change_amount?: number | null
   official_value?: number | null
   official_update_time?: string | null
   data_kind?: string | null
   data_kind_label?: string | null
   is_realtime?: boolean
+  is_inferred?: boolean
+  quote_as_of?: string | null
   transaction_count?: number
   remark?: string        // 备注
   created_at?: string
@@ -33,9 +35,11 @@ export interface PortfolioItem {
 
 export interface PortfolioStats {
   total_cost: number
-  total_value: number
-  total_profit_loss: number
-  total_profit_loss_pct: number
+  total_value: number | null
+  total_profit_loss: number | null
+  total_profit_loss_pct: number | null
+  unpriced_count?: number
+  unpriced_codes?: string[]
   item_count: number
 }
 
@@ -71,8 +75,8 @@ export interface PortfolioRebalanceRecord {
 // API 方法
 export const portfolioApi = {
   // 获取所有持仓
-  getAll(): Promise<PortfolioSummary> {
-    return request.get('/portfolio/summary')
+  getAll(includeQuotes = true): Promise<PortfolioSummary> {
+    return request.get('/portfolio/summary', { params: { include_quotes: includeQuotes } })
   },
 
   // 获取单个持仓

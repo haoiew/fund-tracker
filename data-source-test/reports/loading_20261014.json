@@ -1,0 +1,93 @@
+{
+  "checked_at": "2026-10-14T11:51:50.991418+08:00",
+  "origin": "http://127.0.0.1:3000",
+  "kind": "real_HTTP_proxy_loading_pipeline_not_browser_render_time",
+  "watchlist_count": 21,
+  "portfolio_count": 18,
+  "union_count": 23,
+  "metadata_ms": 48,
+  "rounds": [
+    {
+      "round": 1,
+      "cache_stats_before": {
+        "hits": 0,
+        "misses": 0,
+        "sets": 0,
+        "evictions": 0,
+        "size": 0,
+        "max_size": 2000,
+        "hit_rate": "0.00%"
+      },
+      "provider_ms": 160,
+      "complete_quote_ms": 6207,
+      "provider_http_status": 200,
+      "auto_http_status": 200,
+      "auto_code_count": 20,
+      "union_kinds": {
+        "holdings_estimate": 10,
+        "realtime_estimate": 3,
+        "reference_symbol_estimate": 1,
+        "unavailable": 9
+      },
+      "portfolio_kinds": {
+        "holdings_estimate": 7,
+        "realtime_estimate": 3,
+        "reference_symbol_estimate": 1,
+        "unavailable": 7
+      }
+    },
+    {
+      "round": 2,
+      "cache_stats_before": {
+        "hits": 40,
+        "misses": 63,
+        "sets": 86,
+        "evictions": 0,
+        "size": 86,
+        "max_size": 2000,
+        "hit_rate": "38.83%"
+      },
+      "provider_ms": 22,
+      "complete_quote_ms": 27,
+      "provider_http_status": 200,
+      "auto_http_status": 200,
+      "auto_code_count": 20,
+      "union_kinds": {
+        "holdings_estimate": 10,
+        "realtime_estimate": 3,
+        "reference_symbol_estimate": 1,
+        "unavailable": 9
+      },
+      "portfolio_kinds": {
+        "holdings_estimate": 7,
+        "realtime_estimate": 3,
+        "reference_symbol_estimate": 1,
+        "unavailable": 7
+      }
+    }
+  ],
+  "before_browser_refresh_ms": 11049,
+  "separate_prior_cold_service_probe": {
+    "provider_ms": 146,
+    "inference_added_ms": 824,
+    "date_time": "2026-10-14 11:08 Asia/Shanghai",
+    "before_F10_rate_spacing_change": true
+  },
+  "F10_frequency_cap_observed": {
+    "status": 514,
+    "reason": "Frequency Capped",
+    "observed_at": "2026-10-14 11:36:58 Asia/Shanghai"
+  },
+  "frontend_serves_progressive_code": true,
+  "proxy_health": {
+    "/api/system/health": 200,
+    "/api/v1/system/health": 200
+  },
+  "notes": [
+    "No holding amounts or shares are saved in this report.",
+    "Quote timings measure localhost HTTP responses, not browser script download, rendering, or historical charts.",
+    "A loaded row with null estimate does not count as an available price.",
+    "Warm-cache times and rate-limit fast failures must not be presented as cold-start acceleration.",
+    "F10 is a disclosed-holdings input, separate from the Tiantian provider estimate endpoint."
+  ]
+}

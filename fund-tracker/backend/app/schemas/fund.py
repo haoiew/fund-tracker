@@ -74,6 +74,14 @@ class FundRealtimeData(BaseModel):
     data_kind: str = Field(default="latest_nav", description="数据类型: realtime_estimate/latest_nav")
     data_kind_label: str = Field(default="最新净值", description="数据类型显示名称")
     is_realtime: bool = Field(default=False, description="是否为盘中实时估值")
+    is_inferred: bool = Field(default=False, description="是否由披露持仓或关联标的推测")
+    official_nav: Optional[Decimal] = Field(None, description="最新正式单位净值，独立于当前展示值")
+    official_change: Optional[Decimal] = Field(None, description="正式净值日增长率(%)")
+    official_update_time: Optional[str] = Field(None, description="正式净值日期")
+    official_data_kind_label: Optional[str] = None
+    previous_nav_date: Optional[str] = Field(None, description="估值基础净值日期")
+    estimation_details: Optional[dict] = Field(None, description="推测方法、基础日期和行情覆盖")
+    error: Optional[str] = Field(None, description="数据不可用或不支持的原因")
     data_timestamp: Optional[str] = Field(None, description="数据获取时间戳")
     # 新增字段
     previous_nav: Optional[Decimal] = Field(None, description="昨日净值")

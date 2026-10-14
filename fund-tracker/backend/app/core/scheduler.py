@@ -109,7 +109,7 @@ class SchedulerService:
         result = await service.get_realtime_batch(codes)
         return {
             'success': True,
-            'refreshed': len([r for r in result if r.get('nav')]),
+            'refreshed': sum(row.estimate_nav is not None for row in result),
             'timestamp': datetime.now().isoformat()
         }
 

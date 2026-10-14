@@ -19,7 +19,7 @@ export const useFundStore = defineStore('fund', () => {
   /**
    * 实时数据
    */
-  const realtimeData = dataManager.getAllRealtimeData
+  const realtimeData = dataManager.getWatchlistRealtimeData
 
   // ============ Getters (计算属性) ============
 
@@ -158,11 +158,10 @@ export const useFundStore = defineStore('fund', () => {
   }
 
   /**
-   * 重置为默认基金列表
-   * 清除本地缓存，从API获取最新默认列表
+   * 清空关注列表
    */
-  async function resetToDefault(): Promise<void> {
-    await dataManager.resetFundList()
+  function clearFundList(): void {
+    dataManager.clearFundList()
   }
 
   return {
@@ -191,6 +190,6 @@ export const useFundStore = defineStore('fund', () => {
     compareFunds,
     searchFunds,
     clearError,
-    resetToDefault
+    clearFundList
   }
 })

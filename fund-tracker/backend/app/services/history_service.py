@@ -55,7 +55,8 @@ class HistoryService:
             try:
                 start_date = datetime.now().date() - timedelta(days=days) if days > 0 else date(2000, 1, 1)
                 query = db.query(FundNavHistory).filter(
-                    and_(FundNavHistory.fund_code == code, FundNavHistory.nav_date >= start_date)
+                    and_(FundNavHistory.fund_code == code, FundNavHistory.nav_date >= start_date,
+                         FundNavHistory.nav.is_not(None))
                 ).order_by(FundNavHistory.nav_date.asc()).all()
 
                 if not query:
@@ -64,14 +65,10 @@ class HistoryService:
                 dates, values, changes = [], [], []
                 for i, record in enumerate(query):
                     dates.append(record.nav_date.strftime('%Y-%m-%d'))
-                    values.append(record.accum_nav if record.accum_nav else record.nav)
-                    if i > 0 and values[i-1] and values[i]:
-                        change = ((values[i] - values[i-1]) / values[i-1] * 100)
-                        changes.append(Decimal(str(round(change, 2))))
-                    else:
-                        changes.append(None)
+                    values.append(record.nav)
+                    changes.append(record.daily_change)
 
-                return {'dates': dates, 'values': values, 'changes': changes}
+                return {'dates': dates, 'values': values, 'changes': changes, 'value_basis': 'unit_nav'}
             finally:
                 db.close()
         except Exception as e:
@@ -116,10 +113,10 @@ class HistoryService:
             await self._store_to_db(code, df)
 
             dates = df['净值日期'].dt.strftime('%Y-%m-%d').tolist()
-            values = [Decimal(str(v)) for v in df['累计净值'].tolist()]
+            values = [Decimal(str(v)) for v in df['单位净值'].tolist()]
             changes = [Decimal(str(v * 100)) if pd.notna(v) else None for v in df['pct_change'].tolist()]
 
-            return {'dates': dates, 'values': values, 'changes': changes}
+            return {'dates': dates, 'values': values, 'changes': changes, 'value_basis': 'unit_nav'}
         except Exception as e:
             logger.error(f"获取并存储数据失败 {code}: {e}")
             return {'dates': [], 'values': [], 'changes': []}
@@ -177,12 +174,12 @@ class HistoryService:
 
                 if existing:
                     existing.nav = row.get('单位净值')
-                    existing.accum_nav = row.get('累计净值')
+                    existing.accum_nav = row.get('累计净值') if pd.notna(row.get('累计净值')) else None
                     existing.daily_change = daily_change
                 else:
                     db.add(FundNavHistory(
                         fund_code=code, nav_date=nav_date,
-                        nav=row.get('单位净值'), accum_nav=row.get('累计净值'),
+                        nav=row.get('单位净值'), accum_nav=row.get('累计净值') if pd.notna(row.get('累计净值')) else None,
                         daily_change=daily_change
                     ))
             db.commit()

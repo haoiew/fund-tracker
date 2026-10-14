@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
           target: 'http://127.0.0.1:8001',
           changeOrigin: true,
           ws: true,
-          rewrite: (path) => path.replace(/^\/api/, '/api/v1'),
+          rewrite: (path) => path.replace(/^\/api(?:\/v1)?(?=\/|$)/, '/api/v1'),
           configure: (proxy, _options) => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             proxy.on('error', (err: Error, _req: any, _res: any) => {

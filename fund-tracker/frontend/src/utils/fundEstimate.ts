@@ -3,7 +3,11 @@ import type { FundRealtimeData } from '@/api/fund'
 export const deriveEstimateNav = (fund: FundRealtimeData, changePct: number): number | null => {
   const existingChange = Number(fund.estimate_change)
   const existingNav = Number(fund.estimate_nav)
-  const previousNav = Number(fund.previous_nav)
+  const previousNav = Number(fund.official_nav ?? fund.previous_nav)
+
+  if (fund.data_kind === 'latest_nav' && Number.isFinite(existingNav) && existingNav > 0) {
+    return Number((existingNav * (1 + changePct / 100)).toFixed(4))
+  }
 
   if (Number.isFinite(previousNav) && previousNav > 0) {
     return Number((previousNav * (1 + changePct / 100)).toFixed(4))

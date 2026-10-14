@@ -11,11 +11,13 @@
         </div>
       </div>
       <div class="page-toolbar__actions">
-        <el-button type="primary" :icon="Plus" @click="showAddDialog = true">{{ $t('portfolio.addPosition') }}</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreateDialog">{{ $t('portfolio.addPosition') }}</el-button>
         <el-button :icon="Upload" @click="showImportDialog = true">导入持仓</el-button>
       </div>
     </section>
 
+    <el-alert v-if="portfolioStore.stats?.unpriced_count" type="info" :closable="false"
+      :title="portfolioStore.stats.unpriced_count + ' 只持仓暂无可用估值，完整组合市值和收益暂不可计算。'" />
     <section class="metric-grid portfolio-metrics">
       <div class="metric-card is-portfolio-metric">
         <div class="metric-icon is-neutral">
@@ -38,7 +40,7 @@
             {{ portfolioStore.profitPositive ? '+' : '' }}¥{{ formatNumber(portfolioStore.totalProfit) }}
           </div>
           <div class="metric-foot" :class="portfolioStore.profitPositive ? 'text-success' : 'text-danger'">
-            持有收益率 {{ portfolioStore.profitPositive ? '+' : '' }}{{ portfolioStore.totalProfitPct.toFixed(2) }}%
+            持有收益率 {{ formatSignedPercent(portfolioStore.totalProfitPct) }}
           </div>
         </div>
       </div>
@@ -49,10 +51,10 @@
         </div>
         <div class="metric-body">
           <div class="metric-label">当日实时盈亏</div>
-          <div class="metric-value" :class="portfolioRealtimeStats.changeAmount >= 0 ? 'text-success' : 'text-danger'">
+          <div class="metric-value" :class="getSignedClass(portfolioRealtimeStats.changeAmount)">
             {{ formatSignedCurrency(portfolioRealtimeStats.changeAmount) }}
           </div>
-          <div class="metric-foot" :class="portfolioRealtimeStats.changePct >= 0 ? 'text-success' : 'text-danger'">
+          <div class="metric-foot" :class="getSignedClass(portfolioRealtimeStats.changePct)">
             实时估值 {{ formatSignedPercent(portfolioRealtimeStats.changePct) }}
           </div>
         </div>
@@ -64,10 +66,10 @@
         </div>
         <div class="metric-body">
           <div class="metric-label">官方净值盈亏</div>
-          <div class="metric-value" :class="portfolioOfficialStats.changeAmount >= 0 ? 'text-success' : 'text-danger'">
+          <div class="metric-value" :class="getSignedClass(portfolioOfficialStats.changeAmount)">
             {{ formatSignedCurrency(portfolioOfficialStats.changeAmount) }}
           </div>
-          <div class="metric-foot" :class="portfolioOfficialStats.changePct >= 0 ? 'text-success' : 'text-danger'">
+          <div class="metric-foot" :class="getSignedClass(portfolioOfficialStats.changePct)">
             最近交易日 {{ formatSignedPercent(portfolioOfficialStats.changePct) }}
           </div>
         </div>
@@ -128,10 +130,46 @@
         共 {{ portfolioStore.items.length }} 条数据
       </div>
 
+      <div v-if="isCompact && (portfolioStore.items.length > 0 || portfolioStore.loading)" class="compact-portfolio-list" v-loading="portfolioStore.loading">
+        <div class="compact-list-toolbar">
+          <span>每只基金显示全部已选字段</span>
+          <el-select v-model="compactSort" size="small" aria-label="持仓排序">
+            <el-option label="默认顺序" value="default" />
+            <el-option label="基金代码顺序" value="fund_code" />
+            <el-option label="金额从高到低" value="current_value" />
+            <el-option label="收益从高到低" value="profit_amount" />
+            <el-option label="收益率从高到低" value="profit_rate" />
+          </el-select>
+        </div>
+        <div class="fund-record-list" :class="{ 'is-pending': portfolioStore.loading && portfolioStore.items.length === 0 }">
+          <FundRecordCard v-for="row in compactPortfolioItems" :key="row.id ?? row.fund_code" :name="row.fund_name || row.fund_code || '待补全基金'" :code="row.fund_code" :metrics="visiblePortfolioColumns.filter(column => !['fund_code', 'fund_name'].includes(column.key)).map(column => getPortfolioMetric(row, column))">
+            <template #selection>
+              <el-checkbox :model-value="selectedItems.some(item => item.id === row.id)" :aria-label="`选择 ${row.fund_name || row.fund_code}`" @change="toggleCompactSelection(row)" />
+            </template>
+            <template #badges>
+              <el-tag :type="getQuoteBadge(row).type" size="small">{{ getQuoteBadge(row).label }}</el-tag>
+              <el-tag v-if="isOfficialUpdated(row)" size="small" type="success">官方更新</el-tag>
+              <el-tag v-else-if="!row.fund_code" size="small" type="warning">待补全</el-tag>
+            </template>
+            <template #meta>
+              <span :title="row.quote_as_of || '--'">报价时间 {{ formatQuoteTime(row.quote_as_of) }}</span>
+            </template>
+            <template #actions>
+              <el-button size="small" :type="isInWatchlist(row.fund_code) ? 'warning' : 'success'" @click="togglePortfolioFundWatchlist(row)">
+                {{ isInWatchlist(row.fund_code) ? '取消关注' : '关注' }}
+              </el-button>
+              <el-button size="small" type="primary" @click="editItem(row)">{{ $t('common.edit') }}</el-button>
+              <el-button size="small" type="danger" plain @click="deleteItem(row)">{{ $t('common.delete') }}</el-button>
+            </template>
+          </FundRecordCard>
+        </div>
+      </div>
+
       <el-table
-        v-if="portfolioStore.items.length > 0 || portfolioStore.loading"
+        v-else-if="portfolioStore.items.length > 0 || portfolioStore.loading"
         ref="portfolioTableRef"
         :data="portfolioStore.items"
+        row-key="id"
         stripe
         class="portfolio-table"
         max-height="640"
@@ -159,40 +197,26 @@
                 <span class="loading-text">加载中...</span>
               </div>
             </div>
-            <span v-else-if="column.key === 'fund_name'">{{ row.fund_name || '--' }}</span>
-            <span v-else-if="column.key === 'hold_shares'">{{ formatNumber(row.hold_shares || 0) }}</span>
-            <span v-else-if="column.key === 'cost_nav'">¥{{ Number(row.cost_nav || 0).toFixed(4) }}</span>
-            <span v-else-if="column.key === 'current_nav'" :class="getProfitClass(row)">
-              ¥{{ Number(row.current_nav || row.cost_nav || 0).toFixed(4) }}
-              <el-tag v-if="isOfficialUpdated(row)" class="inline-status-tag" size="small" type="success">官方更新</el-tag>
-            </span>
-            <span v-else-if="column.key === 'current_value'">¥{{ formatNumber(row.current_value || row.cost_amount || 0) }}</span>
-            <span v-else-if="column.key === 'realtime_change_pct'" :class="getSignedClass(row.realtime_change_pct)">
-              {{ formatSignedPercent(row.realtime_change_pct) }}
-            </span>
-            <span v-else-if="column.key === 'realtime_change_amount'" :class="getSignedClass(row.realtime_change_amount)">
-              {{ formatSignedCurrency(row.realtime_change_amount || 0) }}
-            </span>
-            <span v-else-if="column.key === 'official_change_pct'" :class="getSignedClass(row.official_change_pct)">
-              {{ formatSignedPercent(row.official_change_pct) }}
-            </span>
-            <span v-else-if="column.key === 'official_change_amount'" :class="getSignedClass(row.official_change_amount)">
-              {{ formatSignedCurrency(row.official_change_amount || 0) }}
-            </span>
-            <span v-else-if="column.key === 'profit_amount'" :class="getSignedClass(row.profit_amount)">
-              {{ formatSignedCurrency(row.profit_amount || 0) }}
-            </span>
-            <span v-else-if="column.key === 'profit_rate'" :class="getSignedClass(row.profit_rate)">
-              {{ formatSignedPercent(row.profit_rate) }}
-            </span>
-            <span v-else-if="column.key === 'data_kind_label'">
-              {{ row.data_kind_label || '--' }}
+            <el-tooltip v-else-if="column.key === 'data_kind_label'" :content="row.data_kind_label || '暂无估值'">
+              <el-tag :type="getQuoteBadge(row).type" size="small">{{ getQuoteBadge(row).label }}</el-tag>
+            </el-tooltip>
+            <span v-else :class="getPortfolioMetric(row, column).className">
+              {{ getPortfolioMetric(row, column).value }}
+              <el-tag v-if="column.key === 'current_nav' && isOfficialUpdated(row)" class="inline-status-tag" size="small" type="success">官方更新</el-tag>
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" min-width="130" align="center" fixed="right">
+        <el-table-column label="操作" min-width="180" align="center" fixed="right">
           <template #default="{ row }">
             <div class="row-actions">
+              <el-button
+                link
+                :type="isInWatchlist(row.fund_code) ? 'warning' : 'success'"
+                size="small"
+                @click="togglePortfolioFundWatchlist(row)"
+              >
+                {{ isInWatchlist(row.fund_code) ? '取消关注' : '关注' }}
+              </el-button>
               <el-button link type="primary" size="small" @click="editItem(row)">{{ $t('common.edit') }}</el-button>
               <el-button link type="danger" size="small" @click="deleteItem(row)">{{ $t('common.delete') }}</el-button>
             </div>
@@ -204,7 +228,7 @@
         v-else
         :description="portfolioStore.error ? '数据加载失败，请点击上方按钮重试' : '暂无持仓数据，点击上方按钮添加'"
       >
-        <el-button v-if="!portfolioStore.error" type="primary" @click="showAddDialog = true">添加持仓</el-button>
+        <el-button v-if="!portfolioStore.error" type="primary" @click="openCreateDialog">添加持仓</el-button>
       </el-empty>
     </section>
 
@@ -289,6 +313,9 @@
         </el-form-item>
         <el-form-item :label="$t('portfolio.costPrice')">
           <el-input-number v-model="form.cost_nav" :min="0" :precision="4" class="full-width-control" />
+        </el-form-item>
+        <el-form-item label="关注">
+          <el-checkbox v-model="form.add_to_watchlist">同时添加到首页关注列表</el-checkbox>
         </el-form-item>
       </el-form>
 
@@ -556,7 +583,29 @@
               <el-tag v-if="reviewImportCount > 0" type="warning">需核对 {{ reviewImportCount }}</el-tag>
             </div>
           </div>
-          <el-table :data="importPreview" size="small" border height="340">
+          <div v-if="isCompact" class="fund-record-list">
+            <FundRecordCard v-for="(row, index) in importPreview" :key="row.row_index ?? index" :name="row.fund_name" :code="row.fund_code" :metrics="getImportPreviewMetrics(row)">
+              <template #badges>
+                <el-tag size="small" :type="row.import_status === 'ready' ? 'success' : row.import_status === 'invalid' ? 'danger' : 'warning'">{{ row.import_status === 'ready' ? '可导入' : '需核对' }}</el-tag>
+              </template>
+              <template #meta>{{ row.import_reason || row.match_reason }}</template>
+              <div class="workbench-stack">
+                <label v-if="row.import_status !== 'ready' && row.candidates?.length" class="control-field">
+                  <span class="control-label">选择基金代码</span>
+                  <el-select v-model="row.fund_code" size="small" filterable placeholder="选择基金代码" class="full-width-control" @change="onImportCandidateSelect(row)">
+                    <el-option v-for="candidate in row.candidates" :key="candidate.code" :label="`${candidate.code} ${candidate.name}`" :value="candidate.code" />
+                  </el-select>
+                </label>
+                <label class="control-field">
+                  <span class="control-label">手动搜索基金</span>
+                  <el-select v-model="row._manualFundCode" size="small" filterable remote reserve-keyword placeholder="输入代码或名称搜索" :remote-method="createImportFundSearch(row)" :loading="row._searchLoading" class="manual-fund-search" @change="confirmImportFund(row)">
+                    <el-option v-for="candidate in row._manualCandidates || []" :key="candidate.code" :label="`${candidate.code} ${candidate.name}`" :value="candidate.code" />
+                  </el-select>
+                </label>
+              </div>
+            </FundRecordCard>
+          </div>
+          <el-table v-else :data="importPreview" size="small" border height="340">
             <el-table-column type="index" label="序号" width="50" />
             <el-table-column prop="fund_code" label="基金代码" width="170">
               <template #default="{ row }">
@@ -671,7 +720,16 @@
               <el-tag v-if="reviewTransactionCount > 0" type="warning">需核对 {{ reviewTransactionCount }}</el-tag>
             </div>
           </div>
-          <el-table :data="transactionPreview" size="small" border height="340">
+          <div v-if="isCompact" class="fund-record-list">
+            <FundRecordCard v-for="(row, index) in transactionPreview" :key="row.row_index ?? index" :name="row.fund_name" :code="row.fund_code" :metrics="getTransactionPreviewMetrics(row)">
+              <template #badges>
+                <el-tag size="small" :type="row.transaction_type === 'sell' ? 'danger' : row.transaction_type === 'dividend' ? 'info' : 'success'">{{ formatTransactionType(row.transaction_type) }}</el-tag>
+                <el-tag size="small" :type="row.import_status === 'ready' ? 'success' : row.import_status === 'invalid' ? 'danger' : 'warning'">{{ row.import_status === 'ready' ? '可写入' : '需核对' }}</el-tag>
+              </template>
+              <template #meta>{{ row.import_reason || row.match_reason }}</template>
+            </FundRecordCard>
+          </div>
+          <el-table v-else :data="transactionPreview" size="small" border height="340">
             <el-table-column type="index" label="序号" width="50" />
             <el-table-column prop="transaction_type" label="类型" width="80">
               <template #default="{ row }">
@@ -752,7 +810,13 @@
     </el-dialog>
 
     <el-drawer v-model="showRebalanceDrawer" title="调仓记录" size="720px">
-      <el-table :data="rebalanceRecords" size="small" border v-loading="rebalanceLoading">
+      <div v-if="isCompact" class="fund-record-list" :class="{ 'is-pending': rebalanceLoading && rebalanceRecords.length === 0 }" v-loading="rebalanceLoading">
+        <FundRecordCard v-for="row in rebalanceRecords" :key="row.id" :name="row.fund_name" :code="row.fund_code" :metrics="getRebalanceMetrics(row)">
+          <template #badges><el-tag size="small" :type="getRebalanceActionType(row.action_type)">{{ formatRebalanceAction(row.action_type) }}</el-tag></template>
+        </FundRecordCard>
+        <el-empty v-if="!rebalanceLoading && rebalanceRecords.length === 0" description="暂无调仓记录" />
+      </div>
+      <el-table v-else :data="rebalanceRecords" size="small" border v-loading="rebalanceLoading">
         <el-table-column prop="trade_date" label="日期" width="110" />
         <el-table-column prop="fund_name" label="基金" min-width="170" show-overflow-tooltip />
         <el-table-column prop="action_type" label="动作" width="90">
@@ -797,12 +861,18 @@ import type { PortfolioImportMode, PortfolioItem, PortfolioRebalanceRecord, Port
 import portfolioApi from '@/api/portfolio'
 import fundApi, { type FundSearchItem } from '@/api/fund'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { UploadFile } from 'element-plus'
+import type { UploadFile, TableInstance } from 'element-plus'
 import { DEFAULT_AI_PROMPT, loadAppSettings } from '@/platform/appSettings'
+import { isOfficialNavDisplayed, shanghaiDate, summarizePortfolioDay } from '@/utils/portfolioValuation'
+import { getQuoteBadge, formatQuoteTime } from '@/utils/quotePresentation'
+import FundRecordCard, { type FundRecordMetric } from '@/components/Funds/FundRecordCard.vue'
+import { useCompactLayout } from '@/composables/useCompactLayout'
 
 const { t } = useI18n()
 const portfolioStore = usePortfolioStore()
 const fundStore = useFundStore()
+const isCompact = useCompactLayout()
+const compactSort = ref('default')
 
 const showAddDialog = ref(false)
 const isEdit = ref(false)
@@ -817,7 +887,16 @@ const selectedItems = ref<PortfolioItem[]>([])
 const showImportDialog = ref(false)
 const showColumnSettings = ref(false)
 const importTab = ref('ai')
-const portfolioTableRef = ref<{ doLayout: () => void } | null>(null)
+const portfolioTableRef = ref<TableInstance>()
+
+watch(isCompact, async compact => {
+  if (compact) return
+  const selectedIds = new Set(selectedItems.value.map(item => item.id))
+  await nextTick()
+  for (const item of portfolioStore.items) {
+    if (selectedIds.has(item.id)) portfolioTableRef.value?.toggleRowSelection(item, true)
+  }
+})
 
 type PortfolioColumnKey =
   | 'fund_code'
@@ -883,6 +962,58 @@ const loadPortfolioColumns = (): PortfolioColumnConfig[] => {
 
 const portfolioColumns = ref<PortfolioColumnConfig[]>(loadPortfolioColumns())
 const visiblePortfolioColumns = computed(() => portfolioColumns.value.filter(column => column.visible))
+
+const compactPortfolioItems = computed(() => {
+  const items = [...portfolioStore.items]
+  const key = compactSort.value as 'fund_code' | 'current_value' | 'profit_amount' | 'profit_rate'
+  if (compactSort.value === 'default') return items
+  return items.sort((a, b) => {
+    if (key === 'fund_code') return a.fund_code.localeCompare(b.fund_code)
+    if (a[key] == null) return b[key] == null ? 0 : 1
+    if (b[key] == null) return -1
+    return Number(b[key]) - Number(a[key])
+  })
+})
+
+const toggleCompactSelection = (row: PortfolioItem) => {
+  selectedItems.value = selectedItems.value.some(item => item.id === row.id)
+    ? selectedItems.value.filter(item => item.id !== row.id)
+    : [...selectedItems.value, row]
+}
+
+// Both layouts use the same formatting and official-NAV visibility policy.
+const getPortfolioMetric = (row: PortfolioItem, column: PortfolioColumnConfig): FundRecordMetric => {
+  let value = '--'
+  let className = ''
+  switch (column.key) {
+    case 'fund_name': value = row.fund_name || '--'; break
+    case 'hold_shares': value = formatNumber(row.hold_shares || 0); break
+    case 'cost_nav': value = '¥' + Number(row.cost_nav || 0).toFixed(4); break
+    case 'current_nav':
+      value = row.current_nav == null ? '--' : '¥' + Number(row.current_nav).toFixed(4)
+      className = getProfitClass(row)
+      break
+    case 'current_value': value = row.current_value == null ? '--' : '¥' + formatNumber(row.current_value); break
+    case 'realtime_change_pct':
+    case 'official_change_pct':
+    case 'profit_rate': {
+      const amount = column.key === 'official_change_pct' && !isOfficialNavDisplayed(row) ? null : row[column.key]
+      value = formatSignedPercent(amount)
+      className = getSignedClass(row[column.key])
+      break
+    }
+    case 'realtime_change_amount':
+    case 'official_change_amount':
+    case 'profit_amount': {
+      const amount = column.key === 'official_change_amount' && !isOfficialNavDisplayed(row) ? null : row[column.key]
+      value = formatSignedCurrency(amount)
+      className = getSignedClass(row[column.key])
+      break
+    }
+    case 'data_kind_label': value = getQuoteBadge(row).label; break
+  }
+  return { key: column.key, label: column.label, value, className }
+}
 
 interface ImportPreviewItem {
   row_index?: number
@@ -1088,25 +1219,29 @@ const form = reactive({
   hold_shares: 0,
   cost_amount: 0,
   cost_nav: 0,
-  previous_nav: null as number | null
+  previous_nav: null as number | null,
+  add_to_watchlist: true
 })
 
 const formatNumber = (num: number | string | null | undefined): string => {
+  if (num === null || num === undefined) return '--'
   const value = typeof num === 'string' ? parseFloat(num) : Number(num)
   
   if (isNaN(value) || !isFinite(value)) {
-    return '0.00'
+    return '--'
   }
   
   return value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 const formatSignedCurrency = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return '--'
   const num = Number(value || 0)
   return `${num >= 0 ? '+' : ''}¥${formatNumber(num)}`
 }
 
 const formatSignedPercent = (value: number | null | undefined): string => {
+  if (value === null || value === undefined) return '--'
   const num = Number(value || 0)
   return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`
 }
@@ -1118,35 +1253,31 @@ const getSignedClass = (value: number | null | undefined) => {
   return ''
 }
 
-const getChangeAmount = (currentValue: number, changePct: number | null | undefined): number => {
-  const pct = Number(changePct)
-  if (!Number.isFinite(currentValue) || !Number.isFinite(pct)) return 0
-  return currentValue - (currentValue / (1 + pct / 100))
-}
+const getImportPreviewMetrics = (row: ImportPreviewItem): FundRecordMetric[] => [
+  { key: 'value', label: '市值', value: row.market_value == null ? '--' : '¥' + formatNumber(row.market_value) },
+  { key: 'daily', label: '昨日收益', value: formatSignedCurrency(row.daily_return), className: getSignedClass(row.daily_return) },
+  { key: 'profit', label: '持有收益', value: formatSignedCurrency(row.holding_return), className: getSignedClass(row.holding_return) },
+  { key: 'nav', label: '当前净值', value: row.current_nav == null ? '--' : row.current_nav.toFixed(4) },
+  { key: 'shares', label: '推算份额', value: formatNumber(row.estimated_shares) },
+  { key: 'cost', label: '成本净值', value: row.estimated_cost_nav == null ? '--' : row.estimated_cost_nav.toFixed(4) },
+  { key: 'confidence', label: '置信度', value: row.confidence == null ? '--' : `${row.confidence}%` }
+]
 
-const portfolioRealtimeStats = computed(() => {
-  const totalValue = portfolioStore.items.reduce((sum, item) => sum + Number(item.current_value || item.cost_amount || 0), 0)
-  const changeAmount = portfolioStore.items.reduce((sum, item) => {
-    if (item.realtime_change_amount !== undefined) return sum + Number(item.realtime_change_amount || 0)
-    return sum + getChangeAmount(Number(item.current_value || item.cost_amount || 0), item.current_change)
-  }, 0)
-  return {
-    changeAmount,
-    changePct: totalValue > 0 ? changeAmount / (totalValue - changeAmount) * 100 : 0
-  }
-})
+const getTransactionPreviewMetrics = (row: TransactionPreviewItem): FundRecordMetric[] => [
+  { key: 'date', label: '日期', value: row.trade_date || '--' },
+  { key: 'amount', label: '金额', value: row.amount == null ? '--' : '¥' + formatNumber(row.amount) },
+  { key: 'shares', label: '推算份额', value: formatNumber(row.estimated_shares) }
+]
 
-const portfolioOfficialStats = computed(() => {
-  const totalValue = portfolioStore.items.reduce((sum, item) => sum + Number(item.official_value || item.current_value || item.cost_amount || 0), 0)
-  const changeAmount = portfolioStore.items.reduce((sum, item) => {
-    if (item.official_change_amount !== undefined) return sum + Number(item.official_change_amount || 0)
-    return sum + getChangeAmount(Number(item.official_value || item.current_value || item.cost_amount || 0), item.official_change_pct)
-  }, 0)
-  return {
-    changeAmount,
-    changePct: totalValue > 0 ? changeAmount / (totalValue - changeAmount) * 100 : 0
-  }
-})
+const getRebalanceMetrics = (row: PortfolioRebalanceRecord): FundRecordMetric[] => [
+  { key: 'date', label: '日期', value: row.trade_date || '--' },
+  { key: 'amount', label: '推断金额', value: formatSignedCurrency(row.inferred_amount), className: getSignedClass(row.inferred_amount) },
+  { key: 'shares', label: '份额变化', value: `${row.inferred_shares >= 0 ? '+' : ''}${formatNumber(row.inferred_shares)}`, className: getSignedClass(row.inferred_shares) },
+  { key: 'confidence', label: '置信度', value: `${row.confidence}%` }
+]
+
+const portfolioRealtimeStats = computed(() => summarizePortfolioDay(portfolioStore.items))
+const portfolioOfficialStats = computed(() => summarizePortfolioDay(portfolioStore.items, 'official'))
 
 const showRebalanceDrawer = ref(false)
 const rebalanceLoading = ref(false)
@@ -1191,7 +1322,7 @@ const formatTransactionType = (type: PortfolioTransactionType) => {
 }
 
 const isOfficialUpdated = (row: PortfolioItem) => {
-  return row.data_kind === 'latest_nav' || row.data_kind_label === '最新净值' || Boolean(row.official_update_time)
+  return row.data_kind === 'latest_nav' && row.official_update_time === shanghaiDate()
 }
 
 const persistPortfolioColumns = () => {
@@ -1461,6 +1592,41 @@ const onFundSelect = async (fund: FundSearchItem) => {
   }
 }
 
+const isInWatchlist = (code?: string | null) => {
+  return Boolean(code && fundStore.fundList.includes(code))
+}
+
+const togglePortfolioFundWatchlist = async (row: PortfolioItem) => {
+  if (!row.fund_code) return
+
+  if (isInWatchlist(row.fund_code)) {
+    fundStore.removeFund(row.fund_code)
+    await dataManager.loadRealtimeData([row.fund_code])
+    ElMessage.success(`已取消关注 ${row.fund_name || row.fund_code}`)
+    return
+  }
+
+  fundStore.addFund(row.fund_code)
+  await fundStore.fetchRealtimeData([row.fund_code])
+  ElMessage.success(`已关注 ${row.fund_name || row.fund_code}`)
+}
+
+const addFormFundToWatchlistIfNeeded = async () => {
+  if (isEdit.value || !form.add_to_watchlist || !form.fund_code) return
+  if (isInWatchlist(form.fund_code)) return
+
+  fundStore.addFund(form.fund_code)
+  await fundStore.fetchRealtimeData([form.fund_code])
+}
+
+const openCreateDialog = () => {
+  isEdit.value = false
+  editingId.value = null
+  resetForm()
+  form.add_to_watchlist = true
+  showAddDialog.value = true
+}
+
 const editItem = (row: PortfolioItem) => {
   isEdit.value = true
   editingId.value = row.id || null
@@ -1470,6 +1636,7 @@ const editItem = (row: PortfolioItem) => {
   form.cost_amount = row.cost_amount || 0
   form.cost_nav = row.cost_nav || 0
   form.previous_nav = null
+  form.add_to_watchlist = false
   selectedFund.value = null
   showAddDialog.value = true
 }
@@ -1585,6 +1752,7 @@ const saveItem = async () => {
     : await portfolioStore.addItem(itemData)
 
   if (success) {
+    await addFormFundToWatchlistIfNeeded()
     ElMessage.success(isEdit.value ? '更新成功' : '添加成功')
     showAddDialog.value = false
     resetForm()
@@ -1598,6 +1766,7 @@ const resetForm = () => {
   form.cost_amount = 0
   form.cost_nav = 0
   form.previous_nav = null
+  form.add_to_watchlist = true
   isEdit.value = false
   editingId.value = null
   selectedFund.value = null
@@ -2739,19 +2908,85 @@ const completeAllPending = async () => {
     }
   }
 
-  @media (max-width: 760px) {
+  @media (max-width: 960px) {
     .portfolio-metrics {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
     }
 
     .metric-card.is-portfolio-metric {
-      min-height: 118px;
-      padding: 18px;
+      min-height: 88px;
+      padding: 10px;
+      background: var(--bg-card);
+
+      .metric-icon {
+        display: none;
+      }
 
       .metric-value {
-        font-size: 23px;
+        font-size: 18px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+
+      .metric-label,
+      .metric-foot {
+        font-size: 11px;
+        white-space: normal;
       }
     }
+
+    .portfolio-list {
+      min-height: 0;
+    }
+
+    .portfolio-toolbar {
+      padding: 12px;
+    }
+
+    .portfolio-toolbar .inline-actions {
+      gap: 6px;
+    }
+
+    .error-note {
+      flex-wrap: wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .import-source-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 600px) {
+    .import-step {
+      grid-template-columns: minmax(0, 1fr);
+      justify-items: center;
+      gap: 4px;
+      padding: 8px 4px;
+      text-align: center;
+    }
+
+    .import-step__copy strong {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      font-size: 12px;
+    }
+
+    .import-step__copy small {
+      display: none;
+    }
+
+    .ai-image-uploader :deep(.el-upload-dragger),
+    .import-uploader :deep(.el-upload-dragger) {
+      min-height: 180px;
+    }
+
+    .import-source-card__header,
+    .preview-header {
+      flex-wrap: wrap;
+    }
+
   }
 }
 </style>

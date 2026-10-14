@@ -115,22 +115,6 @@ const handleResize = () => {
   chart?.resize()
 }
 
-// 计算每日涨跌幅
-const calculateDailyChanges = (values: number[]): number[] => {
-  const changes: number[] = []
-  for (let i = 0; i < values.length; i++) {
-    if (i === 0) {
-      changes.push(0)
-    } else {
-      const prevValue = values[i - 1] ?? 0
-      const currValue = values[i] ?? prevValue
-      const change = prevValue > 0 ? ((currValue - prevValue) / prevValue) * 100 : 0
-      changes.push(change)
-    }
-  }
-  return changes
-}
-
 const loadData = async () => {
   loading.value = true
   chartMessage.value = null
@@ -169,8 +153,8 @@ const loadData = async () => {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
     const colors = isDark ? darkColors : financialColors
     
-    // 计算每日涨跌幅
-    const dailyChanges = calculateDailyChanges(data.values)
+    // 保留后端来源日增长率（含分红口径），不再按价格曲线重新推算。
+    const dailyChanges = data.changes.map(value => value == null ? null : Number(value))
     
     const option: echarts.EChartsOption = {
       tooltip: {
@@ -206,12 +190,12 @@ const loadData = async () => {
           }
           
           const nav = data.values[dataIndex]
-          const change = dailyChanges[dataIndex] ?? 0
-          const changeColor = change >= 0 ? colors.up : colors.down
-          const changeSign = change >= 0 ? '+' : ''
+          const change = dailyChanges[dataIndex]
+          const changeColor = change == null ? colors.neutral : change >= 0 ? colors.up : colors.down
+          const changeSign = change == null ? '' : change >= 0 ? '+' : ''
           
-          const navStr = nav !== undefined && nav !== null ? nav.toFixed(4) : '--'
-          const changeStr = change !== undefined && change !== null ? change.toFixed(2) : '0.00'
+          const navStr = nav !== undefined && nav !== null ? Number(nav).toFixed(4) : '--'
+          const changeStr = change !== undefined && change !== null ? change.toFixed(2) + '%' : '--'
           
           return `
             <div style="font-weight: 600; margin-bottom: 8px; color: ${isDark ? '#f8fafc' : '#1e293b'};">${date}</div>
@@ -221,7 +205,7 @@ const loadData = async () => {
             </div>
             <div style="display: flex; justify-content: space-between; gap: 20px;">
               <span style="color: ${isDark ? '#94a3b8' : '#64748b'};">日涨跌幅</span>
-              <span style="font-weight: 600; color: ${changeColor}; font-family: 'Roboto Mono', monospace;">${changeSign}${changeStr}%</span>
+              <span style="font-weight: 600; color: ${changeColor}; font-family: 'Roboto Mono', monospace;">${changeSign}${changeStr}</span>
             </div>
           `
         }

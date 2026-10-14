@@ -2,7 +2,7 @@
 """
 基金核心服务 - 统一管理基金数据
 合并原FundCoreService + FundDataSourceManager
-使用新的DataSourceManager（efinance+eastmoney_direct）和MemoryCache
+使用DataSourceManager采集报价，quote_policy统一显示口径，MemoryCache缓存原始报价
 """
 import asyncio
 import html
@@ -11,6 +11,8 @@ import time
 import os
 import re
 import threading
+import math
+from zoneinfo import ZoneInfo
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -20,12 +22,12 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from app.config import settings
 from app.core.cache import get_cache
-from app.core.data_source import classify_data_kind, get_data_source, get_data_source_metadata, FundDataResult
+from app.core.data_source import classify_data_kind, get_data_source, get_data_source_metadata, FundDataResult, is_current_estimate, shanghai_now, SHANGHAI
+from app.core.quote_policy import select_quote
+from app.core.history_data import parse_pingzhong_history, parse_lsjz_history, calculate_period_returns
 from app.schemas.fund import FundRealtimeData
 from app.logger import get_logger
 
@@ -62,11 +64,14 @@ class FundService:
         self._data_source = get_data_source()
         self._fund_names_cache: Dict[str, str] = {}
         self._eastmoney_fund_catalog_cache: Optional[List[Dict[str, str]]] = None
+        self._pending_alternatives: Dict[Tuple[Any, str, bool], asyncio.Task] = {}
+        self._holdings_request_lock = threading.Lock()
+        self._holdings_last_request = 0.0
+        self._holdings_retry_at = 0.0
 
         self.session = requests.Session()
-        retries = Retry(total=2, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
-        self.session.mount('http://', HTTPAdapter(max_retries=retries))
-        self.session.mount('https://', HTTPAdapter(max_retries=retries))
+        # Quote failover and historical retries already have explicit owners;
+        # transport retries here multiply every timeout in the loading path.
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
@@ -81,8 +86,7 @@ class FundService:
             with open(fund_file, 'r', encoding='utf-8') as f:
                 self._fund_list = [line.strip() for line in f if line.strip()]
         else:
-            self._fund_list = settings.DEFAULT_FUNDS.copy()
-            self.save_fund_list()
+            self._fund_list = []
 
         logger.info(f"基金列表已加载: {len(self._fund_list)} 只")
 
@@ -117,12 +121,20 @@ class FundService:
         return False
 
     def get_fund_name(self, code: str) -> str:
-        if code in self._fund_names_cache:
+        code = str(code or "").strip()
+        if not code:
+            return ""
+        if code in self._fund_names_cache and self._fund_names_cache[code] != code:
             return self._fund_names_cache[code]
         cached = self.cache.get(f"fund_name:{code}")
-        if cached:
+        if cached and cached != code:
             self._fund_names_cache[code] = cached
             return cached
+        catalog_name = self._lookup_catalog_name(code)
+        if catalog_name and catalog_name != code:
+            self._fund_names_cache[code] = catalog_name
+            self.cache.set(f"fund_name:{code}", catalog_name, settings.FUND_INFO_CACHE_TTL)
+            return catalog_name
         return code
 
     def _lookup_catalog_name(self, code: str) -> Optional[str]:
@@ -160,14 +172,17 @@ class FundService:
             return "us" + code.upper()
         return None
 
-    def _fetch_tencent_quote_changes(self, symbols: List[str]) -> Dict[str, float]:
-        result: Dict[str, float] = {}
+    def _fetch_tencent_quotes(self, symbols: List[str]) -> Dict[str, dict]:
+        result: Dict[str, dict] = {}
         if not symbols:
             return result
         for chunk_start in range(0, len(symbols), 50):
             chunk = symbols[chunk_start:chunk_start + 50]
-            url = "http://qt.gtimg.cn/q=" + ",".join(chunk)
-            resp = self.session.get(url, timeout=5)
+            url = "https://qt.gtimg.cn/q=" + ",".join(chunk)
+            try:
+                resp = self.session.get(url, timeout=settings.REQUEST_TIMEOUT)
+            except requests.RequestException:
+                continue
             if resp.status_code != 200:
                 continue
             for line in resp.text.splitlines():
@@ -178,15 +193,23 @@ class FundService:
                     continue
                 symbol = var_match.group(1)
                 parts = line.split('="', 1)[-1].strip('";\n').split("~")
-                for index in (32, 31, 30, 7):
-                    if len(parts) > index:
-                        try:
-                            value = float(parts[index])
-                            if abs(value) < 50:
-                                result[symbol] = value
-                                break
-                        except Exception:
-                            continue
+                if len(parts) <= 32:
+                    continue
+                try:
+                    # 32 是涨跌幅；31 为价格差，7 为成交量，不能作为备用涨跌幅。
+                    value = float(parts[32])
+                    if not math.isfinite(value):
+                        continue
+                    raw_time = parts[30].replace("/", "-")
+                    stamp = (datetime.strptime(raw_time, "%Y%m%d%H%M%S")
+                             if re.fullmatch(r"\d{14}", raw_time) else datetime.fromisoformat(raw_time))
+                    market_zone = ZoneInfo("America/New_York") if symbol.startswith("us") else SHANGHAI
+                    stamp = stamp.replace(tzinfo=market_zone).astimezone(SHANGHAI)
+                    stamp_text = stamp.isoformat()
+                    result[symbol] = {"change_pct": value, "update_time": stamp_text,
+                                      "is_current": is_current_estimate(stamp_text, close_hour=16 if symbol.startswith("hk") else 15)}
+                except (ValueError, TypeError):
+                    continue
         return result
 
     def _fetch_f10_holding_section(self, code: str, section_type: str) -> str:
@@ -200,7 +223,18 @@ class FundService:
             "rt": str(time.time()),
         }
         headers = {"Referer": f"https://fundf10.eastmoney.com/ccmx_{code}.html"}
-        resp = self.session.get(url, params=params, headers=headers, timeout=8)
+        with self._holdings_request_lock:
+            now = time.monotonic()
+            if now < self._holdings_retry_at:
+                raise requests.HTTPError(f"披露持仓源限流，暂缓 {math.ceil(self._holdings_retry_at - now)} 秒")
+            delay = self._holdings_last_request + settings.HOLDINGS_REQUEST_INTERVAL - now
+            if delay > 0:
+                time.sleep(delay)
+            self._holdings_last_request = time.monotonic()
+        resp = self.session.get(url, params=params, headers=headers, timeout=settings.REQUEST_TIMEOUT)
+        if resp.status_code in {429, 514}:
+            with self._holdings_request_lock:
+                self._holdings_retry_at = time.monotonic() + settings.HOLDINGS_RATE_LIMIT_COOLDOWN
         resp.raise_for_status()
         return html.unescape(resp.text)
 
@@ -217,6 +251,9 @@ class FundService:
     def _parse_f10_holding_rows(self, text: str, section_type: str) -> Dict[str, Any]:
         date_match = re.search(r"截止至：<font[^>]*>([^<]+)</font>", text)
         position_date = date_match.group(1).strip() if date_match else None
+        latest_table = re.search(r"<table\b.*?</table>", text, re.S)
+        if latest_table:
+            text = latest_table.group(0)
 
         holdings = []
         for row_match in re.finditer(r"<tr.*?</tr>", text, re.S):
@@ -268,6 +305,10 @@ class FundService:
         return {"position_date": position_date, "holdings": holdings}
 
     def _fetch_f10_top_holdings(self, code: str) -> Dict[str, Any]:
+        return self.cache.get_or_set(f"f10_holdings:{code}",
+                                     lambda: self._load_f10_top_holdings(code), settings.HOLDINGS_CACHE_TTL)
+
+    def _load_f10_top_holdings(self, code: str) -> Dict[str, Any]:
         for section_type in ("jjcc", "zqcc"):
             text = self._fetch_f10_holding_section(code, section_type)
             payload = self._parse_f10_holding_rows(text, section_type)
@@ -284,11 +325,12 @@ class FundService:
         if code in {"007721", "007722"} or "标普500" in normalized_name or "s&p500" in normalized_name:
             references.append({"symbol": "usSPY", "name": "SPDR S&P 500 ETF", "kind": "market_proxy"})
 
-        quote_changes = self._fetch_tencent_quote_changes([item["symbol"] for item in references])
+        quotes = self._fetch_tencent_quotes([item["symbol"] for item in references])
         usable = [
-            {**item, "quote_change_pct": quote_changes[item["symbol"]]}
+            {**item, "quote_change_pct": quotes[item["symbol"]]["change_pct"],
+             "update_time": quotes[item["symbol"]]["update_time"]}
             for item in references
-            if item["symbol"] in quote_changes
+            if item["symbol"] in quotes and quotes[item["symbol"]]["is_current"]
         ]
         if not usable:
             return {
@@ -302,6 +344,8 @@ class FundService:
             "reason": "reference_symbol_quote",
             "reference_count": len(usable),
             "weighted_stock_change_pct": round(sum(item["quote_change_pct"] for item in usable) / len(usable), 4),
+            "update_time": min(item["update_time"] for item in usable),
+            "assumption": "关联标的涨跌作为基金推测参考，未计入汇率、跟踪误差和场内溢价变化",
             "references": usable,
         }
 
@@ -335,7 +379,8 @@ class FundService:
                 ],
             }
 
-        quote_changes = self._fetch_tencent_quote_changes([item["symbol"] for item in symbol_holdings])
+        quotes = self._fetch_tencent_quotes([item["symbol"] for item in symbol_holdings])
+        quote_changes = {symbol: quote["change_pct"] for symbol, quote in quotes.items() if quote["is_current"]}
         quoted = [item for item in symbol_holdings if item["symbol"] in quote_changes]
         total_weight = sum(float(item["weight"]) for item in holdings)
         quoted_weight = sum(float(item["weight"]) for item in quoted)
@@ -352,6 +397,9 @@ class FundService:
             "source_type": payload.get("source_type"),
             "quoted_count": len(quoted),
             "quoted_weight_coverage": round(coverage, 4),
+            "quoted_nav_weight_pct": round(quoted_weight, 4),
+            "update_time": min((quotes[item["symbol"]]["update_time"] for item in quoted), default=None),
+            "assumption": "将已报价披露股票的加权涨跌外推到基金整体；未披露资产没有直接计价",
             "weighted_stock_change_pct": round(weighted_change, 4) if weighted_change is not None else None,
             "top_holdings": [
                 {
@@ -365,45 +413,13 @@ class FundService:
             ],
         }
 
-    def _build_fallback_estimate(self, direct: FundRealtimeData, exchange_or_quote_sources: List[Dict[str, Any]]) -> Dict[str, Any]:
-        source = None
-        reason = "no_usable_latest_nav_or_quote_change"
-        change_pct = None
-        update_time = direct.update_time
-
-        quote_source = next(
-            (
-                item for item in exchange_or_quote_sources
-                if item.get("change_pct") is not None and item.get("source") == "tencent"
-            ),
-            None,
-        )
-        if quote_source:
-            source = "tencent"
-            reason = "quote_source_change_pct"
-            change_pct = quote_source.get("change_pct")
-            update_time = quote_source.get("update_time") or update_time
-        elif direct.estimate_change is not None:
-            source = direct.data_source
-            reason = "latest_nav_change_pct"
-            change_pct = float(direct.estimate_change)
-
-        feasible = change_pct is not None
-        return {
-            "feasible": feasible,
-            "reason": reason if feasible else "no_usable_latest_nav_or_quote_change",
-            "source": source,
-            "change_pct": change_pct,
-            "update_time": update_time,
-            "data_kind": direct.data_kind,
-            "is_realtime": direct.is_realtime,
-        }
-
     def _build_realtime_response(self, code: str, name: str, result: FundDataResult) -> FundRealtimeData:
         source = result.source or "unknown"
         metadata = get_data_source_metadata(source)
         data_kind, data_kind_label = classify_data_kind(source, result.update_time)
-        is_realtime = result.is_success and data_kind == "realtime_estimate"
+        data_kind = result.data_kind or data_kind
+        data_kind_label = "实时估值" if data_kind == "realtime_estimate" else "最新净值"
+        is_realtime = result.is_realtime
 
         if result.is_success:
             resolved_name = result.name or name
@@ -424,6 +440,16 @@ class FundService:
                 data_kind=data_kind,
                 data_kind_label=data_kind_label,
                 is_realtime=is_realtime,
+                data_timestamp=result.fetched_at,
+                previous_nav=Decimal(str(result.previous_nav)) if result.previous_nav is not None else None,
+                previous_nav_date=result.previous_nav_date,
+                accumulated_nav=Decimal(str(result.accumulated_nav)) if result.accumulated_nav is not None else None,
+                official_nav=Decimal(str(result.previous_nav if result.previous_nav is not None else result.nav))
+                    if result.previous_nav is not None or data_kind == "latest_nav" else None,
+                official_change=Decimal(str(result.daily_change if result.daily_change is not None else result.change_pct))
+                    if result.daily_change is not None or (data_kind == "latest_nav" and result.change_pct is not None) else None,
+                official_update_time=result.previous_nav_date or (result.update_time if data_kind == "latest_nav" else None),
+                official_data_kind_label="正式单位净值",
             )
             if resolved_name and resolved_name != code:
                 self._fund_names_cache[code] = resolved_name
@@ -440,21 +466,33 @@ class FundService:
             data_kind=data_kind,
             data_kind_label=data_kind_label,
             is_realtime=False,
+            error=result.error,
+            data_timestamp=result.fetched_at,
         )
 
-    async def get_realtime_data(self, code: str) -> FundRealtimeData:
-        """获取单只基金实时数据"""
-        cache_key = f"realtime:{code}"
+    async def _get_direct_realtime_data(self, code: str) -> FundRealtimeData:
+        """数据源直接提供的报价，独立于展示策略和推测值。"""
+        cache_key = f"direct_quote:{code}"
         cached = self.cache.get(cache_key)
         if cached and isinstance(cached, FundRealtimeData):
             return cached
 
-        name = self.get_fund_name(code)
+        name = self._fund_names_cache.get(code, code)
         result = await self._data_source.fetch_single(code)
-        rt = self._build_realtime_response(code, name, result)
+        rt = await asyncio.to_thread(self._build_realtime_response, code, name, result)
 
         self.cache.set(cache_key, rt, settings.REALTIME_CACHE_TTL)
         return rt
+
+    async def _select_display_quote(self, direct: FundRealtimeData, view: str = "auto") -> FundRealtimeData:
+        selected = select_quote(direct, view=view)
+        if view == "auto" and selected.data_kind == "unavailable" and direct.official_nav is not None and not direct.error:
+            alternatives = await self.get_realtime_alternatives(direct.code, direct.name, include_candidates=False)
+            selected = select_quote(direct, alternatives)
+        return selected
+
+    async def get_realtime_data(self, code: str, view: str = "auto") -> FundRealtimeData:
+        return await self._select_display_quote(await self._get_direct_realtime_data(code), view)
 
     async def get_data_source_comparison(self, code: str, name: Optional[str] = None) -> Dict[str, Any]:
         """获取单只基金各数据源的实时估值对比。"""
@@ -473,11 +511,33 @@ class FundService:
             "best_source": comparison["best_source"],
             "best_source_display_name": comparison.get("best_source_display_name"),
             "total_sources": comparison["total_sources"],
+            "realtime_sources": comparison["realtime_sources"],
         }
 
-    async def get_realtime_alternatives(self, code: str, name: Optional[str] = None) -> Dict[str, Any]:
+    async def get_realtime_alternatives(self, code: str, name: Optional[str] = None, include_candidates: bool = True) -> Dict[str, Any]:
+        """Share a pending computation across overlapping requests in the same event loop."""
+        cache_key = f"quote_alternatives:{code}:{include_candidates}"
+        cached = self.cache.get(cache_key)
+        if cached is not None:
+            return cached
+        key = (asyncio.get_running_loop(), code, include_candidates)
+        task = self._pending_alternatives.get(key)
+        if task is None:
+            task = asyncio.create_task(self._load_realtime_alternatives(code, name, include_candidates))
+            self._pending_alternatives[key] = task
+
+            def finished(completed):
+                self._pending_alternatives.pop(key, None)
+                if not completed.cancelled():
+                    completed.exception()  # Consume failures even if all waiters disconnected.
+
+            task.add_done_callback(finished)
+        return await asyncio.shield(task)
+
+    async def _load_realtime_alternatives(self, code: str, name: Optional[str], include_candidates: bool) -> Dict[str, Any]:
         """获取缺失真实实时估值时的替代方案。"""
-        direct = await self.get_realtime_data(code)
+        cache_key = f"quote_alternatives:{code}:{include_candidates}"
+        direct = await self._get_direct_realtime_data(code)
         if direct.is_realtime:
             return {
                 "code": code,
@@ -497,11 +557,11 @@ class FundService:
             }
 
         search_keyword = name or direct.name or code
-        candidates = self.search_funds(search_keyword, 8)
+        candidates = await asyncio.to_thread(self.search_funds, search_keyword, 8) if include_candidates else []
         candidate_codes = [item["code"] for item in candidates if item.get("code") and item["code"] != code]
         same_name_realtime_candidates = []
         if candidate_codes:
-            rows = await self.get_realtime_batch(candidate_codes)
+            rows = await self._get_direct_realtime_batch(candidate_codes)
             same_name_realtime_candidates = [
                 {
                     "code": row.code,
@@ -515,23 +575,12 @@ class FundService:
                 if row.is_realtime
             ]
 
-        comparison = await self.get_data_source_comparison(code, name)
-        exchange_or_quote_sources = [
-            {
-                "source": item["source"],
-                "display_name": item.get("display_name"),
-                "change_pct": item.get("estimate_change_pct"),
-                "update_time": item.get("update_time"),
-                "is_realtime": item.get("is_realtime"),
-            }
-            for item in comparison["sources"]
-            if item["source"] in {"tencent", "tiantian"} and item.get("is_fresh")
-        ]
-        holdings_estimate = await asyncio.to_thread(self._estimate_from_holdings, code)
-        reference_estimate = await asyncio.to_thread(self._estimate_from_reference_symbols, code, direct.name)
-        fallback_estimate = self._build_fallback_estimate(direct, exchange_or_quote_sources)
+        holdings_estimate, reference_estimate = await asyncio.gather(
+            asyncio.to_thread(self._estimate_from_holdings, code),
+            asyncio.to_thread(self._estimate_from_reference_symbols, code, direct.name),
+        )
 
-        return {
+        result = {
             "code": code,
             "name": direct.name,
             "direct": {
@@ -544,13 +593,15 @@ class FundService:
             "skipped": False,
             "reason": "direct_realtime_unavailable",
             "same_name_realtime_candidates": same_name_realtime_candidates,
-            "exchange_or_quote_sources": exchange_or_quote_sources,
+            "exchange_or_quote_sources": [],
             "holdings_based_estimate": holdings_estimate,
             "reference_symbol_estimate": reference_estimate,
-            "fallback_estimate": fallback_estimate,
+            "fallback_estimate": None,
         }
+        self.cache.set(cache_key, result, settings.REALTIME_CACHE_TTL)
+        return result
 
-    async def get_realtime_batch(self, codes: List[str]) -> List[FundRealtimeData]:
+    async def _get_direct_realtime_batch(self, codes: List[str]) -> List[FundRealtimeData]:
         """批量获取实时数据"""
         if not codes:
             return []
@@ -560,7 +611,7 @@ class FundService:
         uncached_indices = []
 
         for i, code in enumerate(codes):
-            cached = self.cache.get(f"realtime:{code}")
+            cached = self.cache.get(f"direct_quote:{code}")
             if cached and isinstance(cached, FundRealtimeData):
                 results.append(cached)
             else:
@@ -572,12 +623,22 @@ class FundService:
             ds_results = await self._data_source.fetch_batch(uncached_codes)
             for idx, result in zip(uncached_indices, ds_results):
                 code = codes[idx]
-                name = self.get_fund_name(code)
-                rt = self._build_realtime_response(code, name, result)
+                name = self._fund_names_cache.get(code, code)
+                rt = await asyncio.to_thread(self._build_realtime_response, code, name, result)
                 results[idx] = rt
-                self.cache.set(f"realtime:{code}", rt, settings.REALTIME_CACHE_TTL)
+                self.cache.set(f"direct_quote:{code}", rt, settings.REALTIME_CACHE_TTL)
 
         return results
+
+    async def get_realtime_batch(self, codes: List[str], view: str = "auto") -> List[FundRealtimeData]:
+        direct = await self._get_direct_realtime_batch(codes)
+        limiter = asyncio.Semaphore(4)
+
+        async def choose(row):
+            async with limiter:
+                return await self._select_display_quote(row, view)
+
+        return await asyncio.gather(*(choose(row) for row in direct))
 
     def get_historical_nav(self, code: str, days: int = 365, max_retries: int = 2) -> pd.DataFrame:
         """获取历史净值"""
@@ -591,35 +652,45 @@ class FundService:
             self.cache.set(cache_key, df, settings.HISTORY_CACHE_TTL)
             return df
 
+        # 显式超时的分页备用接口，替代内部 requests 无 timeout 的 AKShare 历史调用。
+        df = self._get_historical_from_lsjz(code, days)
+        if not df.empty:
+            self.cache.set(cache_key, df, settings.HISTORY_CACHE_TTL)
+        return df
+
+    def _get_historical_from_lsjz(self, code: str, days: int) -> pd.DataFrame:
+        rows = []
+        page = 1
+        params = {"fundCode": code, "pageSize": 100}
+        if days > 0:
+            params["startDate"] = (shanghai_now().date() - timedelta(days=days)).isoformat()
         try:
-            import akshare as ak
-            import sys, io
-            old_stdout = sys.stdout
-            sys.stdout = io.StringIO()
-            try:
-                df = ak.fund_open_fund_info_em(symbol=code, indicator="累计净值走势")
-            finally:
-                sys.stdout = old_stdout
-
-            if df is not None and not df.empty:
-                df['净值日期'] = pd.to_datetime(df['净值日期'])
-                df['累计净值'] = pd.to_numeric(df['累计净值'])
-                df = df.sort_values('净值日期').reset_index(drop=True)
-                df['pct_change'] = df['累计净值'].pct_change().fillna(0)
-                if days > 0:
-                    start_date = datetime.now() - timedelta(days=days)
-                    df = df[df['净值日期'] >= start_date]
-                self.cache.set(cache_key, df, settings.HISTORY_CACHE_TTL)
-                return df
-        except Exception as e:
-            logger.debug(f"AKShare获取历史净值失败 {code}: {e}")
-
-        return pd.DataFrame()
+            while True:
+                response = self.session.get(
+                    "https://api.fund.eastmoney.com/f10/lsjz", params={**params, "pageIndex": page},
+                    headers={"Referer": f"https://fund.eastmoney.com/{code}.html"}, timeout=settings.REQUEST_TIMEOUT,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                data = payload.get("Data") or {}
+                if data.get("FundType") == "005":
+                    return pd.DataFrame()
+                batch = data.get("LSJZList") or []
+                if not batch:
+                    break
+                rows.extend(batch)
+                if len(rows) >= int(payload.get("TotalCount") or len(rows)):
+                    break
+                page += 1
+            return parse_lsjz_history(rows)
+        except (requests.RequestException, ValueError, TypeError, KeyError) as exc:
+            logger.debug(f"历史净值分页备用接口失败 {code}: {exc}")
+            return pd.DataFrame()
 
     def _get_historical_from_eastmoney(self, code: str, days: int, max_retries: int) -> pd.DataFrame:
         for attempt in range(max_retries):
             try:
-                url = f"http://fund.eastmoney.com/pingzhongdata/{code}.js"
+                url = f"https://fund.eastmoney.com/pingzhongdata/{code}.js"
                 resp = self.session.get(url, timeout=10)
                 if resp.status_code != 200:
                     if attempt < max_retries - 1:
@@ -627,21 +698,11 @@ class FundService:
                         continue
                     return pd.DataFrame()
 
-                match = re.search(r'Data_netWorthTrend\s*=\s*(\[.*?\]);', resp.text, re.DOTALL)
-                if not match:
-                    return pd.DataFrame()
-                data = json.loads(match.group(1))
-                if not data:
-                    return pd.DataFrame()
-
-                df = pd.DataFrame(data)
-                df['x'] = pd.to_datetime(df['x'], unit='ms')
-                df['y'] = pd.to_numeric(df['y'])
-                df = df.rename(columns={'x': '净值日期', 'y': '累计净值'})
-                df = df.sort_values('净值日期').reset_index(drop=True)
-                df['pct_change'] = df['累计净值'].pct_change().fillna(0)
+                df = parse_pingzhong_history(resp.text)
+                if df.empty:
+                    return df
                 if days > 0:
-                    start_date = datetime.now() - timedelta(days=days)
+                    start_date = pd.Timestamp(shanghai_now().date() - timedelta(days=days))
                     df = df[df['净值日期'] >= start_date]
                 return df
             except Exception:
@@ -663,10 +724,11 @@ class FundService:
             import akshare as ak
             df = ak.stock_zh_index_daily(symbol=symbol)
             df['date'] = pd.to_datetime(df['date'])
-            if days > 0:
-                start_date = datetime.now() - timedelta(days=days)
-                df = df[df['date'] >= start_date]
             df = df.sort_values('date')
+            period_returns = calculate_period_returns(df['date'], df['close'])
+            if days > 0:
+                start_date = pd.Timestamp(shanghai_now().date() - timedelta(days=days))
+                df = df[df['date'] >= start_date]
 
             if df.empty:
                 result = {"dates": [], "values": [], "changes": []}
@@ -678,6 +740,8 @@ class FundService:
                     "dates": df['date'].dt.strftime('%Y-%m-%d').tolist(),
                     "values": [float(v) for v in df['close'].tolist()],
                     "changes": [float(v) for v in df['pct_change'].tolist()],
+                    "return_basis": "index_price_change",
+                    **period_returns,
                     "start_value": float(start_value)
                 }
             self.cache.set(cache_key, result, 3600)
@@ -691,16 +755,23 @@ class FundService:
         for code in codes:
             try:
                 days = settings.TIME_RANGES.get(range_str, {}).get('days', 90)
-                df = self.get_historical_nav(code, days)
+                full_history = self.get_historical_nav(code, 0)
+                period_returns = calculate_period_returns(full_history['净值日期'], full_history['return_index']) if not full_history.empty else {}
+                df = full_history
+                if days > 0 and not df.empty:
+                    df = df[df['净值日期'] >= pd.Timestamp(shanghai_now().date() - timedelta(days=days))]
                 if df.empty:
                     result["funds"].append({"code": code, "name": self.get_fund_name(code), "dates": [], "changes": []})
                     continue
-                start_value = df['累计净值'].iloc[0]
-                df['pct'] = ((df['累计净值'] - start_value) / start_value * 100).round(2)
+                df = df.copy()
+                start_value = df['return_index'].iloc[0]
+                df['pct'] = ((df['return_index'] / start_value - 1) * 100).round(2)
                 result["funds"].append({
                     "code": code, "name": self.get_fund_name(code),
                     "dates": df['净值日期'].dt.strftime('%Y-%m-%d').tolist(),
-                    "changes": [float(v) if pd.notna(v) else None for v in df['pct'].tolist()]
+                    "changes": [float(v) if pd.notna(v) else None for v in df['pct'].tolist()],
+                    "return_basis": "provider_daily_growth" if (df["return_basis"].iloc[1:] == "provider_daily_growth").all() else "mixed_with_unit_nav_price_change",
+                    **period_returns,
                 })
             except Exception as e:
                 logger.warning(f"获取对比数据失败 {code}: {e}")
@@ -743,53 +814,27 @@ class FundService:
         total_chg = np.prod([1 + r for r in changes]) - 1
         return days, abs(total_chg) if direction == 'up' else -abs(total_chg)
 
-    def _extract_alternative_change(self, alternatives: Dict[str, Any]) -> Optional[float]:
-        holdings = alternatives.get("holdings_based_estimate")
-        if holdings and holdings.get("feasible") and holdings.get("weighted_stock_change_pct") is not None:
-            return float(holdings["weighted_stock_change_pct"])
-
-        reference = alternatives.get("reference_symbol_estimate")
-        if reference and reference.get("feasible") and reference.get("weighted_stock_change_pct") is not None:
-            return float(reference["weighted_stock_change_pct"])
-
-        for candidate in alternatives.get("same_name_realtime_candidates") or []:
-            if candidate.get("change_pct") is not None:
-                return float(candidate["change_pct"])
-
-        fallback = alternatives.get("fallback_estimate")
-        if fallback and fallback.get("feasible") and fallback.get("change_pct") is not None:
-            return float(fallback["change_pct"])
-
-        direct = alternatives.get("direct") or {}
-        if direct.get("change_pct") is not None:
-            return float(direct["change_pct"])
-        return None
-
     async def _get_realtime_screen_change(self, code: str, allow_realtime_proxies: bool = True) -> Optional[float]:
-        rt = await self.get_realtime_data(code)
-        if rt.is_realtime or not allow_realtime_proxies:
-            return float(rt.estimate_change) if rt.estimate_change is not None else None
-
-        try:
-            alternatives = await self.get_realtime_alternatives(code, rt.name)
-            change = self._extract_alternative_change(alternatives)
-            if change is not None:
-                return change
-        except Exception as exc:
-            logger.debug(f"获取实时替代估算失败 {code}: {exc}")
-
-        return float(rt.estimate_change) if rt.estimate_change is not None else None
+        rt = await self.get_realtime_data(code) if allow_realtime_proxies else await self.get_realtime_data(code, view="provider")
+        usable = rt.is_realtime or (allow_realtime_proxies and rt.is_inferred)
+        if usable and is_current_estimate(rt.update_time) and rt.estimate_change is not None:
+            return float(rt.estimate_change)
+        return None
 
     async def _append_realtime_change(self, hist: pd.DataFrame, code: str, allow_realtime_proxies: bool = True) -> pd.DataFrame:
         """将今日实时估值或可用替代估算涨跌幅追加到历史数据末尾。"""
+        today = pd.Timestamp(shanghai_now().date())
+        if not hist.empty and pd.Timestamp(hist['净值日期'].iloc[-1]).date() == today.date():
+            return hist  # 正式历史已包含今日，不把同日估值重复计入收益。
         try:
             estimate_change = await self._get_realtime_screen_change(code, allow_realtime_proxies)
             if estimate_change is not None:
                 today_chg = estimate_change / 100
                 today_row = pd.DataFrame({
-                    '净值日期': [datetime.now()],
-                    '累计净值': [None],
-                    'pct_change': [today_chg]
+                    '净值日期': [today],
+                    '单位净值': [None],
+                    'pct_change': [today_chg],
+                    'return_basis': ['intraday_estimate'],
                 })
                 hist = pd.concat([hist, today_row], ignore_index=True)
         except Exception:
@@ -1134,6 +1179,7 @@ class FundService:
     def close(self):
         """Clean up resources on shutdown."""
         self.session.close()
+        self._data_source.close()
 
 
 _fund_service: Optional[FundService] = None

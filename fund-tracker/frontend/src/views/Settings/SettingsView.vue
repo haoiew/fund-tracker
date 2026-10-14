@@ -89,9 +89,9 @@
             <div class="setting-row">
               <div>
                 <span>{{ $t('settings.apiUrl') }}</span>
-                <small>前端请求 FastAPI 服务的基础地址</small>
+                <small>留空自动选择；Web 开发的默认本机地址使用 /api 同源代理，自定义地址仍生效</small>
               </div>
-              <el-input v-model="settings.apiUrl" placeholder="http://127.0.0.1:8001/api/v1" />
+              <el-input v-model="settings.apiUrl" placeholder="留空自动选择，或填写自定义 API 地址" />
             </div>
 
             <div class="setting-row">
@@ -543,6 +543,7 @@ onMounted(() => {
   }
 
   .settings-nav {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -780,14 +781,23 @@ onMounted(() => {
     }
 
     .settings-nav {
-      flex-direction: row;
-      overflow-x: auto;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       border-right: 0;
       border-bottom: 1px solid var(--border-light);
     }
 
     .settings-nav-item {
-      min-width: 180px;
+      min-width: 0;
+      grid-template-columns: 1fr;
+      justify-items: center;
+      padding: 8px 4px;
+      gap: 6px;
+      text-align: center;
+    }
+
+    .settings-nav-copy small {
+      display: none;
     }
 
     .settings-grid,
@@ -812,6 +822,20 @@ onMounted(() => {
       .el-button {
         flex: 1;
       }
+    }
+  }
+
+  @media (max-width: 600px) {
+    .settings-detail {
+      padding: 12px;
+    }
+
+    .settings-nav {
+      padding: 8px;
+    }
+
+    .settings-workbench {
+      min-height: 0;
     }
   }
 }

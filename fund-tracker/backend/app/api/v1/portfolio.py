@@ -8,6 +8,7 @@ import re
 import time
 from difflib import SequenceMatcher
 from datetime import date
+from decimal import Decimal
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 import httpx
@@ -388,10 +389,22 @@ def _match_fund_for_ai_item(fund_service, fund_name: str, raw_fund_name: str, wa
     return fund_code, fund_name, match_status, confidence, match_reason, candidates
 
 
-async def _build_portfolio_summary(db: Session) -> dict:
+async def _build_portfolio_summary(db: Session, include_quotes: bool = True) -> dict:
     """Shared helper for summary and refresh endpoints."""
     from app.services.fund_service import get_fund_service
     portfolios = portfolio_service.get_all_portfolios(db)
+
+    if not include_quotes:
+        items = await asyncio.gather(*[portfolio_service.to_response(p, include_quotes=False) for p in portfolios])
+        unpriced_codes = list(dict.fromkeys(p.fund_code for p in portfolios if p.hold_shares > 0))
+        total_cost = sum((p.cost_amount for p in portfolios), Decimal('0'))
+        return {"items": items, "stats": {
+            "total_cost": float(total_cost), "total_value": None if unpriced_codes else 0,
+            "total_profit_loss": None if unpriced_codes else float(-total_cost),
+            "total_profit_loss_pct": None if unpriced_codes else (-100.0 if total_cost > 0 else 0.0),
+            "unpriced_count": len(unpriced_codes), "unpriced_codes": unpriced_codes,
+            "item_count": len(portfolios),
+        }}
 
     # Fetch realtime data once for all funds
     codes = [p.fund_code for p in portfolios]
@@ -402,9 +415,11 @@ async def _build_portfolio_summary(db: Session) -> dict:
     profit_data = await portfolio_service.calculate_portfolio_profit(db, rt_map)
     stats = {
         "total_cost": float(profit_data.summary.total_cost),
-        "total_value": float(profit_data.summary.total_value),
-        "total_profit_loss": float(profit_data.summary.total_profit),
-        "total_profit_loss_pct": float(profit_data.summary.total_profit_rate),
+        "total_value": float(profit_data.summary.total_value) if profit_data.summary.total_value is not None else None,
+        "total_profit_loss": float(profit_data.summary.total_profit) if profit_data.summary.total_profit is not None else None,
+        "total_profit_loss_pct": float(profit_data.summary.total_profit_rate) if profit_data.summary.total_profit_rate is not None else None,
+        "unpriced_count": len(profit_data.summary.unpriced_codes),
+        "unpriced_codes": profit_data.summary.unpriced_codes,
         "item_count": profit_data.summary.fund_count
     }
     return {"items": items, "stats": stats}
@@ -432,8 +447,8 @@ async def get_portfolio_profit(db: Session = Depends(get_db)):
 
 
 @router.get("/summary", response_model=ResponseModel[dict])
-async def get_portfolio_summary(db: Session = Depends(get_db)):
-    return ResponseModel(data=await _build_portfolio_summary(db))
+async def get_portfolio_summary(include_quotes: bool = True, db: Session = Depends(get_db)):
+    return ResponseModel(data=await _build_portfolio_summary(db, include_quotes=include_quotes))
 
 
 @router.post("/transactions", response_model=ResponseModel[PortfolioTransactionResponse])

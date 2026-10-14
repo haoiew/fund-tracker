@@ -39,24 +39,20 @@ class Settings:
 
     # 基金数据
     FUND_FILE_PATH: str = "funds.txt"
-    DEFAULT_FUNDS: List[str] = field(default_factory=lambda: [
-        '015916', '513630', '012349', '012709', '017436',
-        '017093', '016531', '160125', '018125', '015790',
-        '007722', '017091', '022365', '012414', '017437',
-        '017641', '007721', '501018', '160723', '161226',
-        '160416'
-    ])
 
     # 缓存TTL（秒）
     REALTIME_CACHE_TTL: int = 60
     HISTORY_CACHE_TTL: int = 300
     FUND_INFO_CACHE_TTL: int = 86400
+    HOLDINGS_CACHE_TTL: int = 21600  # Disclosure data, not an intraday quote (6 hours).
     CHART_CACHE_TTL: int = 300
     SEARCH_CACHE_TTL: int = 300
 
     # 数据源请求
     REQUEST_TIMEOUT: int = 5
-    REQUEST_RETRY: int = 3
+    HOLDINGS_REQUEST_INTERVAL: float = 0.25  # Local F10 request spacing, not a provider SLA.
+    HOLDINGS_RATE_LIMIT_COOLDOWN: int = 60
+    ESTIMATE_MAX_AGE_SECONDS: int = 900
 
     # 筛选阈值
     SCREEN_UP: Dict = field(default_factory=lambda: {"days": 2, "pct": 0.03})
@@ -87,14 +83,11 @@ class Settings:
         self.DEBUG = os.getenv("DEBUG", "false").lower() == "true" or self.DEBUG
         self.HOST = os.getenv("HOST", self.HOST)
         self.PORT = int(os.getenv("PORT", str(self.PORT)))
+        self.REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", str(self.REQUEST_TIMEOUT)))
+        self.ESTIMATE_MAX_AGE_SECONDS = int(os.getenv("ESTIMATE_MAX_AGE_SECONDS", str(self.ESTIMATE_MAX_AGE_SECONDS)))
         cors_origins = os.getenv("CORS_ORIGINS")
         if cors_origins:
             self.CORS_ORIGINS = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
-
-        # 解析 .env 中的基金列表
-        env_funds = os.getenv("DEFAULT_FUNDS")
-        if env_funds:
-            self.DEFAULT_FUNDS = [f.strip() for f in env_funds.split(",") if f.strip()]
 
         # Ensure DB directory exists once at init time
         db_path = _backend_dir / self.DB_PATH

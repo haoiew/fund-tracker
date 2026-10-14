@@ -35,7 +35,7 @@
             multiple
             filterable
             :placeholder="$t('compare.selectPlaceholder')"
-            style="width: 320px"
+            class="compare-fund-select"
             :max-collapse-tags="2"
           >
             <el-option
@@ -90,6 +90,7 @@
             多周期涨跌幅对比
           </h4>
           <el-table 
+            v-if="!isCompact"
             :data="compareDataWithReturns" 
             stripe 
             class="compare-table" 
@@ -168,7 +169,7 @@
             </el-table-column>
             
             <!-- 当前涨跌幅 -->
-            <el-table-column prop="currentChange" label="当前涨跌" width="100" align="right" fixed="right">
+            <el-table-column prop="currentChange" label="区间收益" width="100" align="right" fixed="right">
               <template #default="{ row }">
                 <span :class="getChangeClass(row.currentChange)">
                   {{ formatChange(row.currentChange) }}
@@ -176,6 +177,9 @@
               </template>
             </el-table-column>
           </el-table>
+          <div v-else class="fund-record-list">
+            <FundRecordCard v-for="row in compareDataWithReturns" :key="row.code" :name="row.name" :code="row.code" :metrics="getReturnMetrics(row)" />
+          </div>
         </div>
 
         <!-- 基准指数显示 -->
@@ -184,7 +188,7 @@
             <el-icon><TrendCharts /></el-icon>
             {{ $t('compare.benchmarkIndex') }}
           </h4>
-          <el-table :data="benchmarkDataWithReturns" stripe size="small" border>
+          <el-table v-if="!isCompact" :data="benchmarkDataWithReturns" stripe size="small" border>
             <el-table-column prop="name" :label="$t('compare.benchmarkName')" min-width="180" show-overflow-tooltip fixed="left" />
             
             <!-- 短期 -->
@@ -256,7 +260,7 @@
             </el-table-column>
             
             <!-- 当前涨跌幅 -->
-            <el-table-column prop="currentChange" label="当前涨跌" width="100" align="right" fixed="right">
+            <el-table-column prop="currentChange" label="区间收益" width="100" align="right" fixed="right">
               <template #default="{ row }">
                 <span :class="getChangeClass(row.currentChange)">
                   {{ formatChange(row.currentChange) }}
@@ -264,6 +268,9 @@
               </template>
             </el-table-column>
           </el-table>
+          <div v-else class="fund-record-list">
+            <FundRecordCard v-for="row in benchmarkDataWithReturns" :key="row.symbol" :name="row.name" :code="row.symbol" :metrics="getReturnMetrics(row)" />
+          </div>
         </div>
     </section>
   </div>
@@ -279,11 +286,14 @@ import * as echarts from 'echarts'
 import { Loading, TrendCharts } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { useFundStore } from '@/stores/fundStore'
-import fundApi from '@/api/fund'
+import fundApi, { type PeriodReturns } from '@/api/fund'
 import { ElMessage } from 'element-plus'
+import FundRecordCard, { type FundRecordMetric } from '@/components/Funds/FundRecordCard.vue'
+import { useCompactLayout } from '@/composables/useCompactLayout'
 
 const { t } = useI18n()
 const fundStore = useFundStore()
+const isCompact = useCompactLayout()
 
 const form = reactive({
   codes: [] as string[],
@@ -297,16 +307,7 @@ interface FundCompareData {
   dates: string[]
   changes: number[]
   currentChange?: number
-  returns?: {
-    d3?: number
-    d7?: number
-    d30?: number
-    m3?: number
-    m6?: number
-    y1?: number
-    y3?: number
-    y5?: number
-  }
+  returns?: PeriodReturns
 }
 
 const compareData = ref<FundCompareData[]>([])
@@ -317,16 +318,7 @@ interface BenchmarkData {
   dates: string[]
   changes: number[]
   currentChange?: number
-  returns?: {
-    d3?: number
-    d7?: number
-    d30?: number
-    m3?: number
-    m6?: number
-    y1?: number
-    y3?: number
-    y5?: number
-  }
+  returns?: PeriodReturns
 }
 
 interface ChartTooltipPoint {
@@ -345,7 +337,7 @@ let chart: echarts.ECharts | null = null
 const benchmarkDataWithReturns = computed(() => {
   return benchmarkData.value.map(bench => ({
     ...bench,
-    returns: calculateReturns(bench.changes),
+    returns: bench.returns ?? {},
     currentChange: bench.changes && bench.changes.length > 0 
       ? bench.changes[bench.changes.length - 1] 
       : undefined
@@ -375,44 +367,27 @@ const getChangeClass = (val: number | string | null | undefined) => {
   return ''
 }
 
-// 计算多周期涨跌幅
-const calculateReturns = (changes: number[]): FundCompareData['returns'] => {
-  if (!changes || changes.length === 0) return {}
-  
-  // 计算累计收益率
-  const calculateCumulative = (days: number): number | undefined => {
-    if (changes.length < days) {
-      // 数据不足，无法计算该周期
-      return undefined
-    }
-    if (days === 0) return undefined
-    
-    const recentChanges = changes.slice(-days)
-    // 累计收益率 = (1+r1)*(1+r2)*...*(1+rn) - 1
-    let cumulative = 1
-    for (const change of recentChanges) {
-      cumulative *= (1 + change / 100)
-    }
-    return (cumulative - 1) * 100
-  }
-  
-  return {
-    d3: calculateCumulative(3),
-    d7: calculateCumulative(7),
-    d30: calculateCumulative(30),
-    m3: calculateCumulative(90),
-    m6: calculateCumulative(180),
-    y1: calculateCumulative(365),
-    y3: calculateCumulative(1095),
-    y5: calculateCumulative(1825)
-  }
-}
+const returnPeriods: Array<{ key: keyof PeriodReturns; label: string }> = [
+  { key: 'd3', label: '近3日' }, { key: 'd7', label: '近7日' }, { key: 'd30', label: '近30日' },
+  { key: 'm3', label: '近3月' }, { key: 'm6', label: '近6月' }, { key: 'y1', label: '近1年' },
+  { key: 'y3', label: '近3年' }, { key: 'y5', label: '近5年' }
+]
+
+const getReturnMetrics = (row: { currentChange?: number; returns?: PeriodReturns }): FundRecordMetric[] => [
+  { key: 'range', label: `${form.range} 区间收益`, value: formatChange(row.currentChange), className: getChangeClass(row.currentChange), wide: true },
+  ...returnPeriods.map(period => ({
+    key: period.key,
+    label: period.label,
+    value: formatChange(row.returns?.[period.key]),
+    className: getChangeClass(row.returns?.[period.key])
+  }))
+]
 
 // 带多周期数据的对比数据
 const compareDataWithReturns = computed(() => {
   return compareData.value.map(fund => ({
     ...fund,
-    returns: calculateReturns(fund.changes),
+    returns: fund.returns ?? {},
     currentChange: fund.changes && fund.changes.length > 0 
       ? fund.changes[fund.changes.length - 1] 
       : undefined
@@ -535,6 +510,7 @@ const updateChart = (
   const option: echarts.EChartsOption = {
     tooltip: {
       trigger: 'axis',
+      confine: true,
       backgroundColor: isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.98)',
       borderColor: isDark ? '#334155' : '#e2e8f0',
       borderWidth: 1,
@@ -568,6 +544,7 @@ const updateChart = (
       }
     },
     legend: {
+      type: 'scroll',
       data: allNames,
       bottom: 0,
       icon: 'roundRect',
@@ -638,6 +615,10 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .compare-view {
+  .compare-fund-select {
+    width: 320px;
+    max-width: 100%;
+  }
   .compare-form {
     display: flex;
     align-items: center;
@@ -729,6 +710,65 @@ onUnmounted(() => {
   .text-danger {
     color: var(--danger-color);
     font-weight: 600;
+  }
+
+  @media (max-width: 960px) {
+    .compare-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+
+      :deep(.el-form-item) {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        margin-right: 0;
+        min-width: 0;
+      }
+
+      :deep(.el-form-item__label) {
+        justify-content: flex-start;
+        height: auto;
+        margin-bottom: 4px;
+        line-height: 1.5;
+      }
+
+      :deep(.el-form-item__content) {
+        min-width: 0;
+      }
+
+      .compare-fund-select {
+        width: 100%;
+      }
+
+      :deep(.el-radio-group) {
+        display: flex;
+        width: 100%;
+      }
+
+      :deep(.el-radio-button) {
+        flex: 1;
+        min-width: 0;
+      }
+
+      :deep(.el-radio-button__inner) {
+        width: 100%;
+        min-height: 36px;
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        padding-inline: 4px;
+      }
+    }
+
+    .compare-empty {
+      min-height: 220px;
+    }
+
+    .compare-result .chart-container {
+      height: 280px;
+      margin-bottom: 16px;
+    }
   }
 }
 </style>

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { dataManager } from './dataManager'
 import portfolioApi, { type PortfolioItem } from '@/api/portfolio'
 import { ElMessage } from 'element-plus'
+import { withoutPortfolioQuote } from '@/utils/portfolioValuation'
 
 type PortfolioAddInput = {
   fund_code: string
@@ -109,22 +110,22 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   /**
    * 总市值
    */
-  const totalValue = computed(() => stats.value?.total_value || 0)
+  const totalValue = computed(() => stats.value?.total_value ?? null)
 
   /**
    * 持有收益
    */
-  const totalProfit = computed(() => stats.value?.total_profit_loss || 0)
+  const totalProfit = computed(() => stats.value?.total_profit_loss ?? null)
 
   /**
    * 总收益率
    */
-  const totalProfitPct = computed(() => stats.value?.total_profit_loss_pct || 0)
+  const totalProfitPct = computed(() => stats.value?.total_profit_loss_pct ?? null)
 
   /**
    * 是否盈利
    */
-  const profitPositive = computed(() => totalProfit.value >= 0)
+  const profitPositive = computed(() => totalProfit.value !== null && totalProfit.value >= 0)
 
   /**
    * 是否有数据
@@ -171,22 +172,18 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     const operationId = generateOperationId()
 
     // 创建乐观更新项
-    const tempItem: PortfolioItem = {
+    const tempItem: PortfolioItem = withoutPortfolioQuote({
       id: Date.now() + Math.floor(Math.random() * 1000), // 临时ID（避免碰撞）
       fund_code: data.fund_code,
       fund_name: data.fund_name || data.fund_code,
       hold_shares: data.hold_shares || 0,
       cost_amount: data.cost_amount || 0,
       cost_nav: data.cost_nav,
-      current_nav: data.cost_nav,
-      current_value: (data.cost_nav || 0) * (data.hold_shares || 0),
-      profit_amount: 0,
-      profit_rate: 0,
       buy_date: data.buy_date,
       remark: data.remark,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
-    }
+    })
 
     // 添加到待处理队列
     pendingOperations.value.set(operationId, {
@@ -249,17 +246,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     let failed = 0
 
     // 乐观更新：先显示所有项
-    const tempItems: PortfolioItem[] = items.map((data, index) => ({
+    const tempItems: PortfolioItem[] = items.map((data, index) => withoutPortfolioQuote({
       id: Date.now() + Math.floor(Math.random() * 1000) + index,
       fund_code: data.fund_code,
       fund_name: data.fund_name || data.fund_code,
       hold_shares: data.hold_shares || 0,
       cost_amount: data.cost_amount || 0,
       cost_nav: data.cost_nav,
-      current_nav: data.cost_nav,
-      current_value: (data.cost_nav || 0) * (data.hold_shares || 0),
-      profit_amount: 0,
-      profit_rate: 0,
       buy_date: data.buy_date,
       remark: data.remark,
       created_at: new Date().toISOString(),

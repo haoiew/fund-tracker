@@ -1,6 +1,18 @@
 import type { FundRealtimeData } from '@/api/fund'
 import type { PortfolioItem } from '@/api/portfolio'
 
+// Pydantic Decimal 在 JSON 中可为字符串；只转换数值字段，保留基金代码等标识。
+const fixed = (value: number | string | null | undefined, digits: number): string => {
+  if (value == null || value === '') return '--'
+  const number = Number(value)
+  return Number.isFinite(number) ? number.toFixed(digits) : '--'
+}
+
+const signedPercent = (value: number | string | null | undefined): string => {
+  const formatted = fixed(value, 2)
+  return formatted === '--' ? '--' : `${Number(value) > 0 ? '+' : ''}${formatted}%`
+}
+
 /**
  * 导出数据为CSV格式
  */
@@ -52,7 +64,7 @@ export function exportFundsToCSV(funds: FundRealtimeData[]): void {
     '基金代码': fund.code,
     '基金名称': fund.name,
     '估算净值': fund.estimate_nav ?? '--',
-    '涨跌幅': fund.estimate_change ? `${fund.estimate_change > 0 ? '+' : ''}${fund.estimate_change.toFixed(2)}%` : '--',
+    '涨跌幅': signedPercent(fund.estimate_change),
     '更新时间': fund.update_time,
     '状态': fund.status
   }))
@@ -68,12 +80,12 @@ export function exportPortfolioToCSV(items: PortfolioItem[]): void {
   const data = items.map(item => ({
     '基金代码': item.fund_code,
     '基金名称': item.fund_name,
-    '持有份额': item.hold_shares?.toFixed(2) ?? '--',
-    '成本价': item.cost_nav?.toFixed(4) ?? '--',
-    '当前净值': item.current_nav?.toFixed(4) ?? '--',
-    '当前市值': item.current_value?.toFixed(2) ?? '--',
-    '持有收益': item.profit_amount?.toFixed(2) ?? '--',
-    '持有收益率': item.profit_rate ? `${item.profit_rate > 0 ? '+' : ''}${item.profit_rate.toFixed(2)}%` : '--'
+    '持有份额': fixed(item.hold_shares, 2),
+    '成本价': fixed(item.cost_nav, 4),
+    '当前净值': fixed(item.current_nav, 4),
+    '当前市值': fixed(item.current_value, 2),
+    '持有收益': fixed(item.profit_amount, 2),
+    '持有收益率': signedPercent(item.profit_rate)
   }))
 
   const timestamp = new Date().toISOString().slice(0, 10)

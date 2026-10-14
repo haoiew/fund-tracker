@@ -107,6 +107,18 @@ class TestFundService:
 
         assert results[0]["code"] == "012709"
 
+    def test_get_fund_name_uses_catalog_when_cache_is_empty(self, fund_service, monkeypatch):
+        """名称缓存未预热时，应从基金目录解析名称，而不是把代码当名称返回。"""
+        if "get_fund_name" in fund_service.__dict__:
+            monkeypatch.delattr(fund_service, "get_fund_name")
+        fund_service.cache.delete("fund_name:005051")
+        fund_service._fund_names_cache.pop("005051", None)
+        monkeypatch.setattr(fund_service, "_load_eastmoney_fund_catalog", lambda: [
+            {"code": "005051", "name": "摩根标普港股通低波红利指数A", "type": "指数型", "company": ""},
+        ])
+
+        assert fund_service.get_fund_name("005051") == "摩根标普港股通低波红利指数A"
+
 
 class TestFundTrendAnalysis:
     """基金趋势分析测试"""
@@ -136,32 +148,26 @@ class TestFundTrendAnalysis:
 
     @pytest.mark.asyncio
     async def test_append_realtime_change_uses_alternative_estimate(self, fund_service, monkeypatch):
-        """直接实时估值缺失时，筛选实时口径应纳入替代估算。"""
+        """筛选消费后端已选择且具有真实行情时刻的推测值。"""
+        from datetime import datetime, timezone, timedelta
+        from app.core import data_source
+        from app.services import fund_service as service_module
+        now = datetime(2026, 10, 13, 14, 30, tzinfo=timezone(timedelta(hours=8)))
+        monkeypatch.setattr(data_source, "shanghai_now", lambda: now)
+        monkeypatch.setattr(service_module, "shanghai_now", lambda: now)
         async def fake_realtime(code):
             return FundRealtimeData(
                 code=code,
                 name="测试基金",
-                estimate_change=Decimal("0.10"),
-                update_time="2026-06-10",
-                data_kind="latest_nav",
-                data_kind_label="最新净值",
+                estimate_change=Decimal("2.5"),
+                update_time="2026-10-13 14:29",
+                data_kind="holdings_estimate",
+                data_kind_label="披露持仓外推",
                 is_realtime=False,
+                is_inferred=True,
             )
 
-        async def fake_alternatives(code, name=None):
-            return {
-                "holdings_based_estimate": {
-                    "feasible": True,
-                    "weighted_stock_change_pct": 2.5,
-                },
-                "reference_symbol_estimate": None,
-                "same_name_realtime_candidates": [],
-                "fallback_estimate": None,
-                "direct": {"change_pct": 0.1},
-            }
-
         monkeypatch.setattr(fund_service, "get_realtime_data", fake_realtime)
-        monkeypatch.setattr(fund_service, "get_realtime_alternatives", fake_alternatives)
 
         hist = pd.DataFrame([
             {"净值日期": pd.Timestamp("2026-06-08"), "累计净值": 1.0, "pct_change": 0.01},
@@ -172,6 +178,24 @@ class TestFundTrendAnalysis:
 
         assert len(enriched) == 3
         assert enriched.iloc[-1]["pct_change"] == pytest.approx(0.025)
+        assert enriched.iloc[-1]["净值日期"] == pd.Timestamp("2026-10-13")
+        assert enriched.iloc[-1]["return_basis"] == "intraday_estimate"
+
+    @pytest.mark.asyncio
+    async def test_append_realtime_change_never_counts_today_twice(self, fund_service, monkeypatch):
+        from datetime import datetime, timezone, timedelta
+        from app.services import fund_service as service_module
+        now = datetime(2026, 10, 13, 18, tzinfo=timezone(timedelta(hours=8)))
+        monkeypatch.setattr(service_module, "shanghai_now", lambda: now)
+
+        async def must_not_fetch(*args):
+            pytest.fail("已有今日正式净值时不应再追加今日估值")
+
+        monkeypatch.setattr(fund_service, "_get_realtime_screen_change", must_not_fetch)
+        hist = pd.DataFrame([{"净值日期": pd.Timestamp("2026-10-13"), "单位净值": 1.2, "pct_change": 0.01}])
+        result = await fund_service._append_realtime_change(hist, "000001", allow_realtime_proxies=False)
+        assert result is hist
+        assert len(result) == 1
 
     def test_analyze_trend_empty_data(self, fund_service):
         """测试空数据的趋势分析"""

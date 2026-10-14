@@ -5,9 +5,9 @@
  */
 
 import { reactive, computed } from 'vue'
-import fundApi, { type FundRealtimeData, type RealtimeAlternativeResult } from '@/api/fund'
+import { calculateDailyChange, isOfficialNavDisplayed, withoutPortfolioQuote } from '@/utils/portfolioValuation'
+import fundApi, { type FundRealtimeData } from '@/api/fund'
 import portfolioApi, { type PortfolioItem, type PortfolioStats } from '@/api/portfolio'
-import { deriveEstimateNav } from '@/utils/fundEstimate'
 
 // 数据管理器状态
 interface DataManagerState {
@@ -33,18 +33,19 @@ interface DataManagerState {
 const STORAGE_KEYS = {
   FUND_LIST: 'fund_tracker_fund_list',
   FUND_LIST_DIRTY: 'fund_tracker_fund_list_dirty',  // 标记用户是否手动修改过列表
-  REALTIME_DATA: 'fund_tracker_realtime_data',
-  REALTIME_FETCH_TIME: 'fund_tracker_realtime_fetch_time',
+  REALTIME_DATA: 'fund_tracker_realtime_data_v2',
+  REALTIME_FETCH_TIME: 'fund_tracker_realtime_fetch_time_v2',
   PORTFOLIO_ITEMS: 'fund_tracker_portfolio_items',
   PORTFOLIO_STATS: 'fund_tracker_portfolio_stats',
-  PORTFOLIO_FETCH_TIME: 'fund_tracker_portfolio_fetch_time'
+  PORTFOLIO_FETCH_TIME: 'fund_tracker_portfolio_fetch_time',
+  PORTFOLIO_CACHE_VERSION: 'fund_tracker_portfolio_cache_version'
 }
 
 // 缓存配置（持久化时间）
 const CACHE_TTL = {
   FUND_LIST: 5 * 60 * 1000,      // 基金列表缓存5分钟
-  REALTIME: 5 * 60 * 1000,       // 实时数据缓存5分钟（用于刷新后快速显示）
-  PORTFOLIO: 10 * 60 * 1000      // 持仓数据缓存10分钟
+  REALTIME: 60 * 1000,       // 实时数据缓存1分钟（用于刷新后快速显示）
+  PORTFOLIO: 60 * 1000          // 持仓报价缓存1分钟
 }
 
 // 创建响应式状态
@@ -68,13 +69,6 @@ const state = reactive<DataManagerState>({
 })
 
 type PortfolioLoadResult = { items: PortfolioItem[], stats: PortfolioStats }
-type AlternativeFundPatch = Partial<FundRealtimeData> & {
-  estimate_change: number
-  status: string
-  data_kind: NonNullable<FundRealtimeData['data_kind']>
-  data_kind_label: string
-}
-
 // 正在进行的请求跟踪
 const pendingRequests = new Map<string, Promise<unknown>>()
 
@@ -99,6 +93,11 @@ class DataManager {
   getFundList = computed(() => state.fundList)
   isFundListLoaded = computed(() => state.fundListLoaded)
   getAllRealtimeData = computed(() => Array.from(state.realtimeData.values()))
+  getWatchlistRealtimeData = computed(() => {
+    return state.fundList
+      .map(code => state.realtimeData.get(code))
+      .filter((item): item is FundRealtimeData => Boolean(item))
+  })
   getPortfolioItems = computed(() => state.portfolioItems)
   getPortfolioStats = computed(() => state.portfolioStats)
   isPortfolioLoaded = computed(() => state.portfolioLoaded)
@@ -106,31 +105,29 @@ class DataManager {
   getPortfolioWithRealtime = computed(() => {
     return state.portfolioItems.map(item => {
       const realtime = state.realtimeData.get(item.fund_code)
+      const fundName = item.fund_name && item.fund_name !== item.fund_code
+        ? item.fund_name : realtime?.name || item.fund_name || item.fund_code
 
       // 获取基础数据
       const holdShares = Number(item.hold_shares) || 0
       const costAmount = Number(item.cost_amount) || 0
-      const costNav = Number(item.cost_nav) || 0
 
       // 如果有实时数据，使用实时数据计算
       if (realtime?.estimate_nav && realtime.estimate_nav > 0) {
         const estimateNav = Number(realtime.estimate_nav)
         const currentValue = estimateNav * holdShares
         const profitAmount = currentValue - costAmount
-        const profitRate = costNav > 0 ? ((estimateNav - costNav) / costNav * 100) : 0
-        const realtimeChangePct = realtime.estimate_change !== null ? Number(realtime.estimate_change) : null
-        const realtimeChangeAmount = realtimeChangePct !== null
-          ? currentValue - (currentValue / (1 + realtimeChangePct / 100))
-          : 0
+        const profitRate = costAmount > 0 ? profitAmount / costAmount * 100 : 0
+        const realtimeChangePct = realtime.estimate_change == null ? null : Number(realtime.estimate_change)
+        const realtimeChangeAmount = calculateDailyChange(currentValue, realtimeChangePct)
         const officialNav = Number(realtime.official_nav ?? (realtime.data_kind === 'latest_nav' ? realtime.estimate_nav : realtime.previous_nav))
         const officialChangePct = realtime.official_change ?? (realtime.data_kind === 'latest_nav' ? realtime.estimate_change : realtime.daily_growth)
         const officialValue = Number.isFinite(officialNav) && officialNav > 0 ? officialNav * holdShares : null
-        const officialChangeAmount = officialValue !== null && officialChangePct !== null && officialChangePct !== undefined
-          ? officialValue - (officialValue / (1 + Number(officialChangePct) / 100))
-          : 0
+        const officialChangeAmount = calculateDailyChange(officialValue, officialChangePct == null ? null : Number(officialChangePct))
 
         return {
           ...item,
+          fund_name: fundName,
           current_nav: estimateNav,
           current_change: realtimeChangePct,
           current_value: currentValue,
@@ -145,30 +142,38 @@ class DataManager {
           official_update_time: realtime.official_update_time || (realtime.data_kind === 'latest_nav' ? realtime.update_time : null),
           data_kind: realtime.data_kind,
           data_kind_label: realtime.data_kind_label,
-          is_realtime: realtime.is_realtime
+          is_realtime: realtime.is_realtime,
+          is_inferred: realtime.is_inferred,
+          quote_as_of: realtime.update_time
         }
       }
 
-      // 没有实时数据，使用后端返回的数据或计算默认值
-      const currentNav = item.current_nav || costNav
-      const currentValue = item.current_value || (currentNav * holdShares) || costAmount
-      const profitAmount = (item.profit_amount !== undefined) ? item.profit_amount : (currentValue - costAmount)
-      const profitRate = (item.profit_rate !== undefined) ? item.profit_rate :
-                        (costNav > 0 && currentNav > 0 ? ((currentNav - costNav) / costNav * 100) : 0)
+      // 缺少报价时保持未知；投入成本不是当前市值。
+      const currentNav = realtime ? null : (item.current_nav ?? null)
+      const currentValue = holdShares === 0 ? 0 : (realtime ? null : (item.current_value ?? (currentNav !== null ? currentNav * holdShares : null)))
+      const profitAmount = currentValue !== null ? currentValue - costAmount : null
+      const profitRate = profitAmount !== null && costAmount > 0 ? profitAmount / costAmount * 100 : null
 
       return {
         ...item,
+        fund_name: fundName,
         current_nav: currentNav || null,
-        current_value: currentValue || null,
+        current_value: currentValue,
         profit_amount: profitAmount,
         profit_rate: profitRate,
-        realtime_change_pct: item.current_change ?? null,
-        realtime_change_amount: item.daily_profit || 0,
-        official_nav: item.current_nav || null,
-        official_change_pct: item.current_change ?? null,
-        official_change_amount: item.daily_profit || 0,
-        official_value: item.current_value || null,
-        official_update_time: null
+        current_change: realtime ? null : item.current_change,
+        realtime_change_pct: realtime ? null : (item.current_change ?? null),
+        realtime_change_amount: realtime ? null : (item.daily_profit ?? null),
+        official_nav: Number(realtime?.official_nav ?? item.official_nav) || null,
+        official_change_pct: realtime?.official_change ?? item.official_change_pct ?? null,
+        official_change_amount: null,
+        official_value: Number(realtime?.official_nav ?? item.official_nav) > 0 ? Number(realtime?.official_nav ?? item.official_nav) * holdShares : null,
+        official_update_time: realtime?.official_update_time ?? item.official_update_time ?? null,
+        data_kind: realtime?.data_kind ?? item.data_kind,
+        data_kind_label: realtime?.data_kind_label ?? item.data_kind_label,
+        is_realtime: realtime?.is_realtime ?? item.is_realtime,
+        is_inferred: realtime?.is_inferred ?? item.is_inferred,
+        quote_as_of: realtime?.update_time ?? item.quote_as_of
       }
     })
   })
@@ -187,7 +192,7 @@ class DataManager {
       this.restoreFromStorage()
 
       // 2. 后台异步刷新最新数据
-      this.refreshFromAPI()
+      await this.refreshFromAPI()
 
       console.log('[DataManager] 数据初始化完成')
     } catch (e) {
@@ -199,17 +204,44 @@ class DataManager {
    * 从本地存储恢复数据（并行执行）
    */
   private restoreFromStorage(): void {
-    // 并行恢复所有数据（localStorage读取是同步的，但逻辑上并行）
-    const results = [
-      this.loadFundListFromStorage(),
-      this.loadRealtimeDataFromStorage(),
-      this.loadPortfolioFromStorage()
-    ]
+    const fundListRestored = this.loadFundListFromStorage()
+    const realtimeRestored = this.loadRealtimeDataFromStorage()
+    const portfolioRestored = this.loadPortfolioFromStorage()
+
+    if (!fundListRestored) {
+      this.restoreLegacyWatchlistFromRealtimeStorage()
+    }
+
+    const results = [fundListRestored, realtimeRestored, portfolioRestored]
 
     const restored = results.filter(Boolean).length
     if (restored > 0) {
       console.log(`[DataManager] ✅ 从本地存储恢复数据: ${restored} 项`)
     }
+  }
+
+  private restoreLegacyWatchlistFromRealtimeStorage(): boolean {
+    let codes = Array.from(state.realtimeData.keys())
+    if (codes.length === 0) {
+      try {
+        // 只迁移代码，不恢复旧版本/过期缓存的价格。
+        const stored = localStorage.getItem('fund_tracker_realtime_data') || localStorage.getItem(STORAGE_KEYS.REALTIME_DATA)
+        const rows = stored ? JSON.parse(stored) : []
+        if (Array.isArray(rows)) {
+          codes = [...new Set(rows.map(row => row?.code).filter((code): code is string => typeof code === 'string' && /^\d{6}$/.test(code)))]
+        }
+      } catch (error) {
+        console.warn('[DataManager] 无法迁移旧缓存中的关注代码:', error)
+      }
+    }
+    if (codes.length === 0) return false
+
+    state.fundList = codes
+    state.fundListLoaded = true
+    localStorage.setItem(STORAGE_KEYS.FUND_LIST, JSON.stringify(codes))
+    localStorage.setItem(STORAGE_KEYS.FUND_LIST_DIRTY, 'true')
+    console.log('[DataManager] 从旧实时数据缓存迁移关注列表:', codes.length)
+    return true
   }
 
   /**
@@ -224,21 +256,12 @@ class DataManager {
       this.loadFundList().catch(e => {
         console.warn('[DataManager] 刷新基金列表失败:', e)
       }),
-      this.loadPortfolio().catch(e => {
+      this.loadPortfolio(false, false).catch(e => {
         console.warn('[DataManager] 刷新持仓数据失败:', e)
       })
     ]
 
-    // 如果有基金列表，也刷新实时数据
-    if (state.fundList.length > 0) {
-      promises.push(
-        this.loadRealtimeData().catch(e => {
-          console.warn('[DataManager] 刷新实时数据失败:', e)
-        })
-      )
-    }
-
-    // 等待所有请求完成
+    // These endpoints read local metadata, not quotes. Merge codes once afterwards.
     await Promise.all(promises)
 
     const targetCodes = this.getRealtimeTargetCodes()
@@ -314,10 +337,10 @@ class DataManager {
     return false
   }
 
-  private async fetchFundListFromAPI(useDefaultList = false): Promise<string[]> {
+  private async fetchFundListFromAPI(): Promise<string[]> {
     try {
       console.log('[DataManager] 从API获取基金列表...')
-      const data = useDefaultList ? await fundApi.getDefaultList() : await fundApi.getFundList()
+      const data = await fundApi.getFundList()
       state.fundList = data
       state.fundListLoaded = true
       state.fundListError = null
@@ -353,7 +376,9 @@ class DataManager {
       localStorage.setItem(STORAGE_KEYS.FUND_LIST, JSON.stringify(state.fundList))
       localStorage.setItem(STORAGE_KEYS.FUND_LIST_DIRTY, 'true')
 
-      state.realtimeData.delete(code)
+      if (!state.portfolioItems.some(item => item.fund_code === code)) {
+        state.realtimeData.delete(code)
+      }
       const realtimeArray = Array.from(state.realtimeData.values())
       localStorage.setItem(STORAGE_KEYS.REALTIME_DATA, JSON.stringify(realtimeArray))
 
@@ -368,7 +393,9 @@ class DataManager {
     localStorage.setItem(STORAGE_KEYS.FUND_LIST_DIRTY, 'true')
 
     for (const code of codes) {
-      state.realtimeData.delete(code)
+      if (!state.portfolioItems.some(item => item.fund_code === code)) {
+        state.realtimeData.delete(code)
+      }
     }
 
     const realtimeArray = Array.from(state.realtimeData.values())
@@ -377,32 +404,13 @@ class DataManager {
     console.log('[DataManager] 批量移除基金:', codes)
   }
 
-  /**
-   * 重置基金列表为默认列表
-   * 强制从API获取最新默认基金列表
-   */
-  async resetFundList(): Promise<string[]> {
-    console.log('[DataManager] 重置基金列表为默认列表...')
-
-    // 清除本地存储的基金列表和dirty标记
-    localStorage.removeItem(STORAGE_KEYS.FUND_LIST)
-    localStorage.removeItem(STORAGE_KEYS.FUND_LIST_DIRTY)
-
-    // 重置状态
+  clearFundList(): void {
+    console.log('[DataManager] 清空关注列表...')
     state.fundList = []
-    state.fundListLoaded = false
-
-    // 强制从API获取最新列表
-    const data = await this.fetchFundListFromAPI(true)
-
-    // 清空现有实时数据
-    state.realtimeData.clear()
-
-    // 重新加载实时数据
-    await this.loadRealtimeData(data, true)
-
-    console.log('[DataManager] 基金列表重置完成:', data.length, '只基金')
-    return data
+    state.fundListLoaded = true
+    localStorage.setItem(STORAGE_KEYS.FUND_LIST, JSON.stringify([]))
+    localStorage.setItem(STORAGE_KEYS.FUND_LIST_DIRTY, 'true')
+    console.log('[DataManager] 关注列表已清空')
   }
 
   // ============ 实时数据操作 ============
@@ -442,7 +450,7 @@ class DataManager {
       cacheStats.total += uniqueCodes.length
       console.log(`[DataManager] ✅ 缓存命中: ${uniqueCodes.length} 只基金`)
       const cachedData = uniqueCodes.map(code => state.realtimeData.get(code)!)
-      const enrichedData = await this.enrichRealtimeAlternatives(cachedData)
+      const enrichedData = cachedData
       enrichedData.forEach(item => {
         state.realtimeData.set(item.code, item)
       })
@@ -468,19 +476,19 @@ class DataManager {
       return result
     } finally {
       pendingRequests.delete(requestKey)
-      state.realtimeLoading = false
+      state.realtimeLoading = [...pendingRequests.keys()].some(key => key.startsWith('realtime_'))
     }
   }
 
   /**
    * 从本地存储恢复实时数据
-   * 策略：始终恢复本地数据，不管是否过期，确保页面刷新后有数据可显示
+   * 仅恢复仍在时效内的报价，防止旧缓存继续显示为当前估值。
    */
   private loadRealtimeDataFromStorage(): boolean {
     const stored = localStorage.getItem(STORAGE_KEYS.REALTIME_DATA)
     const timeStored = localStorage.getItem(STORAGE_KEYS.REALTIME_FETCH_TIME)
 
-    if (stored) {
+    if (stored && timeStored && Date.now() - Number(timeStored) < CACHE_TTL.REALTIME) {
       try {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -496,7 +504,6 @@ class DataManager {
           }
 
           console.log('[DataManager] 从本地存储恢复实时数据:', parsed.length, '只基金')
-          this.refreshCachedRealtimeAlternatives(parsed)
           return true
         }
       } catch (e) {
@@ -507,203 +514,45 @@ class DataManager {
   }
 
   private async fetchRealtimeDataFromAPI(codes: string[]): Promise<FundRealtimeData[]> {
+    const started = Date.now()
+    let providersLoaded = false
     try {
       console.log('[DataManager] 从API获取实时数据:', codes.length, '只基金')
-      const data = await fundApi.getRealtimeBatch(codes)
-      const enrichedData = await this.enrichRealtimeAlternatives(data)
+      const data = await fundApi.getRealtimeBatch(codes, 'provider')
 
-      // 更新内存缓存
-      enrichedData.forEach(item => {
-        state.realtimeData.set(item.code, item)
-      })
-      state.realtimeLastFetch = Date.now()
+      // Render provider results now; one slow inference must not hide real quotes.
+      data.forEach(item => state.realtimeData.set(item.code, item))
+      providersLoaded = true
       state.realtimeError = null
+      if (state.portfolioLoaded) this.calculatePortfolioStats()
+      console.log(`[DataManager] 直接报价已显示，耗时: ${Date.now() - started}ms`)
 
-      // 保存到本地存储
+      // Auto also owns the after-close, today's-official-NAV rule.
+      const autoCodes = data.filter(item => !item.error &&
+        (item.estimate_nav == null || isOfficialNavDisplayed(item))).map(item => item.code)
+      if (autoCodes.length > 0) {
+        const supplemented = await fundApi.getRealtimeBatch(autoCodes, 'auto')
+        supplemented.forEach(item => state.realtimeData.set(item.code, item))
+      }
+
+      state.realtimeLastFetch = Date.now()
       this.saveRealtimeDataToStorage()
 
-      console.log('[DataManager] 实时数据加载完成:', enrichedData.length)
-      return enrichedData
+      console.log(`[DataManager] 实时数据加载完成: ${codes.length} 只，耗时: ${Date.now() - started}ms`)
+      return codes.map(code => state.realtimeData.get(code)!)
     } catch (e) {
       console.error('[DataManager] 获取实时数据失败:', e)
-      // 只有在没有本地缓存时才设置错误
-      if (state.realtimeData.size === 0) {
-        state.realtimeError = '获取实时数据失败'
-      }
+      const detail = e instanceof Error ? e.message : String(e)
+      state.realtimeError = `${providersLoaded ? '在线报价已加载，推算补充失败' : '获取在线报价失败'}：${detail}`
       throw e
     }
-  }
-
-  private refreshCachedRealtimeAlternatives(data?: FundRealtimeData[]): void {
-    const cachedData = data || Array.from(state.realtimeData.values())
-    if (cachedData.length === 0) return
-
-    this.enrichRealtimeAlternatives(cachedData)
-      .then(enrichedData => {
-        let changed = false
-        enrichedData.forEach(item => {
-          const previous = state.realtimeData.get(item.code)
-          if (!previous || JSON.stringify(previous) !== JSON.stringify(item)) {
-            state.realtimeData.set(item.code, item)
-            changed = true
-          }
-        })
-        if (changed) {
-          this.saveRealtimeDataToStorage()
-          console.log('[DataManager] 已增强本地实时数据替代估算:', enrichedData.length, '只基金')
-        }
-      })
-      .catch(e => {
-        console.warn('[DataManager] 增强本地实时数据替代估算失败:', e)
-      })
-  }
-
-  private async enrichRealtimeAlternatives(data: FundRealtimeData[]): Promise<FundRealtimeData[]> {
-    const nonRealtimeItems = data.filter(item => item.is_realtime === false && !this.shouldPreferOfficialNav(item))
-    if (nonRealtimeItems.length === 0) {
-      return data
-    }
-
-    const alternativeResults = await Promise.allSettled(
-      nonRealtimeItems.map(item => fundApi.getRealtimeAlternatives(item.code, item.name))
-    )
-    const alternativeMap = new Map<string, RealtimeAlternativeResult>()
-    alternativeResults.forEach(result => {
-      if (result.status === 'fulfilled' && result.value && !result.value.skipped) {
-        alternativeMap.set(result.value.code, result.value)
-      }
-    })
-
-    return data.map(item => {
-      const alternatives = alternativeMap.get(item.code)
-      const alternativePatch = this.buildPreferredAlternativeFund(item, alternatives)
-      return alternativePatch ? { ...item, ...alternativePatch } : item
-    })
-  }
-
-  private shouldPreferOfficialNav(item: FundRealtimeData): boolean {
-    if (item.data_kind !== 'latest_nav' || !item.update_time) return false
-    const now = new Date()
-    if (now.getHours() < 15) return false
-    const today = this.formatDate(now)
-    return item.update_time.includes(today)
-  }
-
-  private buildPreferredAlternativeFund(item: FundRealtimeData, alternatives?: RealtimeAlternativeResult): AlternativeFundPatch | null {
-    if (!alternatives) return null
-    const officialSnapshot = item.data_kind === 'latest_nav' || item.is_realtime === false
-      ? {
-          official_nav: item.official_nav ?? item.estimate_nav,
-          official_change: item.official_change ?? item.estimate_change,
-          official_update_time: item.official_update_time ?? item.update_time,
-          official_data_kind_label: item.official_data_kind_label ?? item.data_kind_label ?? '最新净值'
-        }
-      : {}
-
-      const estimate = alternatives?.holdings_based_estimate
-      if (estimate?.feasible && estimate.weighted_stock_change_pct !== null && estimate.weighted_stock_change_pct !== undefined) {
-        const estimateChange = estimate.weighted_stock_change_pct
-        return {
-          ...officialSnapshot,
-          estimate_nav: deriveEstimateNav(item, estimateChange),
-          estimate_change: estimateChange,
-          update_time: this.formatMinuteTime(new Date()),
-          status: '持仓估算',
-          data_source: 'holdings_estimate',
-          data_source_display_name: '持仓实时估算',
-          data_source_short_name: 'Holdings',
-          data_source_description: `基于 ${estimate.position_date || '最新披露'} 十大持仓和实时股票行情的加权估算，报价覆盖 ${this.formatPercentRatio(estimate.quoted_weight_coverage)}。`,
-          data_kind: 'holdings_estimate',
-          data_kind_label: '持仓估算',
-          is_realtime: false,
-          data_timestamp: new Date().toISOString()
-        }
-      }
-
-      const reference = alternatives?.reference_symbol_estimate
-      if (reference?.feasible && reference.weighted_stock_change_pct !== null && reference.weighted_stock_change_pct !== undefined) {
-        const estimateChange = reference.weighted_stock_change_pct
-        return {
-          ...officialSnapshot,
-          estimate_nav: deriveEstimateNav(item, estimateChange),
-          estimate_change: estimateChange,
-          update_time: this.formatMinuteTime(new Date()),
-          status: '标的估算',
-          data_source: 'reference_symbol_estimate',
-          data_source_display_name: '引用标的估算',
-          data_source_short_name: 'Reference',
-          data_source_description: `持仓穿透不足，使用 ${reference.references?.map(ref => ref.name).join('、') || '参考标的'} 行情估算。`,
-          data_kind: 'reference_symbol_estimate',
-          data_kind_label: '标的估算',
-          is_realtime: false,
-          data_timestamp: new Date().toISOString()
-        }
-      }
-
-      const realtimeCandidate = alternatives.same_name_realtime_candidates.find(candidate => {
-        return candidate.change_pct !== null && candidate.change_pct !== undefined
-      })
-      if (realtimeCandidate) {
-        const estimateChange = realtimeCandidate.change_pct as number
-        return {
-          ...officialSnapshot,
-          estimate_nav: deriveEstimateNav(item, estimateChange),
-          estimate_change: estimateChange,
-          update_time: realtimeCandidate.update_time || item.update_time,
-          status: '相近参考',
-          data_source: realtimeCandidate.source,
-          data_source_display_name: `相近基金参考：${realtimeCandidate.name}`,
-          data_source_short_name: 'Similar',
-          data_source_description: `采用相近基金 ${realtimeCandidate.code} ${realtimeCandidate.name} 的实时涨跌幅作为自动参考，不是本基金自身估值。`,
-          data_kind: 'similar_realtime_reference',
-          data_kind_label: '相近参考',
-          is_realtime: false,
-          data_timestamp: new Date().toISOString()
-        }
-      }
-
-      const fallback = alternatives?.fallback_estimate
-      if (!fallback?.feasible || fallback.change_pct === null || fallback.change_pct === undefined) {
-        return null
-      }
-
-      const estimateChange = fallback.change_pct
-      return {
-        ...officialSnapshot,
-        estimate_nav: deriveEstimateNav(item, estimateChange),
-        estimate_change: estimateChange,
-        update_time: fallback.update_time || item.update_time,
-        status: '兜底估算',
-        data_source: fallback.source || item.data_source || 'fallback_estimate',
-        data_source_display_name: '净值/行情兜底估算',
-        data_source_short_name: 'Fallback',
-        data_source_description: `持仓穿透不可用，使用${fallback.source === 'tencent' ? '腾讯基金行情' : '最新净值涨跌幅'}作为估算参考。`,
-        data_kind: 'fallback_estimate',
-        data_kind_label: '兜底估算',
-        is_realtime: false,
-        data_timestamp: new Date().toISOString()
-      }
-    }
-
-  private formatMinuteTime(date: Date): string {
-    const pad = (value: number) => String(value).padStart(2, '0')
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
-  }
-
-  private formatDate(date: Date): string {
-    const pad = (value: number) => String(value).padStart(2, '0')
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-  }
-
-  private formatPercentRatio(value?: number | null): string {
-    if (value === null || value === undefined || isNaN(Number(value))) return '--'
-    return `${(Number(value) * 100).toFixed(0)}%`
   }
 
   /**
    * 保存实时数据到本地存储
    */
   private saveRealtimeDataToStorage(): void {
+    if (state.portfolioLoaded) this.calculatePortfolioStats()
     try {
       const dataArray = Array.from(state.realtimeData.values())
       localStorage.setItem(STORAGE_KEYS.REALTIME_DATA, JSON.stringify(dataArray))
@@ -718,7 +567,7 @@ class DataManager {
   /**
    * 加载持仓数据
    */
-  async loadPortfolio(forceRefresh = false): Promise<{ items: PortfolioItem[], stats: PortfolioStats }> {
+  async loadPortfolio(forceRefresh = false, refreshQuotes = true): Promise<{ items: PortfolioItem[], stats: PortfolioStats }> {
     const now = Date.now()
     const cacheValid = !forceRefresh &&
       state.portfolioLoaded &&
@@ -739,7 +588,7 @@ class DataManager {
     }
 
     state.portfolioLoading = true
-    const request = this.fetchPortfolioFromAPI()
+    const request = this.fetchPortfolioFromAPI(refreshQuotes)
     setPendingRequest(requestKey, request)
 
     try {
@@ -753,12 +602,14 @@ class DataManager {
 
   /**
    * 从本地存储恢复持仓数据
-   * 策略：始终恢复本地数据，不管是否过期，确保页面刷新后有数据可显示
+   * 保留持仓输入；只有当前版本且未过期时恢复报价及统计。
    */
   private loadPortfolioFromStorage(): boolean {
     const itemsStored = localStorage.getItem(STORAGE_KEYS.PORTFOLIO_ITEMS)
     const statsStored = localStorage.getItem(STORAGE_KEYS.PORTFOLIO_STATS)
     const timeStored = localStorage.getItem(STORAGE_KEYS.PORTFOLIO_FETCH_TIME)
+    const quotesCurrent = localStorage.getItem(STORAGE_KEYS.PORTFOLIO_CACHE_VERSION) === '2'
+      && Boolean(timeStored) && Date.now() - Number(timeStored) < CACHE_TTL.PORTFOLIO
 
     if (itemsStored) {
       try {
@@ -781,21 +632,23 @@ class DataManager {
           const uniqueItems = Array.from(uniqueMap.values())
 
           // 恢复持仓数据
-          state.portfolioItems = uniqueItems
+          state.portfolioItems = quotesCurrent ? uniqueItems : uniqueItems.map(withoutPortfolioQuote)
           state.portfolioLoaded = true
 
           // 恢复统计数据（如果有）
-          if (statsStored) {
+          if (statsStored && quotesCurrent) {
             const stats = JSON.parse(statsStored)
             // 同步更新 item_count
             if (stats) {
               stats.item_count = uniqueItems.length
             }
             state.portfolioStats = stats
+          } else {
+            this.calculatePortfolioStats()
           }
 
           // 恢复时间戳（用于判断是否需要刷新）
-          if (timeStored) {
+          if (timeStored && quotesCurrent) {
             state.portfolioLastFetch = parseInt(timeStored, 10)
           }
 
@@ -809,10 +662,10 @@ class DataManager {
     return false
   }
 
-  private async fetchPortfolioFromAPI(): Promise<{ items: PortfolioItem[], stats: PortfolioStats }> {
+  private async fetchPortfolioFromAPI(refreshQuotes: boolean): Promise<{ items: PortfolioItem[], stats: PortfolioStats }> {
     try {
       console.log('[DataManager] 从API获取持仓数据...')
-      const data = await portfolioApi.getAll()
+      const data = await portfolioApi.getAll(false)
 
       // 策略：合并新数据和旧数据，保留已有数据直到新数据有效
       let newItems = data.items || []
@@ -867,10 +720,8 @@ class DataManager {
       this.savePortfolioToStorage()
 
       // 持仓基金也参与实时/替代估算刷新，避免自选列表之外的基金停留在旧缓存
-      if (state.portfolioItems.length > 0) {
-        this.loadRealtimeData(this.getRealtimeTargetCodes()).catch(e => {
-          console.warn('[DataManager] 加载持仓基金实时数据失败:', e)
-        })
+      if (refreshQuotes && state.portfolioItems.length > 0) {
+        await this.loadRealtimeData(this.getRealtimeTargetCodes())
       }
 
       console.log('[DataManager] 持仓数据加载完成:', state.portfolioItems.length)
@@ -898,6 +749,7 @@ class DataManager {
       localStorage.setItem(STORAGE_KEYS.PORTFOLIO_ITEMS, JSON.stringify(state.portfolioItems))
       localStorage.setItem(STORAGE_KEYS.PORTFOLIO_STATS, JSON.stringify(state.portfolioStats))
       localStorage.setItem(STORAGE_KEYS.PORTFOLIO_FETCH_TIME, String(state.portfolioLastFetch))
+      localStorage.setItem(STORAGE_KEYS.PORTFOLIO_CACHE_VERSION, '2')
     } catch (e) {
       console.warn('[DataManager] 保存持仓数据到本地存储失败:', e)
     }
@@ -914,7 +766,7 @@ class DataManager {
     console.log('[DataManager] 刷新所有数据...')
 
     try {
-      await this.loadPortfolio(true)
+      await this.loadPortfolio(true, false)
 
       const targetCodes = this.getRealtimeTargetCodes()
       if (targetCodes.length > 0) {
@@ -984,7 +836,7 @@ class DataManager {
    * 计算持仓统计数据
    */
   private calculatePortfolioStats(): void {
-    const items = state.portfolioItems
+    const items = this.getPortfolioWithRealtime.value
     if (items.length === 0) {
       state.portfolioStats = {
         total_value: 0,
@@ -1002,8 +854,9 @@ class DataManager {
       return sum + (isNaN(cost) ? 0 : cost)
     }, 0)
     
+    const unpricedCodes: string[] = []
     const totalValue = items.reduce((sum, item) => {
-      // 优先使用 current_value，如果没有则使用 cost_amount（乐观更新时）
+      if (Number(item.hold_shares) === 0) return sum
       let current = typeof item.current_value === 'string' ? parseFloat(item.current_value) : Number(item.current_value)
       if (isNaN(current) || current === 0) {
         // 如果没有 current_value，尝试用 current_nav * hold_shares 计算
@@ -1012,9 +865,8 @@ class DataManager {
         if (!isNaN(nav) && !isNaN(shares) && nav > 0 && shares > 0) {
           current = nav * shares
         } else {
-          // 如果都没有，使用成本价
-          const cost = typeof item.cost_amount === 'string' ? parseFloat(item.cost_amount) : Number(item.cost_amount)
-          current = isNaN(cost) ? 0 : cost
+          unpricedCodes.push(item.fund_code)
+          current = 0
         }
       }
       return sum + current
@@ -1024,10 +876,12 @@ class DataManager {
     const totalProfitLossPct = totalCost > 0 ? (totalProfitLoss / totalCost) * 100 : 0
 
     state.portfolioStats = {
-      total_value: totalValue,
+      total_value: unpricedCodes.length ? null : totalValue,
       total_cost: totalCost,
-      total_profit_loss: totalProfitLoss,
-      total_profit_loss_pct: totalProfitLossPct,
+      total_profit_loss: unpricedCodes.length ? null : totalProfitLoss,
+      total_profit_loss_pct: unpricedCodes.length ? null : totalProfitLossPct,
+      unpriced_count: unpricedCodes.length,
+      unpriced_codes: unpricedCodes,
       item_count: items.length
     }
 

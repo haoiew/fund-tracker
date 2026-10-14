@@ -32,15 +32,47 @@
 
 | 字段 | 说明 |
 |------|------|
-| source | 数据源 key，如 `tiantian`、`efinance`、`tencent`、`eastmoney_lsjz`、`pingzhongdata` |
+| source | 数据源 key：`tiantian`、`sina`、`eastmoney_mobile`、`tencent`、`eastmoney_lsjz`、`pingzhongdata`；六条接口不代表六个独立实时估值供应商 |
 | display_name / short_name | 中文展示名 |
 | estimate_nav / estimate_change_pct | 该数据源返回的净值或涨跌幅 |
 | update_time | 盘中估算时刻或最新净值日期 |
+| last_nav / last_nav_date / last_change_pct | 独立保存的正式单位净值、净值日期与来源日增长率；缺失的正式日增长率不以盘中涨跌或简单 NAV 比值补造 |
 | data_kind_label | `实时估值` 或 `最新净值` |
-| is_realtime | 是否为带盘中时刻的实时估值 |
-| is_fresh | 该数据源本次是否可用 |
+| is_realtime / is_fresh | 是否为满足当前时效检查的源端估值，不表示正式净值的本次可用性 |
+| is_available | 本次是否取得有效数据；有效的旧净值可以为 true，但不属于实时估值 |
+| data_timestamp | 抓取时间，不能替代 `update_time` 的实际行情时刻或净值日期 |
+
+顶层 `total_sources` 为本次有效接口数量（包括正式净值），`realtime_sources` 为满足时效/一致性校核的实时估值数量。两者不可混同；新浪同日单位净值与天天明显冲突时，不作为可采用估值。
+
+### 报价显示策略
+
+`GET /funds/realtime/{code}` 和 `POST /funds/realtime/batch` 支持查询参数 `view`：
+
+源端估值顺序为天天 H5 优先，缺少当前估值的代码再批量查询新浪，不覆盖有效的天天估值；两者均无估值才尝试本地推算。正式单位净值备用路径保持独立。新浪字段、可用性与授权边界见[备用源核查](ESTIMATE_FALLBACK_20261014.md)。
+
+| view | 行为 |
+|---|---|
+| auto（默认） | 上海时间 15:00 后且正式净值日期为当天时显示正式净值；否则优先当前源端估值，无估值时使用有有效时间戳的披露持仓/关联标的推测；均不可用则返回空估值 |
+| provider | 只返回当前源端估值，缺失时空估值，不推测，不自动选净值 |
+| nav | 手动返回最新公布的正式单位净值，同时保留真实公布日期，不要求是今天 |
+
+`data_kind` 为 `realtime_estimate/latest_nav/holdings_estimate/reference_symbol_estimate/unavailable`。
+`is_inferred=true` 标识推测，不属于 `is_realtime=true` 的源端估值。
+`official_nav/official_change/official_update_time` 保留正式净值证据，即使当前显示估值为空也可供手动查询。
+`estimation_details` 含基准净值及日期、真实行情时刻、披露持仓日、已报价披露持仓覆盖率及其占基金净值比例、外推假设和跨日/汇率限制；覆盖率 100% 不代表全基金资产已计价。
+缺失估值时 `estimate_nav/estimate_change` 为 null，`data_kind=unavailable`；不要在调用方填 0 或成本价。货币基金收益不进入单位净值计价路径。
+批量请求去重后保留输入首次出现的顺序。报价缓存 60 秒；默认时效阈值 900 秒，午休/收盘后按最近交易时段判断，完整跨市场节假日语义尚待扩展。
+
+历史 `/funds/{code}/history` 的 `data.data.value_basis=unit_nav`，`values` 为单位净值，`changes` 为来源日增长率（%），缺失时为单位净值价格变动。对比结果 `funds[].return_basis` 标明来源日增长率或混合价格变动口径，不能将所有输出无条件视为分红再投总收益。
+
+基金及基准对比的 `changes` 是绘图用的区间累计曲线，**不是每日收益数组，禁止再次逐点复利**。
+`returns` 给出 `d3/d7/d30/m3/m6/y1/y3/y5` 日历区间收益；按各序列最近观测日回溯，非观测日取截止日之前最近有效基准，`return_period_dates` 明示实际起止日，`period_basis=calendar_ending_at_last_observation`。统计使用可用全历史，`range` 只控制图表窗口；没有所需基准时该统计为 null，不能填 0。基准指数的 `return_basis=index_price_change`。
+Decimal 字段在 JSON 中可能为字符串，数值使用前按字段转换，基金代码等标识不能统一转换为数字。
+兼容字段 `fallback_estimate` 保持 null，原“昨天净值涨跌当今日估值”的逻辑已移除。
 
 ## 持仓 API (`/portfolio`)
+
+持仓报价沿用 `auto` 口径。只要任一正份额持仓缺少有效报价，组合总市值、总盈亏及总收益率返回 null，已知投入成本仍保留；汇总的 `unpriced_count/unpriced_codes` 说明缺项，单项当前市值/盈亏也为 null。零份额持仓的当前价值为 0，无需报价。调用方应显示未知，而不是补造部分合计。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -56,6 +88,8 @@
 | POST | /portfolio/ai-recognize | AI 识别持仓截图并匹配基金代码 |
 | POST | /portfolio/import/preview | 导入预检，计算可导入/需核对条目 |
 | POST | /portfolio/import/confirm | 确认导入预检通过的持仓 |
+
+`GET /portfolio/summary?include_quotes=false` 只返回本地持仓输入及成本统计，不访问行情源或远程名称目录；正份额持仓的报价/市值/收益为 null，零份额当前价值为 0。默认 `include_quotes=true` 保持原有行情汇总行为。Web 初始化使用无报价汇总，再对关注/持仓去重代码先请求 `view=provider`，显示直接报价后补充必要的 `view=auto`；历史图表仍按需加载。
 
 ### AI 持仓导入流程
 

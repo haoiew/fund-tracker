@@ -12,9 +12,13 @@ export interface FundRealtimeData {
   data_source_display_name?: string
   data_source_short_name?: string
   data_source_description?: string
-  data_kind?: 'realtime_estimate' | 'latest_nav' | 'holdings_estimate' | 'reference_symbol_estimate' | 'fallback_estimate' | 'similar_realtime_reference'
+  data_kind?: 'realtime_estimate' | 'latest_nav' | 'holdings_estimate' | 'reference_symbol_estimate' | 'fallback_estimate' | 'similar_realtime_reference' | 'unavailable'
   data_kind_label?: string
   is_realtime?: boolean
+  is_inferred?: boolean
+  estimation_details?: Record<string, unknown> | null
+  previous_nav_date?: string | null
+  error?: string | null
   data_timestamp?: string
   official_nav?: number | null
   official_change?: number | null
@@ -29,7 +33,19 @@ export interface FundRealtimeData {
 export interface FundChartData {
   dates: string[]
   values: number[]
-  changes: number[]
+  changes: Array<number | null>
+  value_basis?: 'unit_nav'
+}
+
+export interface PeriodReturns {
+  d3?: number | null
+  d7?: number | null
+  d30?: number | null
+  m3?: number | null
+  m6?: number | null
+  y1?: number | null
+  y3?: number | null
+  y5?: number | null
 }
 
 export interface FundTrendResult {
@@ -104,6 +120,8 @@ export interface RealtimeAlternativeResult {
     position_date?: string
     quoted_count?: number
     quoted_weight_coverage?: number
+    quoted_nav_weight_pct?: number
+    update_time?: string | null
     weighted_stock_change_pct?: number | null
     top_holdings?: Array<{
       code: string
@@ -117,6 +135,7 @@ export interface RealtimeAlternativeResult {
     feasible: boolean
     reason: string
     reference_count?: number
+    update_time?: string | null
     weighted_stock_change_pct?: number | null
     references?: Array<{
       symbol: string
@@ -159,8 +178,8 @@ export const fundApi = {
   },
 
   // 批量获取实时估值
-  getRealtimeBatch(codes: string[]): Promise<FundRealtimeData[]> {
-    return request.post('/funds/realtime/batch', codes)
+  getRealtimeBatch(codes: string[], view: 'auto' | 'provider' | 'nav' = 'auto'): Promise<FundRealtimeData[]> {
+    return request.post('/funds/realtime/batch', codes, { params: { view } })
   },
 
   // 获取基金历史数据
@@ -248,21 +267,20 @@ export const fundApi = {
       name: string
       dates: string[]
       changes: number[]
+      returns?: PeriodReturns
+      return_basis?: string
     }>
     benchmarks: Array<{
       name: string
       symbol: string
       dates: string[]
       changes: number[]
+      returns?: PeriodReturns
+      return_basis?: string
     }>
     range: string
   }> {
     return request.post('/funds/compare', { codes, range, include_benchmark: includeBenchmark })
-  },
-
-  // 获取默认基金列表
-  getDefaultList(): Promise<string[]> {
-    return request.get('/funds/default-list')
   },
 
   // 获取基金所有数据源对比
@@ -284,7 +302,9 @@ export const fundApi = {
       data_kind?: FundRealtimeData['data_kind']
       data_kind_label?: string
       is_realtime?: boolean
+      is_available: boolean
       is_fresh: boolean
+      data_timestamp?: string
       error?: string | null
     }>
     best_source: string | null

@@ -33,13 +33,7 @@ class PortfolioServiceError(Exception):
 class PortfolioService:
     def create_portfolio(self, db: Session, portfolio: PortfolioCreate) -> UserPortfolio:
         fund_code = portfolio.fund_code
-        fund_name = portfolio.fund_name
-        if not fund_name:
-            try:
-                from app.services.fund_service import get_fund_service
-                fund_name = get_fund_service().get_fund_name(fund_code)
-            except Exception:
-                fund_name = fund_code
+        fund_name = self._resolve_fund_name(fund_code, portfolio.fund_name)
 
         try:
             fund = self._get_or_create_fund(db, fund_code, fund_name)
@@ -64,13 +58,34 @@ class PortfolioService:
             db.rollback()
             raise PortfolioServiceError(f"数据库操作失败: {str(e)}")
 
-    def _get_or_create_fund(self, db: Session, fund_code: str, fund_name: str) -> Fund:
+    def _is_placeholder_fund_name(self, fund_code: str, fund_name: Optional[str]) -> bool:
+        name = str(fund_name or "").strip()
+        code = str(fund_code or "").strip()
+        return not name or bool(code and name == code)
+
+    def _resolve_fund_name(self, fund_code: str, fund_name: Optional[str] = None) -> str:
+        candidate = str(fund_name or "").strip()
+        if not self._is_placeholder_fund_name(fund_code, candidate):
+            return candidate
+        try:
+            from app.services.fund_service import get_fund_service
+            resolved = get_fund_service().get_fund_name(fund_code)
+            if not self._is_placeholder_fund_name(fund_code, resolved):
+                return resolved
+        except Exception as e:
+            logger.debug(f"解析基金名称失败 {fund_code}: {e}")
+        return candidate or fund_code
+
+    def _get_or_create_fund(self, db: Session, fund_code: str, fund_name: Optional[str]) -> Fund:
+        resolved_name = self._resolve_fund_name(fund_code, fund_name)
         fund = db.query(Fund).filter(Fund.code == fund_code).first()
         if fund:
+            if self._is_placeholder_fund_name(fund_code, fund.name) and not self._is_placeholder_fund_name(fund_code, resolved_name):
+                fund.name = resolved_name
             return fund
         savepoint = db.begin_nested()
         try:
-            fund = Fund(code=fund_code, name=fund_name)
+            fund = Fund(code=fund_code, name=resolved_name)
             db.add(fund)
             savepoint.commit()
             db.flush()
@@ -79,6 +94,8 @@ class PortfolioService:
             savepoint.rollback()
             fund = db.query(Fund).filter(Fund.code == fund_code).first()
             if fund:
+                if self._is_placeholder_fund_name(fund_code, fund.name) and not self._is_placeholder_fund_name(fund_code, resolved_name):
+                    fund.name = resolved_name
                 return fund
             raise
 
@@ -227,11 +244,15 @@ class PortfolioService:
         )
 
     def to_transaction_response(self, transaction: PortfolioTransaction) -> PortfolioTransactionResponse:
+        fund_name = self._resolve_fund_name(
+            transaction.fund_code,
+            transaction.fund.name if transaction.fund else None,
+        )
         return PortfolioTransactionResponse(
             id=transaction.id,
             portfolio_id=transaction.portfolio_id,
             fund_code=transaction.fund_code,
-            fund_name=transaction.fund.name if transaction.fund else transaction.fund_code,
+            fund_name=fund_name,
             transaction_type=transaction.transaction_type,
             trade_date=transaction.trade_date,
             shares=self._safe_decimal(transaction.shares),
@@ -300,7 +321,11 @@ class PortfolioService:
         for portfolio in portfolios:
             savepoint = db.begin_nested()
             try:
-                fund = self._get_or_create_fund(db, portfolio.fund_code, fund_names.get(portfolio.fund_code, portfolio.fund_code))
+                fund = self._get_or_create_fund(
+                    db,
+                    portfolio.fund_code,
+                    portfolio.fund_name or fund_names.get(portfolio.fund_code),
+                )
                 db_portfolio = UserPortfolio(
                     fund_code=portfolio.fund_code,
                     hold_shares=portfolio.hold_shares,
@@ -345,31 +370,38 @@ class PortfolioService:
             rt_map = {code: rt for code, rt in zip(codes, rt_list)}
 
         details = []
-        total_cost = Decimal('0')
+        total_cost = sum((p.cost_amount for p in portfolios), Decimal('0'))
         total_value = Decimal('0')
         up_count = down_count = 0
+        unpriced_codes = []
 
         for p in portfolios:
             try:
                 rt = rt_map.get(p.fund_code)
-                if rt is None:
+                if p.hold_shares > 0 and (rt is None or rt.estimate_nav is None):
+                    unpriced_codes.append(p.fund_code)
+                    details.append(PortfolioProfitDetail(
+                        fund_code=p.fund_code,
+                        fund_name=self._resolve_fund_name(p.fund_code, p.fund.name if p.fund else None),
+                        cost_amount=p.cost_amount, current_value=None, profit_amount=None, profit_rate=None,
+                    ))
                     continue
 
-                current_value = p.hold_shares * rt.estimate_nav if rt.estimate_nav and p.hold_shares else p.cost_amount
+                current_value = p.hold_shares * rt.estimate_nav if p.hold_shares > 0 else Decimal('0')
                 profit_amount = current_value - p.cost_amount
                 profit_rate = (profit_amount / p.cost_amount * 100) if p.cost_amount > 0 else Decimal('0')
 
                 daily_profit = None
-                if rt.estimate_change is not None and p.hold_shares and rt.estimate_nav:
+                if rt is not None and rt.estimate_change is not None and rt.estimate_change > -100 and p.hold_shares and rt.estimate_nav:
                     prev_value = p.hold_shares * (rt.estimate_nav / (1 + rt.estimate_change / 100))
                     daily_profit = current_value - prev_value
 
                 details.append(PortfolioProfitDetail(
-                    fund_code=p.fund_code, fund_name=p.fund.name if p.fund else p.fund_code,
+                    fund_code=p.fund_code,
+                    fund_name=self._resolve_fund_name(p.fund_code, p.fund.name if p.fund else None),
                     cost_amount=p.cost_amount, current_value=current_value,
                     profit_amount=profit_amount, profit_rate=profit_rate, daily_profit=daily_profit
                 ))
-                total_cost += p.cost_amount
                 total_value += current_value
                 if profit_rate > 0:
                     up_count += 1
@@ -377,20 +409,35 @@ class PortfolioService:
                     down_count += 1
             except Exception as e:
                 logger.error(f"计算基金收益失败 {p.fund_code}: {e}")
+                unpriced_codes.append(p.fund_code)
 
         total_profit = total_value - total_cost
         total_profit_rate = (total_profit / total_cost * 100) if total_cost > 0 else Decimal('0')
 
         return PortfolioProfitResponse(
-            summary=PortfolioSummary(total_cost=total_cost, total_value=total_value,
-                                    total_profit=total_profit, total_profit_rate=total_profit_rate,
+            summary=PortfolioSummary(total_cost=total_cost, total_value=None if unpriced_codes else total_value,
+                                    total_profit=None if unpriced_codes else total_profit,
+                                    total_profit_rate=None if unpriced_codes else total_profit_rate,
+                                    unpriced_codes=unpriced_codes,
                                     fund_count=len(portfolios), up_count=up_count, down_count=down_count),
             details=details
         )
 
-    async def to_response(self, portfolio: UserPortfolio, rt_data=None) -> PortfolioResponse:
+    async def to_response(self, portfolio: UserPortfolio, rt_data=None, include_quotes: bool = True) -> PortfolioResponse:
         fund_code = portfolio.fund_code or ''
-        fund_name = portfolio.fund.name if portfolio.fund and portfolio.fund.name else fund_code
+        if not include_quotes:
+            # Local inputs are available even when every market-data service is offline.
+            return PortfolioResponse(
+                id=portfolio.id, fund_code=fund_code,
+                fund_name=portfolio.fund.name if portfolio.fund and portfolio.fund.name else fund_code,
+                hold_shares=self._safe_decimal(portfolio.hold_shares),
+                cost_amount=self._safe_decimal(portfolio.cost_amount),
+                cost_nav=portfolio.cost_nav, buy_date=portfolio.buy_date, remark=portfolio.remark,
+                created_at=portfolio.created_at, updated_at=portfolio.updated_at,
+                current_value=Decimal('0') if not portfolio.hold_shares else None,
+                transaction_count=len(portfolio.transactions) if portfolio.transactions is not None else 0,
+            )
+        fund_name = self._resolve_fund_name(fund_code, portfolio.fund.name if portfolio.fund else None)
 
         try:
             if rt_data is None:
@@ -402,13 +449,16 @@ class PortfolioService:
             cost_nav = self._safe_decimal(portfolio.cost_nav)
             estimate_nav = self._safe_decimal(rt_data.estimate_nav)
 
-            if estimate_nav > 0 and hold_shares > 0:
+            if estimate_nav > 0 or hold_shares == 0:
                 current_value = hold_shares * estimate_nav
             else:
-                current_value = cost_amount if cost_amount > 0 else Decimal('0')
+                current_value = None
 
-            profit_amount = current_value - cost_amount
-            profit_rate = (profit_amount / cost_amount * 100) if cost_amount > 0 else Decimal('0')
+            profit_amount = current_value - cost_amount if current_value is not None else None
+            profit_rate = ((profit_amount / cost_amount * 100) if cost_amount > 0 else Decimal('0')) if profit_amount is not None else None
+            daily_profit = None
+            if current_value is not None and rt_data.estimate_change is not None and rt_data.estimate_change > -100:
+                daily_profit = current_value - current_value / (1 + rt_data.estimate_change / 100)
 
             return PortfolioResponse(
                 id=portfolio.id, fund_code=fund_code, fund_name=fund_name,
@@ -416,9 +466,15 @@ class PortfolioService:
                 buy_date=portfolio.buy_date, remark=portfolio.remark,
                 created_at=portfolio.created_at, updated_at=portfolio.updated_at,
                 current_nav=estimate_nav if estimate_nav > 0 else None,
-                current_change=self._safe_decimal(rt_data.estimate_change),
-                current_value=current_value if current_value > 0 else None,
+                current_change=rt_data.estimate_change,
+                current_value=current_value,
                 profit_amount=profit_amount, profit_rate=profit_rate,
+                daily_profit=daily_profit, official_nav=rt_data.official_nav,
+                official_change_pct=rt_data.official_change,
+                official_update_time=rt_data.official_update_time,
+                data_kind=rt_data.data_kind, data_kind_label=rt_data.data_kind_label,
+                is_realtime=rt_data.is_realtime, is_inferred=rt_data.is_inferred,
+                quote_as_of=rt_data.update_time,
                 transaction_count=len(portfolio.transactions) if portfolio.transactions is not None else 0
             )
         except Exception as e:
@@ -584,7 +640,7 @@ class PortfolioService:
                     continue
                 items.append(PortfolioImportPreviewItem(
                     fund_code=fund_code,
-                    fund_name=existing.fund.name if existing.fund else fund_code,
+                    fund_name=self._resolve_fund_name(fund_code, existing.fund.name if existing.fund else None),
                     market_value=Decimal('0'),
                     daily_return=Decimal('0'),
                     holding_return=Decimal('0'),
@@ -880,10 +936,14 @@ class PortfolioService:
         )
 
     def to_rebalance_record_response(self, record: PortfolioRebalanceRecord) -> PortfolioRebalanceRecordResponse:
+        fund_name = self._resolve_fund_name(
+            record.fund_code,
+            record.fund_name or (record.fund.name if record.fund else None),
+        )
         return PortfolioRebalanceRecordResponse(
             id=record.id,
             fund_code=record.fund_code,
-            fund_name=record.fund_name or (record.fund.name if record.fund else record.fund_code),
+            fund_name=fund_name,
             action_type=record.action_type,
             trade_date=record.trade_date,
             before_shares=self._safe_decimal(record.before_shares),

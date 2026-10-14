@@ -17,20 +17,11 @@
         <el-button :icon="Download" @click="exportData">
           {{ $t('home.export') }}
         </el-button>
-        <el-button
-          v-if="!fundStore.hasData"
-          type="primary"
-          :icon="Wallet"
-          @click="loadDefaultData"
-          :loading="isLoadingDefault"
-        >
-          {{ $t('home.loadDefault') }}
-        </el-button>
       </div>
     </section>
 
     <!-- 统计卡片 -->
-    <el-row :gutter="16" class="stats-row" v-if="fundStore.hasData">
+    <el-row :gutter="isCompact ? 0 : 16" class="stats-row" v-if="fundStore.hasData">
       <!-- 第一个卡片：上涨/下跌数量 -->
       <el-col :xs="24" :sm="12" :lg="6">
         <div class="stat-card up-down">
@@ -64,11 +55,11 @@
       <!-- 第三个卡片：单日实时总持仓涨跌幅 -->
       <el-col :xs="24" :sm="12" :lg="6">
         <div class="stat-card daily-change">
-          <div class="stat-icon" :class="dailyChangePct >= 0 ? 'up' : 'down'">
+          <div class="stat-icon" :class="dailyChangePct == null ? '' : dailyChangePct >= 0 ? 'up' : 'down'">
             <el-icon size="20"><DataLine /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-value" :class="dailyChangePct >= 0 ? 'text-success' : 'text-danger'">
+            <div class="stat-value" :class="getChangeClass(dailyChangePct)">
               {{ formatChange(dailyChangePct) }}
             </div>
             <div class="stat-label">今日涨跌</div>
@@ -79,11 +70,11 @@
       <!-- 第四个卡片：单日实时涨跌金额 -->
       <el-col :xs="24" :sm="12" :lg="6">
         <div class="stat-card daily-amount">
-          <div class="stat-icon" :class="dailyChangeAmount >= 0 ? 'up' : 'down'">
+          <div class="stat-icon" :class="dailyChangeAmount == null ? '' : dailyChangeAmount >= 0 ? 'up' : 'down'">
             <el-icon size="20"><Coin /></el-icon>
           </div>
           <div class="stat-info">
-            <div class="stat-value" :class="dailyChangeAmount >= 0 ? 'text-success' : 'text-danger'">
+            <div class="stat-value" :class="getChangeClass(dailyChangeAmount)">
               {{ formatCurrency(dailyChangeAmount) }}
             </div>
             <div class="stat-label">今日盈亏</div>
@@ -196,12 +187,94 @@
       <el-empty v-if="!fundStore.hasData && !fundStore.loading" description="暂无数据">
         <template #description>
           <div class="empty-description">
-            <p>暂无基金数据</p>
-            <p class="sub-text">{{ fundStore.error || '点击下方按钮加载默认基金' }}</p>
+            <p>{{ fundStore.fundList.length === 0 ? '尚未添加关注基金' : '暂无基金报价' }}</p>
+            <p class="sub-text">{{ fundStore.error || '关注列表和持仓列表分别管理，请通过上方搜索添加关注基金' }}</p>
+            <el-button v-if="fundStore.fundList.length === 0" text type="primary" @click="$router.push('/portfolio')">
+              查看持仓基金行情
+            </el-button>
           </div>
         </template>
-        <el-button type="primary" @click="loadDefaultData" :loading="isLoadingDefault">加载默认基金</el-button>
       </el-empty>
+
+      <div v-else-if="isCompact" class="compact-fund-list">
+        <div class="compact-list-toolbar">
+          <span>{{ compactFunds.length }} 只基金</span>
+          <el-select v-model="compactSort" size="small" aria-label="基金排序">
+            <el-option label="涨跌幅从高到低" value="change-desc" />
+            <el-option label="涨跌幅从低到高" value="change-asc" />
+            <el-option label="基金代码顺序" value="code" />
+          </el-select>
+        </div>
+        <div class="fund-record-list" :class="{ 'is-pending': fundStore.loading && compactFunds.length === 0 }" v-loading="fundStore.loading">
+          <FundRecordCard v-for="row in compactFunds" :key="row.code" :name="row.name" :code="row.code" :metrics="getCompactFundMetrics(row)">
+            <template #selection>
+              <el-checkbox :model-value="selectedFunds.some(fund => fund.code === row.code)" :aria-label="`选择 ${row.name}`" @change="toggleCompactSelection(row)" />
+            </template>
+            <template #badges>
+              <el-tag :type="getQuoteBadge(row).type" size="small">{{ getQuoteBadge(row).label }}</el-tag>
+              <el-tag v-if="isOfficialUpdated(row)" size="small" type="success">官方更新</el-tag>
+            </template>
+            <template #meta>
+              <span :title="getFundDataKindLabel(row)">{{ getQuoteBadge(row).label }} · {{ getFundDataSourceName(row) }}</span>
+              <p v-if="getChangeTooltip(row)">{{ getChangeTooltip(row) }}</p>
+            </template>
+            <template #actions>
+              <el-button size="small" @click="showDataSourceMenu(row)">数据源</el-button>
+              <el-button size="small" :type="isFundExpanded(row) && expandedPanelMode === 'detail' ? 'primary' : 'default'" @click="toggleFundDetail(row)">
+                {{ isFundExpanded(row) && expandedPanelMode === 'detail' ? '收起走势' : '净值走势' }}
+              </el-button>
+              <el-button size="small" type="success" :disabled="isInPortfolio(row.code)" @click="openAddDialog(row)">
+                {{ isInPortfolio(row.code) ? '已持仓' : '加入持仓' }}
+              </el-button>
+            </template>
+            <template v-if="isFundExpanded(row)">
+              <FundChart v-if="expandedPanelMode === 'detail'" :code="row.code" :name="row.name" default-range="1M" embedded :height="280" />
+              <div v-else class="compact-source-panel" v-loading="dataSourceLoading">
+                <div class="compact-list-toolbar">
+                  <span>自动优选：{{ getBestSourceName() }}</span>
+                  <el-button text size="small" @click="collapseFundDetail">收起</el-button>
+                </div>
+                <div v-if="dataSourceData" class="fund-record-list">
+                  <FundRecordCard v-for="source in dataSourceData.sources" :key="source.source" :name="getSourceRowName(source)" :metrics="getCompactSourceMetrics(source)">
+                    <template #badges>
+                      <el-tag :type="source.is_available ? 'success' : 'warning'" size="small">{{ source.is_available ? '可用' : '不可用' }}</el-tag>
+                    </template>
+                    <template #meta>{{ getSourceRowMeta(source) }}<p>{{ source.error || source.description }}</p></template>
+                    <template #actions>
+                      <el-button size="small" type="primary" :disabled="!source.is_available || source.source === row.data_source" @click="selectDataSource(source.source)">
+                        {{ source.source === row.data_source ? '当前' : '采用' }}
+                      </el-button>
+                    </template>
+                  </FundRecordCard>
+                </div>
+                <el-empty v-else-if="!dataSourceLoading" description="暂无数据源结果" />
+                <div v-if="alternativesLoading" class="soft-note">正在评估替代估算...</div>
+                <div v-else-if="realtimeAlternatives && !realtimeAlternatives.skipped" class="compact-alternatives">
+                  <div class="soft-note">替代实时估算 · 非官方实时估值</div>
+                  <div v-if="realtimeAlternatives.holdings_based_estimate?.feasible" class="soft-note">
+                    <strong>{{ formatChange(realtimeAlternatives.holdings_based_estimate.weighted_stock_change_pct ?? null) }}</strong>
+                    <p>持仓日期 {{ realtimeAlternatives.holdings_based_estimate.position_date || '--' }} · 报价覆盖 {{ formatPercentRatio(realtimeAlternatives.holdings_based_estimate.quoted_weight_coverage) }} · {{ realtimeAlternatives.holdings_based_estimate.quoted_count || 0 }}/{{ realtimeAlternatives.holdings_based_estimate.holding_count || 0 }} 只</p>
+                    <el-button size="small" type="warning" @click="selectHoldingEstimate">采用估算</el-button>
+                  </div>
+                  <div v-else class="soft-note">持仓估算暂不可用：{{ realtimeAlternatives.holdings_based_estimate?.reason || '缺少可解析持仓或实时股票报价覆盖不足' }}</div>
+                  <div v-if="realtimeAlternatives.reference_symbol_estimate?.feasible" class="soft-note">
+                    <strong>{{ formatChange(realtimeAlternatives.reference_symbol_estimate.weighted_stock_change_pct ?? null) }}</strong>
+                    <p>{{ realtimeAlternatives.reference_symbol_estimate.references?.map(ref => ref.name).join('、') || '参考标的' }}</p>
+                    <el-button size="small" type="primary" @click="selectReferenceEstimate">采用标的</el-button>
+                  </div>
+                  <div v-if="realtimeAlternatives.same_name_realtime_candidates.length" class="soft-note">
+                    <p>相近基金实时参考</p>
+                    <el-button v-for="candidate in realtimeAlternatives.same_name_realtime_candidates" :key="candidate.code" size="small" @click="applyCandidateRealtime(candidate)">
+                      {{ candidate.code }} {{ formatChange(candidate.change_pct) }}
+                    </el-button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </FundRecordCard>
+        </div>
+        <el-empty v-if="!fundStore.loading && compactFunds.length === 0" description="暂无符合条件的基金" />
+      </div>
 
       <!-- 数据表格 -->
       <el-table
@@ -236,7 +309,7 @@
                     <strong :class="getFundChangeClass(row)">{{ formatNav(row.estimate_nav) }}</strong>
                   </div>
                   <div class="expanded-metric">
-                    <span>{{ row.is_realtime === false ? '净值涨跌' : '实时涨跌' }}</span>
+                    <span>{{ row.data_kind === 'latest_nav' ? '净值涨跌' : '估值涨跌' }}</span>
                     <strong :class="getFundChangeClass(row)">{{ formatChange(row.estimate_change) }}</strong>
                   </div>
                   <div class="expanded-metric">
@@ -292,7 +365,7 @@
                   <div v-if="dataSourceData" class="data-source-mini-meta">
                     <span>Auto</span>
                     <strong>{{ getBestSourceName() }}</strong>
-                    <em>{{ dataSourceData.total_sources }} sources</em>
+                    <em>估值 {{ dataSourceData.realtime_sources ?? 0 }} · 可用接口 {{ dataSourceData.total_sources }}</em>
                   </div>
                   <el-button text size="small" @click="collapseFundDetail">收起</el-button>
                 </div>
@@ -331,14 +404,14 @@
                   <el-table-column label="更新时间" min-width="160">
                     <template #default="{ row: sourceRow }">
                       <div class="source-time-cell">
-                        <span>{{ sourceRow.update_time || '--' }}</span>
+                        <span :title="sourceRow.update_time">{{ formatDateTime(sourceRow.update_time) }}</span>
                         <small>{{ sourceRow.is_realtime ? '盘中估算时刻' : '净值公布日期' }}</small>
                       </div>
                     </template>
                   </el-table-column>
-                  <el-table-column prop="is_fresh" label="状态" width="96" align="center">
+                  <el-table-column prop="is_available" label="状态" width="96" align="center">
                     <template #default="{ row: sourceRow }">
-                      <el-tooltip v-if="!sourceRow.is_fresh" :content="sourceRow.error || '数据源当前不可用'" placement="top">
+                      <el-tooltip v-if="!sourceRow.is_available" :content="sourceRow.error || '数据源当前不可用'" placement="top">
                         <el-tag type="warning" size="small">不可用</el-tag>
                       </el-tooltip>
                       <el-tag v-else type="success" size="small">可用</el-tag>
@@ -349,7 +422,7 @@
                       <el-button
                         type="primary"
                         size="small"
-                        :disabled="!sourceRow.is_fresh || sourceRow.source === row.data_source"
+                        :disabled="!sourceRow.is_available || sourceRow.source === row.data_source"
                         @click="selectDataSource(sourceRow.source)"
                       >
                         {{ sourceRow.source === row.data_source ? '当前' : '采用' }}
@@ -414,20 +487,7 @@
                     </button>
                   </div>
 
-                  <div v-if="realtimeAlternatives.fallback_estimate?.feasible" class="holding-estimate-row is-secondary">
-                    <div>
-                      <strong :class="getChangeClass(realtimeAlternatives.fallback_estimate.change_pct ?? null)">
-                        {{ formatChange(realtimeAlternatives.fallback_estimate.change_pct ?? null) }}
-                      </strong>
-                      <span>
-                        {{ realtimeAlternatives.fallback_estimate.source === 'tencent' ? '腾讯基金行情' : '最新净值涨跌幅' }} ·
-                        {{ realtimeAlternatives.fallback_estimate.update_time || '--' }}
-                      </span>
-                    </div>
-                    <el-button size="small" plain @click="selectFallbackEstimate">
-                      采用兜底
-                    </el-button>
-                  </div>
+
 
                   <div v-if="!realtimeAlternatives.holdings_based_estimate?.feasible" class="estimate-note-muted">
                     <span>持仓估算暂不可用</span>
@@ -474,7 +534,7 @@
         <el-table-column prop="update_time" label="更新时间" width="154">
           <template #default="{ row }">
             <div class="time-cell">
-              <span>{{ row.update_time || '--' }}</span>
+              <span :title="row.update_time">{{ formatDateTime(row.update_time) }}</span>
               <small>{{ getFundDataSourceShortName(row) }}</small>
             </div>
           </template>
@@ -492,7 +552,7 @@
                   </div>
                 </template>
               <el-tag 
-                :type="getStatusType(row.status)" 
+                :type="getQuoteBadge(row).type"
                 size="small" 
                 effect="light" 
                 class="status-tag"
@@ -500,7 +560,7 @@
                 @click.stop="showDataSourceMenu(row)"
               >
                 <span class="status-dot-inline"></span>
-                {{ row.status }}
+                {{ getQuoteBadge(row).label }}
               </el-tag>
             </el-tooltip>
           </template>
@@ -569,6 +629,9 @@
             placeholder="请输入成本价"
           />
         </el-form-item>
+        <el-form-item label="关注">
+          <el-checkbox v-model="addForm.add_to_watchlist">同时添加到首页关注列表</el-checkbox>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="addDialogVisible = false">取消</el-button>
@@ -585,7 +648,7 @@ defineOptions({
   name: 'HomeView'
 })
 
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, reactive, watch, nextTick } from 'vue'
 import { ArrowUp, ArrowDown, Search, Refresh, Wallet, Loading, Download, View, Plus, Check, DataLine, Coin, TrendCharts as TrendChartsIcon, InfoFilled, Delete } from '@element-plus/icons-vue'
 import type { TableInstance } from 'element-plus'
 import { useI18n } from 'vue-i18n'
@@ -594,18 +657,32 @@ import { usePortfolioStore } from '@/stores/portfolioStore'
 import { dataManager } from '@/stores/dataManager'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import FundChart from '@/components/Charts/FundChart.vue'
+import FundRecordCard, { type FundRecordMetric } from '@/components/Funds/FundRecordCard.vue'
+import { useCompactLayout } from '@/composables/useCompactLayout'
 import { exportFundsToCSV } from '@/utils/export'
 import { deriveEstimateNav } from '@/utils/fundEstimate'
+import { shanghaiDate, summarizePortfolioDay } from '@/utils/portfolioValuation'
+import { getQuoteBadge, formatQuoteTime as formatDateTime } from '@/utils/quotePresentation'
 import fundApi, { type FundRealtimeData, type FundSearchItem, type RealtimeAlternativeResult } from '@/api/fund'
 
 const { t } = useI18n()
 const fundStore = useFundStore()
 const portfolioStore = usePortfolioStore()
+const isCompact = useCompactLayout()
+const compactSort = ref('change-desc')
 const isRefreshing = ref(false)
-const isLoadingDefault = ref(false)
 const selectedFunds = ref<FundRealtimeData[]>([])
 const tableRef = ref<TableInstance>()
 const expandedRowKeys = ref<string[]>([])
+
+watch(isCompact, async compact => {
+  if (compact) return
+  const selectedCodes = new Set(selectedFunds.value.map(fund => fund.code))
+  await nextTick()
+  for (const fund of filteredData.value) {
+    if (selectedCodes.has(fund.code)) tableRef.value?.toggleRowSelection(fund, true)
+  }
+})
 
 // 搜索和筛选
 const searchKeyword = ref('')
@@ -628,7 +705,8 @@ const addForm = reactive({
   fund_code: '',
   fund_name: '',
   hold_shares: 100,
-  cost_nav: 0
+  cost_nav: 0,
+  add_to_watchlist: true
 })
 
 const searchResultFund = ref<FundRealtimeData | null>(null)
@@ -647,12 +725,15 @@ interface DataSourceComparisonItem {
   estimate_nav: number | null
   estimate_change_pct: number | null
   last_nav: number | null
+  last_nav_date?: string | null
   last_change_pct: number | null
   update_time: string
   data_kind?: FundRealtimeData['data_kind']
   data_kind_label?: string
   is_realtime?: boolean
+  is_available: boolean
   is_fresh: boolean
+  data_timestamp?: string
   error?: string | null
 }
 
@@ -663,6 +744,7 @@ const dataSourceData = ref<{
   best_source: string | null
   best_source_display_name?: string | null
   total_sources: number
+  realtime_sources?: number
 } | null>(null)
 const currentDataSourceFund = ref<FundRealtimeData | null>(null)
 const realtimeAlternatives = ref<RealtimeAlternativeResult | null>(null)
@@ -672,46 +754,9 @@ const upCount = computed(() => fundStore.upFunds.length)
 const downCount = computed(() => fundStore.downFunds.length)
 
 // 计算单日实时总持仓涨跌幅和涨跌金额
-const dailyChangePct = computed(() => {
-  if (portfolioStore.items.length === 0) return 0
-  // 计算今日总涨跌金额
-  let totalDailyChange = 0
-  let totalValue = 0
-  
-  portfolioStore.items.forEach(item => {
-    const currentNav = item.current_nav || item.cost_nav || 0
-    const holdShares = item.hold_shares || 0
-    const currentValue = currentNav * holdShares
-    const currentChange = item.current_change || 0 // 今日涨跌幅百分比
-    
-    // 该基金的今日涨跌金额 = 当前市值 * 今日涨跌幅 / 100
-    const dailyChangeAmount = currentValue * (currentChange / 100)
-    totalDailyChange += dailyChangeAmount
-    totalValue += currentValue
-  })
-  
-  // 今日总涨跌幅百分比
-  return totalValue > 0 ? (totalDailyChange / totalValue) * 100 : 0
-})
-
-const dailyChangeAmount = computed(() => {
-  if (portfolioStore.items.length === 0) return 0
-  // 计算今日总涨跌金额
-  let totalDailyChange = 0
-  
-  portfolioStore.items.forEach(item => {
-    const currentNav = item.current_nav || item.cost_nav || 0
-    const holdShares = item.hold_shares || 0
-    const currentValue = currentNav * holdShares
-    const currentChange = item.current_change || 0 // 今日涨跌幅百分比
-    
-    // 该基金的今日涨跌金额 = 当前市值 * 今日涨跌幅 / 100
-    const dailyChangeAmount = currentValue * (currentChange / 100)
-    totalDailyChange += dailyChangeAmount
-  })
-  
-  return totalDailyChange
-})
+const dailyPortfolioStats = computed(() => summarizePortfolioDay(portfolioStore.items))
+const dailyChangePct = computed(() => dailyPortfolioStats.value.changePct)
+const dailyChangeAmount = computed(() => dailyPortfolioStats.value.changeAmount)
 
 // 筛选后的数据
 const filteredData = computed(() => {
@@ -736,6 +781,35 @@ const filteredData = computed(() => {
   return data
 })
 
+const compactFunds = computed(() => [...filteredData.value].sort((a, b) => {
+  if (compactSort.value === 'code') return a.code.localeCompare(b.code)
+  if (a.estimate_change == null) return b.estimate_change == null ? 0 : 1
+  if (b.estimate_change == null) return -1
+  return compactSort.value === 'change-asc'
+    ? a.estimate_change - b.estimate_change
+    : b.estimate_change - a.estimate_change
+}))
+
+const getCompactFundMetrics = (fund: FundRealtimeData): FundRecordMetric[] => [
+  { key: 'nav', label: fund.data_kind === 'latest_nav' ? '最新净值' : '估算净值', value: formatNav(fund.estimate_nav), className: getFundChangeClass(fund) },
+  { key: 'change', label: fund.data_kind === 'latest_nav' ? '净值涨跌' : '估值涨跌', value: formatChange(fund.estimate_change), className: getFundChangeClass(fund) },
+  { key: 'previous', label: '上一净值', value: formatNav(fund.previous_nav ?? null) },
+  { key: 'accumulated', label: '累计净值', value: formatNav(fund.accumulated_nav ?? null) },
+  { key: 'time', label: '更新时间', value: fund.update_time || '--', wide: true }
+]
+
+const getCompactSourceMetrics = (source: DataSourceComparisonItem): FundRecordMetric[] => [
+  { key: 'nav', label: source.is_realtime ? '估算净值' : '最新净值', value: formatNav(source.estimate_nav), className: getChangeClass(source.estimate_change_pct) },
+  { key: 'change', label: '涨跌幅', value: formatChange(source.estimate_change_pct), className: getSourceChangeClass(source) },
+  { key: 'time', label: source.is_realtime ? '盘中估算时刻' : '净值公布日期', value: source.update_time || '--', wide: true }
+]
+
+const toggleCompactSelection = (fund: FundRealtimeData) => {
+  selectedFunds.value = selectedFunds.value.some(item => item.code === fund.code)
+    ? selectedFunds.value.filter(item => item.code !== fund.code)
+    : [...selectedFunds.value, fund]
+}
+
 // 格式化净值
 const formatNav = (val: string | number | null) => {
   if (val === null || val === undefined || val === '') return '--'
@@ -758,7 +832,7 @@ const formatPercentRatio = (val?: number | null) => {
 }
 
 // 格式化金额 - 显示两位小数
-const formatCurrency = (val: number): string => {
+const formatCurrency = (val: number | null): string => {
   if (val === null || val === undefined || isNaN(val)) return '--'
   return '¥' + val.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -780,6 +854,8 @@ const getChangeTone = (val: number | string | null) => {
 
 const DATA_SOURCE_FALLBACK_NAMES: Record<string, string> = {
   tiantian: '天天基金盘中估值接口',
+  sina: '新浪基金估值',
+  eastmoney_mobile: '东方财富移动端单位净值',
   efinance: 'EFinance 批量基金行情接口',
   tencent: '腾讯基金行情',
   eastmoney_lsjz: '东方财富历史净值接口',
@@ -788,6 +864,8 @@ const DATA_SOURCE_FALLBACK_NAMES: Record<string, string> = {
 
 const DATA_SOURCE_SHORT_NAMES: Record<string, string> = {
   tiantian: 'TTFund',
+  sina: '新浪',
+  eastmoney_mobile: 'Eastmoney',
   efinance: 'EFinance',
   tencent: 'Tencent',
   eastmoney_lsjz: 'Eastmoney',
@@ -854,7 +932,7 @@ const isLatestNavData = (row: Pick<FundRealtimeData, 'data_kind' | 'is_realtime'
 }
 
 const isOfficialUpdated = (row: FundRealtimeData): boolean => {
-  return row.data_kind === 'latest_nav' || Boolean(row.official_update_time)
+  return row.data_kind === 'latest_nav' && row.official_update_time === shanghaiDate()
 }
 
 const getFundChangeClass = (fund: FundRealtimeData): string => {
@@ -884,34 +962,6 @@ const getChangeTooltip = (fund: FundRealtimeData): string => {
   if (isFallbackEstimateData(fund)) return fund.data_source_description || '采用净值或报价源涨跌幅作为兜底参考，不是基金公司发布的盘中估值。'
   if (!isLatestNavData(fund)) return ''
   return '该涨跌幅来自最新公布净值相对上一交易日的日增长率，不是盘中实时估值。'
-}
-
-// 获取状态标签类型
-const getStatusType = (status: string): 'success' | 'info' | 'warning' | 'danger' => {
-  if (status === '正常') return 'success'
-  if (status === '最新净值') return 'info'
-  if (status === '场内行情') return 'warning'
-  if (status === '持仓估算') return 'warning'
-  if (status === '标的估算') return 'warning'
-  if (status === '相近参考') return 'warning'
-  if (status === '兜底估算') return 'warning'
-  return 'info'
-}
-
-// 格式化日期时间
-const formatDateTime = (timestamp: string): string => {
-  if (!timestamp) return '--'
-  try {
-    const date = new Date(timestamp)
-    return date.toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  } catch {
-    return timestamp
-  }
 }
 
 // 防抖搜索处理
@@ -1045,6 +1095,7 @@ const addSearchFundToPortfolio = async () => {
   addForm.fund_code = searchResultFund.value.code
   addForm.fund_name = searchResultFund.value.name
   addForm.hold_shares = 100
+  addForm.add_to_watchlist = true
   const nav = typeof searchResultFund.value.estimate_nav === 'string'
     ? parseFloat(searchResultFund.value.estimate_nav)
     : searchResultFund.value.estimate_nav
@@ -1064,21 +1115,6 @@ const refreshData = async () => {
     ElMessage.error('刷新失败，请检查后端服务是否运行')
   } finally {
     isRefreshing.value = false
-  }
-}
-
-// 加载默认数据
-const loadDefaultData = async () => {
-  isLoadingDefault.value = true
-  try {
-    console.log('[HomeView] 加载默认基金...')
-    await fundStore.resetToDefault()
-    console.log('[HomeView] 默认基金加载完成')
-  } catch (e) {
-    console.error('[HomeView] 加载默认基金失败:', e)
-    ElMessage.error('加载默认基金失败，请检查后端服务是否运行')
-  } finally {
-    isLoadingDefault.value = false
   }
 }
 
@@ -1178,10 +1214,20 @@ const openAddDialog = (fund: FundRealtimeData) => {
   addForm.fund_code = fund.code
   addForm.fund_name = fund.name
   addForm.hold_shares = 100
+  addForm.add_to_watchlist = true
   // 默认成本价为当前估算净值
   const nav = typeof fund.estimate_nav === 'string' ? parseFloat(fund.estimate_nav) : fund.estimate_nav
   addForm.cost_nav = nav || 0
   addDialogVisible.value = true
+}
+
+const addCurrentFundToWatchlistIfNeeded = async () => {
+  if (!addForm.add_to_watchlist || !currentAddFund.value) return
+  if (fundStore.fundList.includes(addForm.fund_code)) return
+
+  fundStore.addFund(addForm.fund_code)
+  dataManager.updateRealtimeItem(currentAddFund.value)
+  await fundStore.fetchRealtimeData([addForm.fund_code])
 }
 
 // 确认添加到持仓
@@ -1210,6 +1256,7 @@ const confirmAddToPortfolio = async () => {
     })
 
     if (success) {
+      await addCurrentFundToWatchlistIfNeeded()
       ElMessage.success(t('portfolio.addSuccess', { name: addForm.fund_name }))
       addDialogVisible.value = false
     } else {
@@ -1228,7 +1275,7 @@ const selectDataSource = (source: string) => {
   const selectedSource = dataSourceData.value?.sources.find(item => item.source === source)
   if (!fund || !selectedSource) return
 
-  if (!selectedSource.is_fresh) {
+  if (!selectedSource.is_available) {
     ElMessage.warning(`${source} 当前不可用`)
     return
   }
@@ -1246,7 +1293,12 @@ const selectDataSource = (source: string) => {
     data_kind: selectedSource.data_kind,
     data_kind_label: selectedSource.data_kind_label,
     is_realtime: selectedSource.is_realtime,
-    data_timestamp: new Date().toISOString()
+    is_inferred: false,
+    estimation_details: null,
+    official_nav: selectedSource.data_kind === 'latest_nav' ? selectedSource.estimate_nav : (selectedSource.last_nav ?? fund.official_nav),
+    official_change: selectedSource.data_kind === 'latest_nav' ? selectedSource.estimate_change_pct : (selectedSource.last_change_pct ?? fund.official_change),
+    official_update_time: selectedSource.data_kind === 'latest_nav' ? selectedSource.update_time : (selectedSource.last_nav_date ?? fund.official_update_time),
+    data_timestamp: selectedSource.data_timestamp || fund.data_timestamp
   }
 
   dataManager.updateRealtimeItem(updatedFund)
@@ -1263,6 +1315,8 @@ const selectHoldingEstimate = () => {
     ...fund,
     estimate_nav: deriveEstimateNav(fund, estimate.weighted_stock_change_pct),
     estimate_change: estimate.weighted_stock_change_pct,
+    update_time: estimate.update_time || fund.update_time,
+    is_inferred: true,
     status: '持仓估算',
     data_source: 'holdings_estimate',
     data_source_display_name: '持仓实时估算',
@@ -1279,32 +1333,6 @@ const selectHoldingEstimate = () => {
   ElMessage.success('当前行已采用持仓估算涨跌幅')
 }
 
-const selectFallbackEstimate = () => {
-  const fund = currentDataSourceFund.value
-  const fallback = realtimeAlternatives.value?.fallback_estimate
-  if (!fund || !fallback?.feasible || fallback.change_pct === null || fallback.change_pct === undefined) return
-
-  const updatedFund = {
-    ...fund,
-    estimate_nav: deriveEstimateNav(fund, fallback.change_pct),
-    estimate_change: fallback.change_pct,
-    update_time: fallback.update_time || fund.update_time,
-    status: '兜底估算',
-    data_source: fallback.source || 'fallback_estimate',
-    data_source_display_name: '净值/行情兜底估算',
-    data_source_short_name: 'Fallback',
-    data_source_description: `持仓穿透不可用，使用${fallback.source === 'tencent' ? '腾讯基金行情' : '最新净值涨跌幅'}作为估算参考。`,
-    data_kind: 'fallback_estimate' as const,
-    data_kind_label: '兜底估算',
-    is_realtime: false,
-    data_timestamp: new Date().toISOString()
-  }
-
-  dataManager.updateRealtimeItem(updatedFund)
-  currentDataSourceFund.value = updatedFund
-  ElMessage.success('当前行已采用兜底估算涨跌幅')
-}
-
 const selectReferenceEstimate = () => {
   const fund = currentDataSourceFund.value
   const reference = realtimeAlternatives.value?.reference_symbol_estimate
@@ -1314,7 +1342,8 @@ const selectReferenceEstimate = () => {
     ...fund,
     estimate_nav: deriveEstimateNav(fund, reference.weighted_stock_change_pct),
     estimate_change: reference.weighted_stock_change_pct,
-    update_time: new Date().toLocaleString('zh-CN', { hour12: false }),
+    update_time: reference.update_time || fund.update_time,
+    is_inferred: true,
     status: '标的估算',
     data_source: 'reference_symbol_estimate',
     data_source_display_name: '引用标的估算',
@@ -1344,6 +1373,7 @@ const applyCandidateRealtime = (candidate: RealtimeAlternativeResult['same_name_
     estimate_nav: deriveEstimateNav(fund, candidate.change_pct),
     estimate_change: candidate.change_pct,
     update_time: candidate.update_time || fund.update_time,
+    is_inferred: true,
     status: '相近参考',
     data_source: candidate.source,
     data_source_display_name: `相近基金参考：${candidate.name}`,
@@ -1811,6 +1841,7 @@ onMounted(() => {
       color: var(--text-primary);
       font-size: 12px;
       font-weight: 700;
+      white-space: nowrap;
     }
 
     small {
@@ -2324,11 +2355,77 @@ onMounted(() => {
     }
   }
 
-  @media (max-width: 760px) {
-    .fund-identity,
+  @media (max-width: 960px) {
+    gap: 10px;
+
+    .stats-row {
+      gap: 8px;
+    }
+
+    .stats-row :deep(.el-col) {
+      flex: 0 0 calc(50% - 4px);
+      max-width: calc(50% - 4px);
+    }
+
+    .stat-card {
+      min-height: 64px;
+      padding: 10px;
+      gap: 8px;
+
+      .stat-icon {
+        display: none;
+      }
+
+      .stat-info .stat-value {
+        font-size: 17px;
+        overflow-wrap: anywhere;
+      }
+    }
+
+    .search-card,
+    .fund-list-card {
+      padding: 12px;
+    }
+
+    .search-box {
+      min-width: 0;
+      max-width: none;
+    }
+
+    .card-header {
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+    }
+
+    .header-left {
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .compact-source-panel {
+      min-width: 0;
+    }
+
+    .compact-alternatives {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+
+      .soft-note {
+        overflow-wrap: anywhere;
+      }
+
+      .el-button {
+        margin: 4px 4px 0 0;
+      }
+    }
+
     .expanded-metrics,
     .expanded-meta-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .search-result-inline,
@@ -2338,7 +2435,7 @@ onMounted(() => {
     }
 
     .search-result-metrics {
-      grid-template-columns: 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .search-result-actions {

@@ -196,6 +196,39 @@ def test_portfolio_crud_and_summary(client):
     assert resp.json()["data"] == []
 
 
+def test_create_portfolio_resolves_code_placeholder_name(client):
+    resp = client.post("/api/v1/portfolio", json={
+        "fund_code": "099051",
+        "fund_name": "099051",
+        "hold_shares": "10",
+        "cost_amount": "100",
+        "cost_nav": "10.0000",
+    })
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["fund_name"] == "基金099051"
+
+
+def test_portfolio_response_repairs_existing_code_placeholder_name(client, db_session):
+    from app.models.fund import Fund
+    from app.models.portfolio import UserPortfolio
+
+    db_session.add(Fund(code="099052", name="099052"))
+    db_session.add(UserPortfolio(
+        fund_code="099052",
+        hold_shares=Decimal("10"),
+        cost_amount=Decimal("100"),
+        cost_nav=Decimal("10.0000"),
+    ))
+    db_session.commit()
+
+    resp = client.get("/api/v1/portfolio")
+
+    assert resp.status_code == 200
+    item = next(row for row in resp.json()["data"] if row["fund_code"] == "099052")
+    assert item["fund_name"] == "基金099052"
+
+
 def test_get_missing_portfolio_returns_404(client):
     resp = client.get("/api/v1/portfolio/999999")
     assert resp.status_code == 404
@@ -479,7 +512,7 @@ def test_transaction_import_confirm_creates_transaction(client):
     assert transactions[0]["source"] == "ai_txn"
 
 
-def test_realtime_alternatives_exposes_fallback_estimate(client, monkeypatch):
+def test_realtime_alternatives_never_use_old_nav_change_as_current_estimate(client, monkeypatch):
     from app.schemas.fund import FundRealtimeData
     from app.services import fund_service as fund_service_module
 
@@ -499,25 +532,9 @@ def test_realtime_alternatives_exposes_fallback_estimate(client, monkeypatch):
             is_realtime=False,
         )
 
-    async def fake_comparison(code: str, name: str | None = None):
-        return {
-            "code": code,
-            "name": name or "天弘标普500发起(QDII-FOF)C",
-            "sources": [{
-                "source": "tencent",
-                "display_name": "腾讯基金行情",
-                "estimate_change_pct": 0.3459,
-                "update_time": "2026-06-04",
-                "is_realtime": False,
-                "is_fresh": True,
-            }],
-            "best_source": "tencent",
-            "best_source_display_name": "腾讯基金行情",
-            "total_sources": 1,
-        }
-
-    monkeypatch.setattr(service, "get_realtime_data", fake_realtime_data)
-    monkeypatch.setattr(service, "get_data_source_comparison", fake_comparison)
+    monkeypatch.setattr(service, "_get_direct_realtime_data", fake_realtime_data)
+    monkeypatch.setattr(service, "search_funds", lambda *args: [])
+    monkeypatch.setattr(service, "_estimate_from_reference_symbols", lambda *args: {"feasible": False})
     monkeypatch.setattr(service, "_estimate_from_holdings", lambda code: {
         "feasible": False,
         "reason": "no_parseable_f10_holdings_with_weights",
@@ -528,9 +545,7 @@ def test_realtime_alternatives_exposes_fallback_estimate(client, monkeypatch):
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["holdings_based_estimate"]["feasible"] is False
-    assert data["fallback_estimate"]["feasible"] is True
-    assert data["fallback_estimate"]["source"] == "tencent"
-    assert data["fallback_estimate"]["change_pct"] == 0.3459
+    assert data["fallback_estimate"] is None
 
 
 def test_f10_qdii_hk_stock_holdings_are_parseable(monkeypatch):
@@ -557,9 +572,9 @@ def test_reference_symbol_estimate_for_silver_and_sp500(monkeypatch):
     from app.services import fund_service as fund_service_module
 
     service = fund_service_module.get_fund_service()
-    monkeypatch.setattr(service, "_fetch_tencent_quote_changes", lambda symbols: {
-        "sz161226": -6.73,
-        "usSPY": -2.58,
+    monkeypatch.setattr(service, "_fetch_tencent_quotes", lambda symbols: {
+        "sz161226": {"change_pct": -6.73, "update_time": "2026-10-13T14:29:00+08:00", "is_current": True},
+        "usSPY": {"change_pct": -2.58, "update_time": "2026-10-13T22:29:00+08:00", "is_current": True},
     })
 
     silver = service._estimate_from_reference_symbols("161226", "国投瑞银白银期货(LOF)A")

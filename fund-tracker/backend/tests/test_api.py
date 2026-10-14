@@ -20,13 +20,13 @@ def test_root_endpoint(client):
 
 def test_api_v1_prefix(client):
     """测试 API 路由前缀 /api/v1 是否正确挂载"""
-    resp = client.get("/api/v1/funds/default-list")
+    resp = client.get("/api/v1/funds/list")
     assert resp.status_code == 200
 
 
 def test_response_wrapper_format(client):
     """测试 API 响应包装格式: { code, data, message }"""
-    resp = client.get("/api/v1/funds/default-list")
+    resp = client.get("/api/v1/funds/list")
     assert resp.status_code == 200
     body = resp.json()
     assert "code" in body, "响应应包含 code 字段"
@@ -36,20 +36,26 @@ def test_response_wrapper_format(client):
 
 def test_cors_headers(client):
     """测试 CORS 头是否正确设置"""
-    resp = client.options("/api/v1/funds/default-list", headers={
+    resp = client.options("/api/v1/funds/list", headers={
         "Origin": "http://localhost:3000",
         "Access-Control-Request-Method": "GET"
     })
     assert resp.status_code == 200
 
 
-def test_get_default_fund_list(client):
-    resp = client.get("/api/v1/funds/default-list")
+def test_manual_refresh_counts_typed_quotes(client):
+    resp = client.post("/api/v1/system/scheduler/refresh", json={"codes": ["000001", "161725"]})
+    assert resp.status_code == 200
+    assert resp.json()["data"]["refreshed"] == 2
+
+
+def test_get_fund_list_starts_empty_without_user_input(client):
+    resp = client.get("/api/v1/funds/list")
     assert resp.status_code == 200
     body = resp.json()
     assert body["code"] == 200
     assert isinstance(body["data"], list)
-    assert len(body["data"]) > 0
+    assert body["data"] == []
 
 
 def test_get_fund_data_sources(client, monkeypatch):
